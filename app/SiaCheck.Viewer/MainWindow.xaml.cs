@@ -1,0 +1,192 @@
+﻿using System.ComponentModel;
+using System.Diagnostics;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Media3D;
+using Microsoft.Win32;
+using SiaCheck.Viewer.Services;
+using SiaCheck.Viewer.ViewModels;
+using Wpf.Ui;
+using Wpf.Ui.Controls;
+
+namespace SiaCheck.Viewer;
+
+/// <summary>
+/// Vue de l'espace de revue. Le code-behind se limite à ce qui touche la vue elle-même :
+/// caméra, test d'impact 3D, raccourcis de la liste, notifications et placement de fenêtre.
+/// </summary>
+public partial class MainWindow : FluentWindow, IShell
+{
+    private const double ClickTolerance = 4;     // px : au-delà, c'est une rotation de caméra, pas un clic
+    private const int CameraAnimationMs = 300;   // plan §7 : seule animation porteuse de sens
+    private const double FrameMargin = 0.15;     // marge autour des surfaces isolées
+
+    private readonly AppPaths _paths;
+    private readonly AppSettings _settings;
+    private readonly SnackbarService _snackbars = new();
+    private Point _mouseDown;
+
+    public MainViewModel ViewModel { get; }
+
+    public MainWindow(AppPaths paths, AppSettings settings, string? enginePath)
+    {
+        _paths = paths;
+        _settings = settings;
+        InitializeComponent();
+        ViewModel = new MainViewModel(this, paths, settings, enginePath);
+        DataContext = ViewModel;
+        _snackbars.SetSnackbarPresenter(Snackbars);
+        ViewModel.PropertyChanged += OnViewModelChanged;
+        RestorePlacement();
+        Viewport.PreviewMouseLeftButtonDown += (_, e) => _mouseDown = e.GetPosition(Viewport);
+        Viewport.PreviewMouseLeftButtonUp += Viewport_Click;
+        PreviewKeyDown += Window_PreviewKeyDown;
+    }
+
+    private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MainViewModel.Scene) or "")
+            SceneVisual.Content = ViewModel.Scene?.Root;
+    }
+
+    // ------------------------------------------------------------------ IShell
+
+    public string? PickFolder(string title, string? initial)
+    {
+        var dlg = new OpenFolderDialog { Title = title, InitialDirectory = initial ?? "" };
+        return dlg.ShowDialog(this) == true ? dlg.FolderName : null;
+    }
+
+    public void Notify(string message, bool isError = false) =>
+        _snackbars.Show(isError ? "Erreur" : "Information", message,
+                        isError ? ControlAppearance.Danger : ControlAppearance.Secondary,
+                        new SymbolIcon(isError ? SymbolRegular.ErrorCircle24 : SymbolRegular.Info24),
+                        TimeSpan.FromSeconds(isError ? 8 : 4));
+
+    public void OpenFile(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+
+    public void Frame(Rect3D? bounds)
+    {
+        var ms = SystemParameters.ClientAreaAnimation ? CameraAnimationMs : 0;
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (bounds is not { } b || b.IsEmpty) { Viewport.ZoomExtents(ms); return; }
+            var m = Math.Max(Math.Max(b.SizeX, b.SizeY), 4) * FrameMargin;
+            Viewport.ZoomExtents(new Rect3D(b.X - m, b.Y - m, b.Z - m, b.SizeX + 2 * m, b.SizeY + 2 * m, b.SizeZ + 2 * m), ms);
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    public void ApplyTheme(string theme) => App.ApplyTheme(theme);
+
+    public Color GhostColor => (Color)FindResource("ColorGhost");
+
+    // ------------------------------------------------------------------ 3D
+
+    private void Viewport_Click(object sender, MouseButtonEventArgs e)
+    {
+        var p = e.GetPosition(Viewport);
+        if ((p - _mouseDown).Length > ClickTolerance || ViewModel.Scene is null) return;
+        string? hit = null;
+        VisualTreeHelper.HitTest(Viewport.Viewport, null, r =>
+        {
+            if (r is RayMeshGeometry3DHitTestResult m && m.ModelHit is GeometryModel3D g &&
+                ViewModel.Scene.SurfaceAt(g, m.VertexIndex1) is { } id)
+            {
+                hit = id;
+                return HitTestResultBehavior.Stop;
+            }
+            return HitTestResultBehavior.Continue;
+        }, new PointHitTestParameters(p));
+        ViewModel.SelectSurface(hit);
+    }
+
+    private void TopView_Click(object sender, RoutedEventArgs e) => TopView();
+
+    private void TopView()
+    {
+        if (Viewport.Camera is not ProjectionCamera cam) return;
+        cam.LookDirection = new Vector3D(0, 0, -Math.Max(cam.LookDirection.Length, 50));
+        cam.UpDirection = new Vector3D(0, 1, 0);
+        Viewport.ZoomExtents(SystemParameters.ClientAreaAnimation ? CameraAnimationMs : 0);
+    }
+
+    private void CloseSurface_Click(object sender, RoutedEventArgs e) => ViewModel.SelectSurface(null);
+
+    // ------------------------------------------------------------------ clavier et liste
+
+    private void IssuesList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemsControl.ContainerFromElement(IssuesList, (DependencyObject)e.OriginalSource) is ListBoxItem { DataContext: IssueItem item })
+            ViewModel.FocusIssueCommand.Execute(item);
+    }
+
+    private void IssuesList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var status = e.Key switch
+        {
+            Key.D1 or Key.NumPad1 => "todo",
+            Key.D2 or Key.NumPad2 => "seen",
+            Key.D3 or Key.NumPad3 => "false",
+            _ => null,
+        };
+        if (status is not null) { ViewModel.SetStatusCommand.Execute(status); e.Handled = true; }
+        else if (e.Key == Key.Enter) { ViewModel.FocusIssueCommand.Execute(ViewModel.SelectedIssue); e.Handled = true; }
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Raccourcis à une touche : jamais pendant la saisie d'un commentaire ou d'un filtre.
+        if (Keyboard.FocusedElement is TextBoxBase or ComboBox || Keyboard.Modifiers != ModifierKeys.None) return;
+        switch (e.Key)
+        {
+            case Key.F when ViewModel.SelectedIssue is not null:
+                ViewModel.FocusIssueCommand.Execute(ViewModel.SelectedIssue);
+                e.Handled = true;
+                break;
+            case Key.T when ViewModel.HasDocument:
+                TopView();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void Splitter_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        _settings.IssuesPanelWidth = IssuesColumn.ActualWidth;
+        _settings.Save(_paths);
+    }
+
+    // ------------------------------------------------------------------ placement
+
+    private void RestorePlacement()
+    {
+        var w = _settings.Window;
+        Width = Math.Max(w.Width, MinWidth);
+        Height = Math.Max(w.Height, MinHeight);
+        if (w is { Left: { } left, Top: { } top } && left >= SystemParameters.VirtualScreenLeft &&
+            left < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 100)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = left;
+            Top = top;
+        }
+        else WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        if (w.Maximized) WindowState = WindowState.Maximized;
+        IssuesColumn.Width = new GridLength(Math.Max(_settings.IssuesPanelWidth, 320));
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        var b = RestoreBounds;
+        _settings.Window = new WindowPlacement
+        {
+            Left = b.Left, Top = b.Top, Width = b.Width, Height = b.Height,
+            Maximized = WindowState == WindowState.Maximized,
+        };
+        _settings.Save(_paths);
+        base.OnClosing(e);
+    }
+}

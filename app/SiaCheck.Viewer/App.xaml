@@ -1,0 +1,25 @@
+﻿<Application x:Class="SiaCheck.Viewer.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:c="clr-namespace:SiaCheck.Viewer.Controls"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ui:ThemesDictionary Theme="Dark" />
+                <ui:ControlsDictionary />
+                <ResourceDictionary Source="Themes/Tokens.xaml" />
+                <!-- Remplacé à l'exécution par Colors.Light.xaml selon le thème (App.ApplyTheme) -->
+                <ResourceDictionary Source="Themes/Colors.Dark.xaml" />
+                <ResourceDictionary Source="Themes/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+            <c:VisibleWhenConverter x:Key="VisibleWhen" />
+            <c:VisibleWhenConverter x:Key="HiddenWhen" Invert="True" />
+            <c:EqualsConverter x:Key="EqualsTo" />
+            <c:AreaConverter x:Key="Area" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

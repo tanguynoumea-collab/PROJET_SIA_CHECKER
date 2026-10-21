@@ -86,6 +86,15 @@ def _exceeds(diff: float, ref: float, cfg: Config) -> bool:
     return ref == 0 or abs(diff) / abs(ref) > cfg.rel
 
 
+def _m2(v: float) -> str:
+    """Aire au format suisse des messages : 15 091,48 (espace fine insécable, virgule décimale)."""
+    return f"{v:,.2f}".replace(",", " ").replace(".", ",")
+
+
+def _pct1(v: float) -> str:
+    return f"{v:.1f}".replace(".", ",")
+
+
 def _pct(diff: float, ref: float) -> float:
     return float("nan") if not ref else 100.0 * diff / ref
 
@@ -181,14 +190,14 @@ def _judge(c: dict, cfg: Config) -> dict | None:
     if not _exceeds(diff, own, cfg):
         return _row(bld, lvl, rule, code, own, obtained, "OK", f"{code} = {labels}")
     if diff < 0:
-        return _row(bld, lvl, "R4", code, own, obtained, "ERREUR", f"{labels} dépasse {code} de {-diff:.2f} m²")
+        return _row(bld, lvl, "R4", code, own, obtained, "ERREUR", f"{labels} dépasse {code} de {_m2(-diff)} m²")
     missing = sorted(c["missing_opt"])
     max_rel = max((cfg.categories[k].get("implicit_max_rel", 0) for k in missing), default=0)
     if missing and own and diff / own <= max_rel:
         return _row(bld, lvl, rule, code, own, obtained, "INFO",
-                    f"{'+'.join(missing)} implicite : {diff:.2f} m² ({100 * diff / own:.1f} %)")
+                    f"{'+'.join(missing)} implicite : {_m2(diff)} m² ({_pct1(100 * diff / own)} %)")
     return _row(bld, lvl, rule, code, own, obtained, "ERREUR",
-                f"{code} non sous-classifiée : {diff:.2f} m² hors {labels}")
+                f"{code} non sous-classifiée : {_m2(diff)} m² hors {labels}")
 
 
 # --------------------------------------------------------------------------- niveaux (R5, A1, A2)
@@ -230,14 +239,14 @@ def level_checks(totals: pd.DataFrame, surf: pd.DataFrame, cfg: Config) -> list[
         # R5 — niveau avec plancher mais sans surface utile (SIA 416 §2.1.1).
         if sp > cfg.abs_m2 and su <= cfg.abs_m2 and not _matches(lvl, cfg.technical):
             out.append(_row(bld, lvl, "R5", SU, sp, su, "ALERTE",
-                            f"SP {sp:.2f} m² sans surface utile (SUP+SUS = {su:.2f})"))
+                            f"SP {_m2(sp)} m² sans surface utile (SUP+SUS = {_m2(su)})"))
 
         if sep <= cfg.abs_m2:
             continue
         # A1 — SEP au niveau du terrain : candidate surface des abords SA (SIA 416 §3, renvoi §1.2).
         if _matches(lvl, cfg.ground):
             out.append(_row(bld, lvl, "A1", SEP, sep, 0.0, "ALERTE",
-                            f"SEP {sep:.2f} m² au niveau du terrain : candidate surface des abords SA"))
+                            f"SEP {_m2(sep)} m² au niveau du terrain : candidate surface des abords SA"))
         # A2 — SEP sans plancher adjacent : candidate toiture non accessible, hors SEP (SIA 416 §3).
         r = ranks[(bld, lvl)]
         why = []
@@ -247,7 +256,7 @@ def level_checks(totals: pd.DataFrame, surf: pd.DataFrame, cfg: Config) -> list[
             why.append("au-dessus du dernier niveau avec SP")
         if why:
             out.append(_row(bld, lvl, "A2", SEP, sep, 0.0, "ALERTE",
-                            f"SEP {sep:.2f} m² ({', '.join(why)}) : candidate toiture non accessible"))
+                            f"SEP {_m2(sep)} m² ({', '.join(why)}) : candidate toiture non accessible"))
     return out
 
 
@@ -276,7 +285,7 @@ def uspi_checks(surf: pd.DataFrame, cfg: Config) -> list[dict]:
             got = float(row[SVB] - row[SVN])
             bad = _exceeds(mem - got, mem, cfg)
             out.append(_row(bld, lvl, "U4", "MEM", mem, got, "ALERTE" if bad else "OK",
-                            f"SVB−SVN ({got:.2f}) ≠ SBH−SH ({mem:.2f})" if bad else "SVB−SVN = SBH−SH", lot=lot))
+                            f"SVB−SVN ({_m2(got)}) ≠ SBH−SH ({_m2(mem)})" if bad else "SVB−SVN = SBH−SH", lot=lot))
     return out
 
 

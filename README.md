@@ -28,6 +28,31 @@ sia-check model.ifc --all --verbose          # console seule, contrôles OK comp
 - **html** : même contenu, lisible sans Excel, avec un tableau par niveau aux couleurs de la légende SIA 416 (surfaces externes hachurées).
 - **json** : pour n8n : `exit_code`, `counts` par verdict, `residuals` (hors OK), `unknown_codes`.
 
+## SIA Check Viewer (application WPF)
+
+Visionneuse 3D des surfaces SIA d'un projet Treegram, avec la liste des points d'attention à côté de la 3D. Le design est décrit dans `docs/DESIGN_PLAN.md`.
+
+```bash
+powershell -ExecutionPolicy Bypass -File app/build.ps1
+```
+
+La commande produit `app/dist/SiaCheckViewer/`. Ce dossier se copie tel quel : il ne demande ni Python ni runtime .NET.
+
+- **Ouvrir** : le dossier du projet Treegram, celui qui contient `Nom.tgm` et `VWR\`. Le moteur `engine\sia-check.exe` analyse le `.tgm` et lit la géométrie dans le cache du viewer.
+- **Calques par catégorie SIA**, filtres par bâtiment et par niveau, éclatement des niveaux.
+- **Points d'attention** :
+  - double-clic ou Entrée pour isoler les surfaces concernées et centrer la vue ;
+  - Échap pour quitter l'isolement ;
+  - `1` / `2` / `3` pour passer le statut à « à traiter », « vu » ou « faux positif » ;
+  - un commentaire par point.
+
+  Statuts et commentaires sont conservés d'une analyse à l'autre, dans `%APPDATA%\SiaCheckViewer\reviews\`. Un point suivi qui disparaît passe en « résolu ».
+- **Bilan par niveau** : barres de sommation SP → SUP/SUS/SD/SI pour un bâtiment. Un clic sur une barre isole le niveau.
+- **Limite** : si le projet a été modifié après la dernière ouverture dans le viewer Treegram, le cache 3D est périmé. La visionneuse l'indique.
+
+Développement : `dotnet test app/SiaCheckViewer.sln`.
+`SiaCheck.Viewer.exe <dossier projet> --capture image.png [--focus clé]` produit une capture pour la revue visuelle.
+
 ## Règles
 
 | Règle | Contrôle | Référence |

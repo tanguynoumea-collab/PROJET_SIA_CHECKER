@@ -1,0 +1,532 @@
+﻿<ui:FluentWindow x:Class="SiaCheck.Viewer.MainWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:h="http://helix-toolkit.org/wpf"
+                 xmlns:c="clr-namespace:SiaCheck.Viewer.Controls"
+                 xmlns:vm="clr-namespace:SiaCheck.Viewer.ViewModels"
+                 mc:Ignorable="d"
+                 d:DataContext="{d:DesignInstance vm:MainViewModel}"
+                 Title="SIA Check Viewer"
+                 MinWidth="{StaticResource WindowMinWidth}" MinHeight="{StaticResource WindowMinHeight}"
+                 Background="{DynamicResource BrushBackground}"
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="None"
+                 FontFamily="{StaticResource FontUI}" FontSize="{StaticResource FontSizeBody}">
+
+    <Window.InputBindings>
+        <KeyBinding Key="R" Modifiers="Control" Command="{Binding AnalyseCommand}" />
+        <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenProjectCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding ClearFocusCommand}" />
+    </Window.InputBindings>
+
+    <!-- Fond explicite : le gabarit FluentWindow applique sinon le fond du thème WPF UI, pas le token Background -->
+    <Grid Background="{DynamicResource BrushBackground}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="SIA Check Viewer" />
+
+        <!-- ================================================================ ACCUEIL (état vide) -->
+        <Grid Grid.Row="1" Visibility="{Binding IsHome, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel MaxWidth="640" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource TextTitle}" TextWrapping="Wrap"
+                           Text="Ouvrez un projet Treegram pour contrôler ses surfaces SIA 416." />
+                <ui:Button Margin="0,24,0,0" Appearance="Primary" Icon="{ui:SymbolIcon FolderOpen20}"
+                           Content="Ouvrir un dossier projet…" Command="{Binding OpenProjectCommand}"
+                           MinHeight="{StaticResource TargetSize}" ToolTip="Ctrl+O" />
+                <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}"
+                           Text="Le dossier contient le fichier .tgm et le cache VWR du viewer Treegram." />
+
+                <Border Margin="0,16,0,0" Style="{StaticResource Banner}" BorderBrush="{DynamicResource BrushVerdictError}"
+                        Visibility="{Binding HomeError, Converter={StaticResource VisibleWhen}}">
+                    <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding HomeError}" />
+                </Border>
+
+                <StackPanel Visibility="{Binding Recents.Count, Converter={StaticResource VisibleWhen}}">
+                    <TextBlock Style="{StaticResource TextSection}" Margin="0,32,0,8" Text="Récents" />
+                    <ItemsControl ItemsSource="{Binding Recents}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}"
+                                        Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="160" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Style="{StaticResource TextSubtitle}" Text="{Binding Name}" />
+                                        <TextBlock Grid.Column="1" Style="{StaticResource TextCaption}" Margin="8,0" Text="{Binding Path}" />
+                                        <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}">
+                                            <Run Text="{Binding IssueCount, Mode=OneWay}" /><Run Text=" points · " /><Run Text="{Binding LastAnalysis, StringFormat=dd.MM.yyyy, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+
+        <!-- ================================================================ ESPACE DE REVUE -->
+        <Grid Grid.Row="1" Visibility="{Binding HasDocument, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Barre de commande -->
+            <Border Grid.Row="0" Background="{DynamicResource BrushSurface}" Padding="16,8">
+                <DockPanel LastChildFill="True">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <ui:Button Appearance="Primary" Icon="{ui:SymbolIcon Play20}" Content="Analyser"
+                                   Command="{Binding AnalyseCommand}" ToolTip="Relancer l'analyse du projet (Ctrl+R)" MinHeight="{StaticResource TargetSize}" />
+                        <ui:Button Margin="8,0,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon ArrowExportUp20}" Content="Exporter les rapports…"
+                                   Command="{Binding ExportCommand}" MinHeight="{StaticResource TargetSize}" />
+                        <ui:Button Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon DarkTheme20}"
+                                   Command="{Binding ToggleThemeCommand}" ToolTip="Basculer thème sombre / clair"
+                                   AutomationProperties.Name="Basculer le thème" MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
+                        <ui:Button Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Home20}"
+                                   Command="{Binding GoHomeCommand}" ToolTip="Ouvrir un autre projet"
+                                   AutomationProperties.Name="Accueil" MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource TextTitle}" Text="{Binding ProjectName}" VerticalAlignment="Center" />
+                        <TextBlock Style="{StaticResource TextCaption}" Margin="16,0,0,0" VerticalAlignment="Center" MaxWidth="420"
+                                   Text="{Binding ProjectDir}" ToolTip="{Binding ProjectDir}" />
+                        <TextBlock Style="{StaticResource TextCaption}" Margin="16,0,0,0" VerticalAlignment="Center" Text="{Binding AnalysedAt}" />
+                        <Border Margin="16,0,0,0" Style="{StaticResource Banner}" Padding="6,2" VerticalAlignment="Center"
+                                Visibility="{Binding CacheIsStale, Converter={StaticResource BoolToVisibility}}" ToolTip="{Binding CacheWarning}">
+                            <StackPanel Orientation="Horizontal">
+                                <c:VerdictGlyph Verdict="ALERTE" />
+                                <TextBlock Style="{StaticResource TextCaption}" Margin="6,0,0,0" Text="Cache 3D antérieur au projet" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Erreur d'analyse (les résultats précédents restent affichés) -->
+            <ui:InfoBar Grid.Row="1" Severity="Error" IsClosable="True" Title="Analyse impossible"
+                        Message="{Binding AnalysisError}"
+                        IsOpen="{Binding HasAnalysisError, Mode=OneWay}"
+                        Visibility="{Binding HasAnalysisError, Converter={StaticResource BoolToVisibility}}" />
+
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{StaticResource LayersPanelWidth}" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition x:Name="IssuesColumn" Width="380" MinWidth="{StaticResource IssuesPanelMinWidth}" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ============ Panneau gauche : calques et filtres -->
+                <Border Grid.Column="0" Style="{StaticResource Panel}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" Margin="{StaticResource SectionGap}"
+                                        Command="{Binding ShowAllLayersCommand}">
+                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Tout afficher" />
+                                </Button>
+                                <TextBlock Style="{StaticResource TextSection}" Text="Calques" />
+                            </DockPanel>
+                            <ItemsControl x:Name="LayersList" ItemsSource="{Binding LayersView}">
+                                <ItemsControl.GroupStyle>
+                                    <GroupStyle>
+                                        <GroupStyle.HeaderTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Style="{StaticResource TextCaption}" Margin="0,8,0,2" Text="{Binding Name}" />
+                                            </DataTemplate>
+                                        </GroupStyle.HeaderTemplate>
+                                    </GroupStyle>
+                                </ItemsControl.GroupStyle>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:LayerItem">
+                                        <CheckBox IsChecked="{Binding IsVisible}" IsEnabled="{Binding HasGeometry}" MinHeight="28"
+                                                  AutomationProperties.Name="{Binding Code}" HorizontalContentAlignment="Stretch">
+                                            <Grid Width="200">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="44" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="72" />
+                                                </Grid.ColumnDefinitions>
+                                                <Rectangle Width="{StaticResource SwatchSize}" Height="{StaticResource SwatchSize}" RadiusX="2" RadiusY="2"
+                                                           Fill="{Binding Swatch}" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource TextMono}" Text="{Binding Code}" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}" TextAlignment="Right" VerticalAlignment="Center"
+                                                           Text="{Binding Count, Converter={StaticResource Area}}" />
+                                                <TextBlock Grid.Column="3" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
+                                                           Text="{Binding Area, Converter={StaticResource Area}}" />
+                                            </Grid>
+                                        </CheckBox>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" Margin="{StaticResource SectionGap}"
+                                        Command="{Binding SelectAllBuildingsCommand}">
+                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Tous" />
+                                </Button>
+                                <TextBlock Style="{StaticResource TextSection}" Text="Bâtiments" />
+                            </DockPanel>
+                            <ItemsControl ItemsSource="{Binding Buildings}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:BuildingChip">
+                                        <ToggleButton Style="{StaticResource Chip}" Content="{Binding Name}" IsChecked="{Binding IsSelected}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Style="{StaticResource TextSection}" Text="Niveau" />
+                            <ComboBox ItemsSource="{Binding Levels}" SelectedItem="{Binding SelectedLevel}" FontFamily="{StaticResource FontMono}" />
+
+                            <TextBlock Style="{StaticResource TextSection}" Text="Éclater les niveaux" />
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right" Style="{StaticResource TextCaption}" Width="40" TextAlignment="Right"
+                                           Text="{Binding Explode, StringFormat={}{0:0} m}" />
+                                <Slider Minimum="0" Maximum="12" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding Explode}"
+                                        AutomationProperties.Name="Écart entre niveaux" />
+                            </DockPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- ============ Centre : vue 3D + bilan par niveau -->
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <h:HelixViewport3D x:Name="Viewport" Grid.Row="0" Background="{DynamicResource BrushBackground}"
+                                       ShowViewCube="True" ViewCubeHorizontalPosition="Right" ViewCubeVerticalPosition="Top"
+                                       ViewCubeTopText="H" ViewCubeBottomText="B" ViewCubeFrontText="S" ViewCubeBackText="N"
+                                       ViewCubeLeftText="O" ViewCubeRightText="E"
+                                       ShowCoordinateSystem="False" IsHeadLightEnabled="False" ZoomExtentsWhenLoaded="False"
+                                       CameraRotationMode="Turntable" ModelUpDirection="0,0,1" IsInertiaEnabled="False"
+                                       ShowFrameRate="False" AutomationProperties.Name="Vue 3D des surfaces SIA">
+                        <h:HelixViewport3D.Camera>
+                            <PerspectiveCamera Position="-120,-160,120" LookDirection="120,160,-120" UpDirection="0,0,1" FieldOfView="40" />
+                        </h:HelixViewport3D.Camera>
+                        <ModelVisual3D>
+                            <ModelVisual3D.Content>
+                                <Model3DGroup>
+                                    <!-- Lumière surtout ambiante : les couleurs de la légende SIA doivent rester fidèles -->
+                                    <AmbientLight Color="#C8C8C8" />
+                                    <DirectionalLight Color="#3C3C3C" Direction="-0.3,-0.5,-1" />
+                                </Model3DGroup>
+                            </ModelVisual3D.Content>
+                        </ModelVisual3D>
+                        <ModelVisual3D x:Name="SceneVisual" />
+                    </h:HelixViewport3D>
+
+                    <!-- Bandeaux et états superposés à la 3D -->
+                    <StackPanel Grid.Row="0" VerticalAlignment="Top" HorizontalAlignment="Left" MaxWidth="640">
+                        <Border Style="{StaticResource Banner}" Visibility="{Binding MissingGeometryWarning, Converter={StaticResource VisibleWhen}}">
+                            <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding MissingGeometryWarning}" />
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="{Binding NoLayerVisible, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Style="{StaticResource TextSubtitle}" Text="Aucun calque visible" HorizontalAlignment="Center" />
+                        <ui:Button Margin="0,8,0,0" Appearance="Secondary" Content="Tout afficher" HorizontalAlignment="Center"
+                                   Command="{Binding ShowAllLayersCommand}" />
+                    </StackPanel>
+                    <TextBlock Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource TextSubtitle}"
+                               Visibility="{Binding HasNoGeometry, Converter={StaticResource BoolToVisibility}}"
+                               Text="Pas de cache 3D. Le contrôle chiffré reste disponible." />
+
+                    <!-- Outils de vue -->
+                    <Border Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="{StaticResource SpaceM}"
+                            Background="{DynamicResource BrushSurface}" CornerRadius="{StaticResource RadiusControl}" Padding="4">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ZoomFit20}" Content="Vue d'ensemble"
+                                       Command="{Binding FrameAllCommand}" MinHeight="{StaticResource TargetSize}" />
+                            <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ArrowDown20}" Content="Vue de dessus"
+                                       Click="TopView_Click" ToolTip="T" MinHeight="{StaticResource TargetSize}" />
+                            <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss20}" Content="Quitter l'isolement"
+                                       Command="{Binding ClearFocusCommand}" ToolTip="Échap" MinHeight="{StaticResource TargetSize}"
+                                       Visibility="{Binding IsFocused, Converter={StaticResource BoolToVisibility}}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Fiche de la surface cliquée -->
+                    <Border Grid.Row="0" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="{StaticResource SpaceM}" Width="340"
+                            Style="{StaticResource Card}" Visibility="{Binding HasSelectedSurface, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel DataContext="{Binding SelectedSurface}">
+                            <DockPanel>
+                                <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss16}" Padding="4"
+                                           Click="CloseSurface_Click" AutomationProperties.Name="Fermer la fiche" />
+                                <TextBlock Style="{StaticResource TextMono}" FontSize="{StaticResource FontSizeSubtitle}" Text="{Binding Title}" />
+                            </DockPanel>
+                            <TextBox Margin="0,4,0,0" IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0"
+                                     FontFamily="{StaticResource FontMono}" FontSize="{StaticResource FontSizeCaption}"
+                                     Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding Surface.Id, Mode=OneWay}" TextWrapping="Wrap" />
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="96" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                                </Grid.RowDefinitions>
+                                <TextBlock Style="{StaticResource TextCaption}" Text="Aire" />
+                                <TextBlock Grid.Column="1" Style="{StaticResource TextBody}">
+                                    <Run Text="{Binding Surface.Area, Converter={StaticResource Area}, Mode=OneWay}" /><Run Text=" m²" />
+                                </TextBlock>
+                                <TextBlock Grid.Row="1" Style="{StaticResource TextCaption}" Text="Nature" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource TextBody}" Text="{Binding Kind}" />
+                                <TextBlock Grid.Row="2" Style="{StaticResource TextCaption}" Text="Sous-type" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource TextBody}" Text="{Binding Surface.RoomType}" />
+                                <TextBlock Grid.Row="3" Style="{StaticResource TextCaption}" Text="Lot" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource TextMono}" Text="{Binding Surface.Lot}" />
+                            </Grid>
+                            <TextBlock Style="{StaticResource TextSection}" Text="Points d'attention"
+                                       Visibility="{Binding Issues.Count, Converter={StaticResource VisibleWhen}}" />
+                            <ItemsControl ItemsSource="{Binding Issues}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:IssueItem">
+                                        <Button Style="{StaticResource RowButton}" Padding="4,2"
+                                                Command="{Binding DataContext.SelectLinkedIssueCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <c:VerdictGlyph Verdict="{Binding Verdict}" />
+                                                <TextBlock Margin="6,0,0,0" Style="{StaticResource TextMono}" Text="{Binding Rule}" />
+                                                <TextBlock Margin="8,0,0,0" Style="{StaticResource TextMono}" Text="{Binding Location}" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ============ Bilan par niveau (élément signature) -->
+                    <Border Grid.Row="1" Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushDivider}" BorderThickness="0,1,0,0">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top" Margin="12,6">
+                                <ToggleButton DockPanel.Dock="Right" Style="{StaticResource Chip}" Margin="0"
+                                              IsChecked="{Binding IsBalanceCollapsed}" AutomationProperties.Name="Replier le bilan"
+                                              ToolTip="Replier / déplier le bilan">
+                                    <ui:SymbolIcon Symbol="ChevronDown16" />
+                                </ToggleButton>
+                                <ComboBox DockPanel.Dock="Right" Margin="0,0,8,0" MinWidth="90" ItemsSource="{Binding Buildings}"
+                                          DisplayMemberPath="Name" SelectedValuePath="Name" SelectedValue="{Binding BalanceBuilding}"
+                                          FontFamily="{StaticResource FontMono}" AutomationProperties.Name="Bâtiment du bilan" />
+                                <TextBlock Style="{StaticResource TextSection}" Margin="0" VerticalAlignment="Center">
+                                    <Run Text="Bilan par niveau" /><Run Text=" — " /><Run Text="{Binding BalanceBuilding, Mode=OneWay}" FontFamily="{StaticResource FontMono}" />
+                                </TextBlock>
+                            </DockPanel>
+                            <ScrollViewer Height="{StaticResource BalanceHeight}" VerticalScrollBarVisibility="Auto" Padding="12,0,12,8"
+                                          Visibility="{Binding IsBalanceCollapsed, Converter={StaticResource HiddenWhen}}">
+                                <ItemsControl ItemsSource="{Binding BalanceRows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="vm:BalanceRow">
+                                            <Button Style="{StaticResource RowButton}" Padding="4,1" ToolTip="{Binding Tooltip}"
+                                                    Command="{Binding DataContext.IsolateLevelCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}" AutomationProperties.Name="{Binding Level}">
+                                                <Grid Height="{StaticResource BalanceRowHeight}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="64" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="20" />
+                                                        <ColumnDefinition Width="72" />
+                                                        <ColumnDefinition Width="56" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Style="{StaticResource TextMono}" Text="{Binding Level}" VerticalAlignment="Center" />
+                                                    <c:BalanceBar Grid.Column="1" Row="{Binding}"
+                                                                  Palette="{Binding DataContext.Palette, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                  Outline="{DynamicResource BrushTextSecondary}" Error="{DynamicResource BrushVerdictError}" />
+                                                    <c:VerdictGlyph Grid.Column="2" Margin="4,0,0,0" Verdict="{Binding R1Verdict}"
+                                                                    Visibility="{Binding HasFloor, Converter={StaticResource BoolToVisibility}}" />
+                                                    <TextBlock Grid.Column="3" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
+                                                               Visibility="{Binding HasFloor, Converter={StaticResource BoolToVisibility}}"
+                                                               Text="{Binding R1Diff, Converter={StaticResource Area}}" />
+                                                    <TextBlock Grid.Column="4" Margin="8,0,0,0" Style="{StaticResource TextMono}" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource BrushVerdictWarning}" Text="{Binding Alerts}" />
+                                                </Grid>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+
+                <GridSplitter Grid.Column="2" Width="4" Background="{DynamicResource BrushDivider}" ResizeDirection="Columns"
+                              HorizontalAlignment="Stretch" ShowsPreview="False" DragCompleted="Splitter_DragCompleted" />
+
+                <!-- ============ Panneau droit : points d'attention -->
+                <Border Grid.Column="3" Style="{StaticResource Panel}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top">
+                            <TextBlock Style="{StaticResource TextSection}" Margin="0,0,0,8">
+                                <Run Text="Points d'attention" /><Run Text="  " /><Run Text="{Binding Issues.Count, Mode=OneWay}" />
+                            </TextBlock>
+                            <WrapPanel>
+                                <ToggleButton Style="{StaticResource VerdictToggle}" IsChecked="{Binding ShowErrors}" AutomationProperties.Name="Erreurs">
+                                    <StackPanel Orientation="Horizontal"><c:VerdictGlyph Verdict="ERREUR" /><TextBlock Margin="6,0,0,0" Text="{Binding ErrorCount}" /></StackPanel>
+                                </ToggleButton>
+                                <ToggleButton Style="{StaticResource VerdictToggle}" IsChecked="{Binding ShowWarnings}" AutomationProperties.Name="Alertes">
+                                    <StackPanel Orientation="Horizontal"><c:VerdictGlyph Verdict="ALERTE" /><TextBlock Margin="6,0,0,0" Text="{Binding WarningCount}" /></StackPanel>
+                                </ToggleButton>
+                                <ToggleButton Style="{StaticResource VerdictToggle}" IsChecked="{Binding ShowInfos}" AutomationProperties.Name="Informations">
+                                    <StackPanel Orientation="Horizontal"><c:VerdictGlyph Verdict="INFO" /><TextBlock Margin="6,0,0,0" Text="{Binding InfoCount}" /></StackPanel>
+                                </ToggleButton>
+                            </WrapPanel>
+                            <Grid Margin="0,4,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox ItemsSource="{Binding Rules}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                          SelectedValue="{Binding RuleFilter}" AutomationProperties.Name="Filtrer par règle" />
+                                <ComboBox Grid.Column="2" ItemsSource="{Binding StatusChoices}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                          SelectedValue="{Binding StatusFilter}" AutomationProperties.Name="Filtrer par statut" />
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- Détail du point sélectionné -->
+                        <Border DockPanel.Dock="Bottom" Style="{StaticResource Card}" Margin="0,8,0,0"
+                                Visibility="{Binding HasSelectedIssue, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel DataContext="{Binding SelectedIssue}">
+                                <StackPanel Orientation="Horizontal">
+                                    <c:VerdictGlyph Verdict="{Binding Verdict}" />
+                                    <TextBlock Margin="8,0,0,0" Style="{StaticResource TextMono}" FontSize="{StaticResource FontSizeSubtitle}">
+                                        <Run Text="{Binding Rule, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Location, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Category, Mode=OneWay}" />
+                                    </TextBlock>
+                                </StackPanel>
+                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding Message}" />
+                                <Grid Margin="0,8,0,0" Visibility="{Binding IsResolved, Converter={StaticResource HiddenWhen}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="80" />
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition /><RowDefinition /><RowDefinition />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Style="{StaticResource TextCaption}" Text="attendu" />
+                                    <TextBlock Grid.Column="1" Style="{StaticResource TextNumber}" Text="{Binding Expected, Converter={StaticResource Area}}" />
+                                    <TextBlock Grid.Row="1" Style="{StaticResource TextCaption}" Text="obtenu" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource TextNumber}" Text="{Binding Obtained, Converter={StaticResource Area}}" />
+                                    <TextBlock Grid.Row="2" Style="{StaticResource TextCaption}" Text="écart" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource TextNumber}" FontFamily="{StaticResource FontUISemibold}"
+                                               Text="{Binding DiffM2, Converter={StaticResource Area}}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource TextCaption}"
+                                               Text="{Binding DiffPct, Converter={StaticResource Area}, ConverterParameter=pct}" />
+                                </Grid>
+                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextCaption}"
+                                           Visibility="{Binding IsResolved, Converter={StaticResource HiddenWhen}}">
+                                    <Run Text="{Binding SurfaceIds.Count, Mode=OneWay}" /><Run Text=" surfaces concernées · double-clic ou Entrée pour isoler" />
+                                </TextBlock>
+                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushStatusSeen}"
+                                           Visibility="{Binding IsResolved, Converter={StaticResource BoolToVisibility}}">
+                                    <Run Text="Résolu : absent de l'analyse. Vu pour la dernière fois le " /><Run Text="{Binding ResolvedSince, Mode=OneWay}" />
+                                </TextBlock>
+
+                                <Border Margin="0,12,0,0" Background="{DynamicResource BrushBackground}" CornerRadius="{StaticResource RadiusControl}" Padding="2"
+                                        IsEnabled="{Binding IsOpen}">
+                                    <UniformGrid Rows="1">
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="Status" Content="À traiter"
+                                                     IsChecked="{Binding Status, Converter={StaticResource EqualsTo}, ConverterParameter=ToReview}" ToolTip="1" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="Status" Content="Vu"
+                                                     IsChecked="{Binding Status, Converter={StaticResource EqualsTo}, ConverterParameter=Seen}" ToolTip="2" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="Status" Content="Faux positif"
+                                                     IsChecked="{Binding Status, Converter={StaticResource EqualsTo}, ConverterParameter=FalsePositive}" ToolTip="3" />
+                                    </UniformGrid>
+                                </Border>
+                                <ui:TextBox Margin="0,8,0,0" PlaceholderText="Commentaire…" AcceptsReturn="True" TextWrapping="Wrap"
+                                            MinHeight="56" MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                                            Text="{Binding Comment, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Commentaire" />
+                            </StackPanel>
+                        </Border>
+
+                        <Grid>
+                            <ListBox x:Name="IssuesList" ItemsSource="{Binding IssuesView}" SelectedItem="{Binding SelectedIssue}"
+                                     ItemContainerStyle="{StaticResource IssueItem}" Background="Transparent" BorderThickness="0"
+                                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     MouseDoubleClick="IssuesList_MouseDoubleClick" PreviewKeyDown="IssuesList_PreviewKeyDown"
+                                     AutomationProperties.Name="Points d'attention">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="vm:IssueItem">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="22" />
+                                                <ColumnDefinition Width="36" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition />
+                                                <RowDefinition />
+                                            </Grid.RowDefinitions>
+                                            <c:VerdictGlyph Verdict="{Binding Verdict}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" Text="{Binding Rule}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2" Style="{StaticResource TextMono}" Text="{Binding Location}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="3" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
+                                                       Text="{Binding DiffM2, Converter={StaticResource Area}}" />
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Style="{StaticResource TextCaption}" Text="{Binding Message}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Visibility="{Binding IssuesEmptyMessage, Converter={StaticResource VisibleWhen}}">
+                                <TextBlock Style="{StaticResource TextBody}" HorizontalAlignment="Center" Text="{Binding IssuesEmptyMessage}" />
+                                <Button Style="{StaticResource RowButton}" Padding="4,2" HorizontalAlignment="Center" Margin="0,6,0,0"
+                                        Command="{Binding ResetFiltersCommand}">
+                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Réinitialiser les filtres" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <!-- Barre d'état -->
+            <Border Grid.Row="3" Background="{DynamicResource BrushSurface}" BorderBrush="{DynamicResource BrushDivider}" BorderThickness="0,1,0,0" Padding="16,4">
+                <TextBlock Style="{StaticResource TextCaption}" Text="{Binding StatusText}" />
+            </Border>
+        </Grid>
+
+        <!-- ================================================================ ANALYSE EN COURS (superposition) -->
+        <Grid Grid.Row="1" Visibility="{Binding IsAnalysing, Converter={StaticResource BoolToVisibility}}">
+            <Rectangle Fill="{DynamicResource BrushBackground}" Opacity="0.7" />
+            <Border Style="{StaticResource Card}" Background="{DynamicResource BrushSurface}" Width="440"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{StaticResource SpaceXL}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource TextSubtitle}">
+                        <Run Text="Analyse de " /><Run Text="{Binding ProjectDir, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Margin="0,12,0,4" Style="{StaticResource TextBody}" Text="{Binding AnalysisLabel}" />
+                    <ProgressBar Minimum="0" Maximum="3" Value="{Binding AnalysisStep}" Height="4" />
+                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}">
+                        <Run Text="Étape " /><Run Text="{Binding AnalysisStep, Mode=OneWay}" /><Run Text=" sur 3 : lecture du .tgm, contrôles SIA 416, géométrie" />
+                    </TextBlock>
+                    <ui:Button Margin="0,16,0,0" HorizontalAlignment="Right" Appearance="Secondary" Content="Annuler"
+                               Command="{Binding CancelAnalysisCommand}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <ui:SnackbarPresenter x:Name="Snackbars" Grid.Row="1" VerticalAlignment="Bottom" />
+    </Grid>
+</ui:FluentWindow>

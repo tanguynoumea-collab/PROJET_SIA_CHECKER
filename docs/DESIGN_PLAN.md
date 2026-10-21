@@ -1,6 +1,7 @@
 # DESIGN_PLAN — SIA Check Viewer
 
-> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☐ **VALIDÉ PAR L'UTILISATEUR** (obligatoire avant tout XAML)
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (21.10.2026)
+> Phase 2 (revue visuelle) : captures de référence dans `docs/ui-baseline/` (accueil, revue, isolement sombre, isolement clair).
 > Version : 1.0 — 21.10.2026 · Mode CRÉATION
 
 ## 1. Ancrage
@@ -246,3 +247,6 @@ C'est la traduction directe du métier, puisque la SIA 416 est une **sommation p
 | Tableau des résidus sous la 3D | Duplique la liste ; le bilan par niveau montre la même chose en forme | 21.10.2026 |
 | Onglet plan 2D par niveau | Couvert par vue de dessus + isolement ; un mode de vue de moins | 21.10.2026 |
 | HelixToolkit SharpDX (DirectX 11) | Plus performant mais plus lourd à intégrer ; Helix.Wpf suffit si les maillages sont regroupés. À revoir si < 30 i/s en Phase 2 | 21.10.2026 |
+| Liste triée par écart seul (Phase 2) | Les agrégats « Projet » et « tous niveaux » occupaient le haut de la liste ; ils sont maintenant placés après les points de niveau, qui sont actionnables | 21.10.2026 |
+| Isolement par simple fantôme (Phase 2) | Les étages en fantôme voilaient le niveau isolé, y compris ceux des bâtiments voisins sur un socle commun ; ajout d'une coupe à l'altitude du point isolé | 21.10.2026 |
+| Accent via la surcharge « thème » de WPF UI (Phase 2) | Éclaircissait la pervenche jusqu'au blanc en sombre ; les 4 teintes sont désormais imposées | 21.10.2026 |

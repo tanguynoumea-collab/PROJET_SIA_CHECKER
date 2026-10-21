@@ -84,7 +84,21 @@ Pour chaque nœud qui a des enfants, `aire du nœud = Σ enfants` à 0,05 m² pr
 
 - `DB/*.db3` (SQLite) : seulement le journal des actions Treegram (`ProdAction`, `Association`), sans valeurs de surfaces.
 - `Cache/Trees/*.json` : arbres datés du 09.06, antérieurs aux surfaces SIA.
-- `VWR/**/*.3drtgm` : géométries binaires par appartement, non décodées.
+- `VWR/**/*.3drtgm` : géométries binaires du viewer ; seules les `*-SiaSurface*` sont décodées (§2.4).
+
+### 2.4 Géométrie des surfaces SIA (cache du viewer) — ajout du 21.10.2026
+
+Le viewer Treegram met en cache, par niveau, les maillages des surfaces SIA :
+`VWR/<dossier>/_Data/<Bât>_<Niv>-SiaSurface.3drtgm`, plus des variantes `…SiaSurface1/2.3drtgm`. Il y a 80 jeux pour L'Orée. Le décodeur est `src/sia_check/geom.py`, où le format est détaillé.
+
+- **Lien surface → maillage** : chaque objet du fichier porte l'identifiant interne de l'élément du `.tgm`. Cet identifiant se lit dans l'en-tête d'enregistrement qui précède chaque sac de propriétés : `aa 00 00 00 04 <int32 id> 04 01` (`tgm.Bag.element_id`).
+- **Couverture L'Orée** :
+  - 4 890 / 4 890 surfaces élémentaires ont une géométrie ;
+  - 707 / 1 200 totaux de niveau en ont une ;
+  - les totaux sans géométrie sont d'aire nulle ;
+  - 8 832 maillages, aucun octet non décodé.
+- **Coordonnées** : en mètres, dans le repère du projet. Les altitudes sont cohérentes : S01 −3,62, N00 0,02, N01 3,17… N07 20,21.
+- **Limite** : le cache n'est régénéré que lorsque le projet est ouvert dans le viewer Treegram. Pour L'Orée, le cache date du 11.06 et le `.tgm` du 19.06 : la visionneuse le signale (« cache 3D antérieur au projet »).
 
 ## 3. Réponses aux questions du brief (§4 et §11)
 

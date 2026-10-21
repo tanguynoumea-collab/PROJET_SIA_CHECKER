@@ -12,3 +12,9 @@ report/
 
 # Normes sous licence nominative (iNorm SIA) et extraits de leurs figures : à garder hors du dépôt
 docs/reference/
+
+# Visionneuse WPF : sorties de build
+app/**/bin/
+app/**/obj/
+app/dist/
+*.user

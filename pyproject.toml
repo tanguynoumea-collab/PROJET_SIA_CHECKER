@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sia-check"
+version = "0.1.0"
+description = "Contrôle par sommation des surfaces SIA 416 produites par Treegram"
+requires-python = ">=3.11"
+dependencies = [
+    "ifcopenshell",
+    "pandas",
+    "openpyxl",
+    "pyyaml",
+    "jinja2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+sia-check = "sia_check.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+sia_check = ["templates/*.j2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

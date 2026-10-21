@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contrôle SIA 416 · {{ rep.project }}</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1d1d1f; --muted: #6b6b70; --line: #e3e3e6; --soft: #f6f6f7;
+    --err: #b42318; --err-bg: #fde8e7; --warn: #8a5a00; --warn-bg: #fff2d6;
+    --info: #175cd3; --info-bg: #e3edfb; --ok: #1a7f37; --ok-bg: #dff3e4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 28px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 40px 0 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 15px; margin: 22px 0 8px; }
+  .meta { color: var(--muted); margin: 0 0 18px; }
+  .meta code { font-size: 12px; }
+  .cards { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 6px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-width: 120px; }
+  .card b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .card span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .status { display: inline-block; border-radius: 999px; padding: 3px 12px; font-weight: 600; font-size: 13px; }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { background: var(--soft); font-weight: 600; position: sticky; top: 0; white-space: nowrap; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  .pill { display: inline-block; border-radius: 4px; padding: 1px 7px; font-size: 12px; font-weight: 600; }
+  .ERREUR { color: var(--err); background: var(--err-bg); }
+  .ALERTE { color: var(--warn); background: var(--warn-bg); }
+  .INFO { color: var(--info); background: var(--info-bg); }
+  .OK { color: var(--ok); background: var(--ok-bg); }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 6px;
+        vertical-align: -1px; border: 1px solid rgba(0,0,0,.25); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 6px 0 12px; color: var(--muted); font-size: 12px; }
+  .muted { color: var(--muted); }
+  details summary { cursor: pointer; color: var(--info); margin: 8px 0; }
+  .empty { padding: 14px; color: var(--muted); }
+  @media print { th { position: static; } .scroll { overflow: visible; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Contrôle par sommation SIA 416 — {{ rep.project }}</h1>
+  <p class="meta">
+    {{ rep.date }} · sia-check {{ version }} · tolérance {{ rep.cfg.abs_m2 }} m² et {{ (rep.cfg.rel * 100)|round(2) }} %
+    (un écart est signalé si les deux sont dépassées)<br>
+    {% for s in rep.sources %}<code>{{ s }}</code>{% if not loop.last %}<br>{% endif %}{% endfor %}
+  </p>
+  <span class="status {{ 'ERREUR' if exit_code else 'OK' }}">
+    {{ 'Écarts au-delà de la tolérance' if exit_code else 'Aucun écart au-delà de la tolérance' }}
+  </span>
+  <div class="cards">
+    {% for v in ['ERREUR', 'ALERTE', 'INFO', 'OK'] %}
+    <div class="card"><b>{{ counts[v] }}</b><span class="pill {{ v }}">{{ v }}</span></div>
+    {% endfor %}
+    <div class="card"><b>{{ surfaces|length }}</b><span>surfaces lues</span></div>
+    <div class="card"><b>{{ unknown|length }}</b><span>codes inconnus</span></div>
+  </div>
+
+  <h2>Résidus <span class="muted">({{ residuals|length }}, écart décroissant)</span></h2>
+  <div class="scroll">
+  {% if residuals %}
+  <table>
+    <thead><tr><th>Verdict</th><th>Règle</th><th>Bâtiment</th><th>Niveau</th><th>Lot</th><th>Catégorie</th>
+      <th class="n">Attendu</th><th class="n">Obtenu</th><th class="n">Écart m²</th><th class="n">Écart %</th><th>Message</th></tr></thead>
+    <tbody>
+    {% for r in residuals %}
+      <tr><td><span class="pill {{ r.verdict }}">{{ r.verdict }}</span></td><td>{{ r.rule }}</td>
+        <td>{{ r.building }}</td><td>{{ r.level }}</td><td>{{ r.lot|num }}</td><td>{{ r.category }}</td>
+        <td class="n">{{ r.expected|num }}</td><td class="n">{{ r.obtained|num }}</td>
+        <td class="n">{{ r.diff_m2|num }}</td><td class="n">{{ r.diff_pct|num(1) }}</td><td>{{ r.message }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">Aucun résidu.</div>{% endif %}
+  </div>
+
+  <h2>Tableau par niveau</h2>
+  <div class="legend">
+    {% for c in level_columns %}{% set s = swatches[c] %}
+    <span><i class="sw" style="{% if s.hatched %}background: repeating-linear-gradient(-45deg, {{ s.color }} 0 2px, #fff 2px 4px){% else %}background: {{ s.color }}{% endif %}"></i>{{ c }}</span>
+    {% endfor %}
+    <span>Couleurs : légende SIA 416 ; surfaces externes hachurées. Aires en m².</span>
+  </div>
+  {% for b, rows in levels.items() %}
+  <h3>Bâtiment {{ b }}</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Niveau</th>
+      {% for c in level_columns %}{% set s = swatches[c] %}
+      <th class="n" style="border-top: 4px solid {{ s.color }}{% if s.hatched %}; border-top-style: dashed{% endif %}">{{ c }}</th>
+      {% endfor %}
+      <th class="n">R1 écart</th><th class="n">R3 écart</th><th>Autres alertes</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td><b>{{ r.level }}</b></td>
+        {% for c in level_columns %}{% set s = swatches[c] %}
+        <td class="n" style="background: {% if s.hatched %}repeating-linear-gradient(-45deg, {{ s.tint }} 0 3px, transparent 3px 7px){% else %}{{ s.tint }}{% endif %}">{{ r[c]|num }}</td>
+        {% endfor %}
+        <td class="n">{% if r['R1 verdict'] %}<span class="pill {{ r['R1 verdict'] }}">{{ r['R1 écart']|num }}</span>{% endif %}</td>
+        <td class="n">{% if r['R3 verdict'] %}<span class="pill {{ r['R3 verdict'] }}">{{ r['R3 écart']|num }}</span>{% endif %}</td>
+        <td>{{ r['Alertes'] }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<div class="empty">Aucune surface contrôlée.</div>
+  {% endfor %}
+
+  <h2>Synthèse par catégorie</h2>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Catégorie</th><th>Famille</th><th>Statut</th><th class="n">Niveaux</th><th class="n">Totaux de niveau</th>
+      <th class="n">Surfaces élémentaires</th><th class="n">Aire (m²)</th></tr></thead>
+    <tbody>
+    {% for r in categories %}
+      <tr><td><b>{{ r['Catégorie'] }}</b></td><td>{{ r['Famille'] }}</td><td>{{ r['Statut'] }}</td>
+        <td class="n">{{ r['Niveaux'] }}</td><td class="n">{{ r['Totaux de niveau'] }}</td>
+        <td class="n">{{ r['Surfaces élémentaires'] }}</td><td class="n">{{ r['Aire (m²)']|num }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if buildings %}
+  <h3>Aire par bâtiment (m²)</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Bâtiment</th>{% for c in building_columns %}<th class="n">{{ c }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in buildings %}
+      <tr><td><b>{{ r['Bâtiment'] }}</b></td>{% for c in building_columns %}<td class="n">{{ r[c]|num }}</td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+
+  <h2>Codes inconnus <span class="muted">({{ unknown|length }})</span></h2>
+  <div class="scroll">
+  {% if unknown %}
+  <table>
+    <thead><tr><th>Catégorie</th><th>Bâtiment</th><th>Niveau</th><th class="n">Aire (m²)</th><th>Identifiant</th></tr></thead>
+    <tbody>
+    {% for r in unknown %}
+      <tr><td>{{ r.category or '(vide)' }}</td><td>{{ r.building|num }}</td><td>{{ r.level|num }}</td>
+        <td class="n">{{ r.area|num }}</td><td><code>{{ r.id }}</code></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">Aucun code inconnu.</div>{% endif %}
+  </div>
+
+  <h2>Surfaces lues <span class="muted">({{ surfaces|length }})</span></h2>
+  <details>
+    <summary>Afficher toutes les surfaces</summary>
+    <div class="scroll">
+    <table>
+      <thead><tr><th>Bâtiment</th><th>Niveau</th><th>Catégorie</th><th>Statut</th><th>Type</th><th class="n">Aire (m²)</th>
+        <th>Sous-type</th><th>Lot</th><th>Identifiant</th></tr></thead>
+      <tbody>
+      {% for r in surfaces %}
+        <tr><td>{{ r.building|num }}</td><td>{{ r.level|num }}</td><td>{{ r.category }}</td><td>{{ r.status }}</td>
+          <td>{{ r.kind }}</td><td class="n">{{ r.area|num }}</td><td>{{ r.room_type|num }}</td><td>{{ r.lot|num }}</td>
+          <td><code>{{ r.id }}</code></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+</main>
+</body>
+</html>

@@ -1,0 +1,78 @@
+# Configuration sia-check — calée sur Treegram / L'Orée (voir docs/ifc-schema.md).
+#
+# categories : nomenclature. Arbre SIA 416 complet (chiffres entre parenthèses) :
+#   children   : sous-catégories dont la somme doit égaler le parent ;
+#   rule       : identifiant de la règle de sommation portée par ce parent ;
+#   optional   : sous-catégorie rarement fournie ; son absence rend un résidu positif « implicite » ;
+#   implicit_max_rel : résidu relatif max. toléré comme « implicite » (hypothèse projet, pas de valeur dans la SIA 416) ;
+#   alias_of   : code normalisé vers un autre ; ignore : exclu des sommes sans être « inconnu ».
+categories:
+  # SIA 416 §2 — surface de plancher
+  SP:   {family: sia, parent: null, children: [SN, SC], rule: R1}
+  SN:   {family: sia, parent: SP, children: [SU, SD, SI], rule: R1}          # §2.1
+  SU:   {family: sia, parent: SN, children: [SUP, SUS], rule: R2}           # §2.1.1
+  SUP:  {family: sia, parent: SU}                                           # §2.1.1.1
+  SUS:  {family: sia, parent: SU}                                           # §2.1.1.2
+  SD:   {family: sia, parent: SN}                                           # §2.1.2
+  SI:   {family: sia, parent: SN}                                           # §2.1.3
+  SC:   {family: sia, parent: SP, children: [SCP, SCN], rule: R1, optional: true, implicit_max_rel: 0.20}  # §2.2
+  SCP:  {family: sia, parent: SC}                                           # §2.2.1
+  SCN:  {family: sia, parent: SC}                                           # §2.2.2
+  # SIA 416 §3 — surface externe de plancher
+  SEP:  {family: sia, parent: null, children: [SEN, SEC], rule: R3}
+  SEN:  {family: sia, parent: SEP, children: [SEU, SED, SEI], rule: R3}     # §3.1
+  SEU:  {family: sia, parent: SEN}                                          # §3.1.1
+  SED:  {family: sia, parent: SEN}                                          # §3.1.2
+  SEI:  {family: sia, parent: SEN}                                          # §3.1.3
+  SEC:  {family: sia, parent: SEP, children: [SECP, SECN], rule: R3}        # §3.2
+  SECP: {family: sia, parent: SEC}                                          # §3.2.1
+  SECN: {family: sia, parent: SEC}                                          # §3.2.2
+  # SIA 416 §1 — surface de terrain (absente de Treegram à ce jour)
+  ST:   {family: sia, parent: null, children: [SB, SA], rule: R0}
+  SB:   {family: sia, parent: ST}                                           # §1.1
+  SA:   {family: sia, parent: ST, children: [SAA, SAN], rule: R0}           # §1.2
+  SAA:  {family: sia, parent: SA}                                           # §1.2.1
+  SAN:  {family: sia, parent: SA}                                           # §1.2.2
+  # USPI 2014 — chaîne surfaces de vente PPE, par lot
+  SNH:  {family: uspi}
+  SH:   {family: uspi}
+  SHA:  {family: uspi, alias_of: SH}
+  SCI:  {family: uspi}
+  MEM:  {family: uspi}
+  SBH:  {family: uspi}
+  SE:   {family: uspi}
+  SVN:  {family: uspi}
+  SVB:  {family: uspi}
+  # Codes maison Treegram — sens déduit, à confirmer (docs/ifc-schema.md §3)
+  SUT:  {family: custom, ignore: true}   # commerces (Type = Commerce)
+  SPT:  {family: custom, ignore: true}   # toitures (Type = Toiture)
+  SFN:  {family: custom, ignore: true}   # façades
+  SRV:  {family: custom, ignore: true}   # vitrages
+
+tolerance: {abs_m2: 0.5, rel: 0.005}
+
+levels:
+  ground: ['^N00$', '^RDC$', '^EG$', '^00$']   # regex sur le nom de niveau, pour A1
+  technical: []                                # regex des niveaux exemptés de R5
+  # Rang d'un niveau d'après son nom, quand la source ne donne pas d'altitude (A2).
+  # rang = factor * (1er groupe capturé) + offset
+  order:
+    - {pattern: '^S(\d+)$', factor: -1}
+    - {pattern: '^N(\d+)$', factor: 1}
+    - {pattern: '(?i)^toit', offset: 1000}
+
+# Correspondance source -> colonnes normalisées (reader.py)
+sources:
+  tgm:
+    category_property: "Catégorie SIA"
+    area_property: Area
+    room_type_property: Type
+    lot_property: ApartmentByTgm
+    # bâtiment et niveau sont lus dans le préfixe du nom des surfaces élémentaires
+    name_pattern: '^(?P<building>[^_]+)_(?P<level>[^_]+)_'
+    lot_pattern: '^(?P<lot>[^_]+_[^_]+_Apart-\d+)_'
+  ifc:
+    classes: [IfcSlab, IfcSpace, IfcBuildingElementProxy]
+    category: {attribute: Name}            # ou {pset: ..., property: ...}
+    area: {pset: Treegram, property: Area}
+    lot: null                              # ex. {pset: ..., property: ...}

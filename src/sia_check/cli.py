@@ -1,12 +1,15 @@
 """sia-check : contrôle par sommation des surfaces SIA 416 Treegram.
 
 Codes de sortie : 0 aucun écart au-delà de la tolérance, 1 écarts, 2 erreur de lecture/config/écriture.
-Résultats en console ; avec --out, rapports <projet>_<date>.xlsx / .html / .json.
+Résultats en console ; avec --out, rapports <projet>_<date>.xlsx / .html / .json ;
+avec --viewer-json, fichier pour SIA Check Viewer (surfaces, maillages du cache VWR, points liés).
+Les lignes de journal « ÉTAPE n/3 » servent d'indicateur de progression à la visionneuse.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import logging
 import sys
 from pathlib import Path
@@ -14,20 +17,41 @@ from pathlib import Path
 import pandas as pd
 
 from . import config as config_mod
-from . import reader, report, rules
+from . import geom, reader, report, rules, viewer
 
 log = logging.getLogger("sia_check")
 
 
 def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(prog="sia-check", description=__doc__.splitlines()[0])
-    ap.add_argument("models", nargs="+", type=Path, help="fichiers .tgm ou .ifc Treegram")
-    ap.add_argument("--config", type=Path, default=Path("config.yaml"))
+    ap.add_argument("models", nargs="+", type=Path,
+                    help="fichiers .tgm ou .ifc Treegram, ou dossier de projet Treegram")
+    ap.add_argument("--config", type=Path, help="défaut : config.yaml du dossier courant, sinon celle livrée")
     ap.add_argument("--out", type=Path, help="dossier des rapports xlsx, html et json")
+    ap.add_argument("--viewer-json", type=Path, help="fichier JSON pour SIA Check Viewer (un seul projet)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
+    ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
     ap.add_argument("-v", "--verbose", action="store_true", help="afficher chaque surface lue")
     return ap.parse_args(argv)
+
+
+def _default_config() -> Path:
+    """config.yaml du dossier courant, sinon celle livrée avec l'exécutable ou le dépôt."""
+    candidates = [Path("config.yaml"), Path(sys.executable).parent / "config.yaml",
+                  Path(getattr(sys, "_MEIPASS", "")) / "config.yaml",
+                  Path(__file__).resolve().parents[2] / "config.yaml"]
+    return next((c for c in candidates if c.is_file()), candidates[0])
+
+
+def _resolve(model: Path) -> Path:
+    """Un dossier de projet Treegram désigne son unique fichier .tgm."""
+    if not model.is_dir():
+        return model
+    tgms = sorted(model.glob("*.tgm"))
+    if len(tgms) != 1:
+        raise reader.ReadError(f"{model} : {len(tgms)} fichiers .tgm trouvés, 1 attendu (dossier du projet Treegram)")
+    return tgms[0]
 
 
 def _print(result: rules.Result, show_all: bool) -> None:
@@ -50,22 +74,35 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # console Windows cp1252 par défaut
     try:
-        cfg = config_mod.load(args.config)
-        frames = [reader.read(p, cfg) for p in args.models]
+        cfg = config_mod.load(args.config or _default_config())
+        models = [_resolve(m) for m in args.models]
+        if args.viewer_json and len(models) != 1:
+            raise reader.ReadError("--viewer-json attend un seul projet")
+        log.info("ÉTAPE 1/3 lecture des surfaces")
+        frames = [reader.read(p, cfg) for p in models]
     except (OSError, config_mod.ConfigError, reader.ReadError) as ex:
         log.error("%s", ex)
         return 2
     df = pd.concat(frames, ignore_index=True)
+    log.info("ÉTAPE 2/3 contrôles SIA 416")
     result = rules.run(df, cfg)
-    _print(result, args.all)
-    if args.out:
-        rep = report.build(result, cfg, args.project or args.models[0].stem, args.models)
-        try:
+    if not args.quiet:
+        _print(result, args.all)
+    project = args.project or models[0].stem
+    try:
+        if args.out:
+            rep = report.build(result, cfg, project, models)
             for p in report.write_all(rep, args.out):
                 log.info("rapport écrit : %s", p)
-        except OSError as ex:  # ex. classeur ouvert dans Excel
-            log.error("écriture des rapports impossible : %s", ex)
-            return 2
+        if args.viewer_json:
+            log.info("ÉTAPE 3/3 géométrie (cache VWR)")
+            cache = geom.read_cache(models[0].parent) if models[0].suffix.lower() == ".tgm" else geom.Cache()
+            modified = dt.datetime.fromtimestamp(models[0].stat().st_mtime)
+            doc = viewer.build(result, cfg, cache, project, [str(m) for m in models], modified)
+            log.info("fichier visionneuse écrit : %s", viewer.write(doc, args.viewer_json))
+    except OSError as ex:  # ex. classeur ouvert dans Excel
+        log.error("écriture impossible : %s", ex)
+        return 2
     return result.exit_code
 
 

@@ -11,6 +11,7 @@ Colonnes produites (SURFACE_COLUMNS) :
     lot        identifiant de lot PPE si la source le donne
     elevation  altitude du niveau si la source la donne
     source     chemin du fichier lu
+    element_id identifiant interne Treegram (.tgm) : clé de la géométrie du cache VWR
 
 Seul ce module touche à IfcOpenShell et au format `.tgm`.
 """
@@ -29,7 +30,8 @@ from .config import Config
 
 log = logging.getLogger(__name__)
 
-SURFACE_COLUMNS = ["id", "building", "level", "category", "area", "kind", "room_type", "lot", "elevation", "source"]
+SURFACE_COLUMNS = ["id", "building", "level", "category", "area", "kind", "room_type", "lot", "elevation", "source",
+                   "element_id"]
 
 
 class ReadError(RuntimeError):
@@ -95,7 +97,7 @@ def read_tgm(path: Path, cfg: Config) -> pd.DataFrame:
     for g in bags:
         code = str(g.props[cat_p]).strip()
         m = name_re.match(g.name)
-        row = {"category": code, "area": g.props.get(area_p), "room_type": g.props.get(type_p)}
+        row = {"category": code, "area": g.props.get(area_p), "room_type": g.props.get(type_p), "element_id": g.element_id}
         if m is None:
             if block < 0 or code in block_codes:
                 block, block_codes = block + 1, set()

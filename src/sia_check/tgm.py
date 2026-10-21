@@ -10,6 +10,10 @@ Structure observée (rétro-ingénierie sur L'Orée, Treegram juin 2026 — docs
         x vaut T ou 0 ; seul T fait foi.
     int64 len, nom de l'élément UTF-8
 
+Chaque sac est précédé (à moins de 200 octets) d'un en-tête d'enregistrement contenant
+l'identifiant interne de l'élément : `aa 00 00 00 04 <int32 id> 04 01`. Cet identifiant
+est celui que référencent les géométries du cache VWR (geom.py).
+
 Chaque sac est repéré en balayant le fichier à la recherche d'un compteur plausible
 suivi d'une propriété décodable. Le format pouvant changer avec Treegram, toute
 incohérence fait rejeter le sac plutôt que d'interpréter des octets au hasard.
@@ -25,7 +29,9 @@ from typing import Iterator
 STR, DBL, INT = 0x02, 0x04, 0x08
 NAME_RE = re.compile(rb"[\x20-\x7e\xc2-\xf4][\x20-\x7e\x80-\xbf\xc2-\xf4]{0,80}")
 BAG_START_RE = re.compile(rb"[\x01-\x3c]\x00\x00\x00[\x01-\x50]\x00\x00\x00")
+RECORD_ID_RE = re.compile(rb"\xaa\x00\x00\x00\x04(....)\x04\x01", re.S)
 MAX_PROPS, MAX_PROP_NAME, MAX_STR, MAX_ELEMENT_NAME = 60, 80, 4096, 200
+RECORD_HEADER_WINDOW = 200
 
 
 @dataclass(frozen=True)
@@ -33,6 +39,15 @@ class Bag:
     offset: int
     name: str
     props: dict[str, object]
+    element_id: int | None = None  # identifiant interne Treegram (lien vers la géométrie)
+
+
+def _element_id(b: bytes, start: int) -> int | None:
+    window = b[max(0, start - RECORD_HEADER_WINDOW) : start]
+    last = None
+    for last in RECORD_ID_RE.finditer(window):
+        pass
+    return struct.unpack("<i", last.group(1))[0] if last else None
 
 
 def _prop(b: bytes, i: int) -> tuple[str, object, int] | None:
@@ -90,7 +105,7 @@ def read_bag(b: bytes, start: int) -> tuple[Bag, int] | None:
     name = b[i + 8 : i + 8 + nl]
     if not NAME_RE.fullmatch(name):
         return None
-    return Bag(start, name.decode("utf-8", "replace"), props), i + 8 + nl
+    return Bag(start, name.decode("utf-8", "replace"), props, _element_id(b, start)), i + 8 + nl
 
 
 def scan(b: bytes) -> Iterator[Bag]:

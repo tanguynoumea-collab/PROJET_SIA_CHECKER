@@ -1,8 +1,9 @@
-"""Logo de SIA Check Viewer : le bilan par niveau (élément signature) et une coche de contrôle.
+"""Logo de SIA Check Viewer : les niveaux d'un bâtiment en vue isométrique, éclatés comme dans la 3D de l'app.
 
-Trois dalles empilées, chacune remplie aux couleurs SIA (SUP, SUS, SD, SI) avec son résidu en
-creux ; une pastille pervenche (accent de l'app) coche le contrôle. Fond graphite de l'app.
-Les petites tailles (≤ 32 px) gardent seulement les dalles et la coche, sans segments fins.
+Des dalles carrées empilées, un angle face à l'observateur (isométrie vraie, 30°), chacune aux couleurs
+SIA : SI, SD, SUS, SUP de bas en haut, puis la SP au sommet, découpée en locaux. Les faces latérales
+sont des teintes assombries de la même couleur. Fond graphite de l'app.
+Les petites tailles (≤ 32 px) gardent trois dalles plus épaisses, sans les locaux.
 
     .venv/Scripts/python scripts/make_logo.py
 
@@ -11,6 +12,7 @@ Les petites tailles (≤ 32 px) gardent seulement les dalles et la coche, sans s
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -20,12 +22,21 @@ ASSETS = ROOT / "app" / "SiaCheck.Viewer" / "Assets"
 
 GRAPHITE = "#1E2128"
 RIM = "#2C3039"
-ACCENT = "#8B83FF"
-WHITE = "#FFFFFF"
-SIA = ["#D5003B", "#F0A900", "#F2E900", "#0C9DDA"]   # SUP, SUS, SD, SI
-# Parts de chaque dalle (SUP, SUS, SD, SI) ; le reste est le résidu, laissé en creux.
-LEVELS = [(0.50, 0.14, 0.14, 0.08), (0.56, 0.10, 0.13, 0.09), (0.46, 0.18, 0.15, 0.10)]
+SP, SUP, SUS, SD, SI = "#B1005D", "#D5003B", "#F0A900", "#F2E900", "#0C9DDA"
 S = 1024   # dessin à 1024, réduit ensuite (anticrénelage)
+COS, SIN = math.cos(math.radians(30)), math.sin(math.radians(30))
+
+
+def _rgb(hex_: str) -> tuple[int, int, int]:
+    return tuple(int(hex_[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def _shade(hex_: str, f: float) -> tuple[int, int, int]:
+    return tuple(round(c * f) for c in _rgb(hex_))
+
+
+def _mix(hex_: str, other: str, t: float) -> tuple[int, int, int]:
+    return tuple(round(a + (b - a) * t) for a, b in zip(_rgb(hex_), _rgb(other)))
 
 
 def draw(detail: bool) -> Image.Image:
@@ -35,31 +46,35 @@ def draw(detail: bool) -> Image.Image:
     d = ImageDraw.Draw(im)
     d.rounded_rectangle([0, 0, big - 1, big - 1], radius=220 * k, fill=GRAPHITE, outline=RIM, width=int(12 * k))
 
-    x0, x1, h, gap = 176, 848, 128 if detail else 150, 52 if detail else 46
-    y = 236 if detail else 200
-    for parts in LEVELS:
-        top, bot = y * k, (y + h) * k
-        # contour du niveau = la SP ; le résidu reste vide
-        d.rounded_rectangle([x0 * k, top, x1 * k, bot], radius=26 * k, outline="#8A90A0", width=int(8 * k))
-        x = x0 + 14
-        inner = x1 - x0 - 28
-        for share, color in zip(parts, SIA):
-            w = inner * share
-            seg_gap = 10 if detail else 0
-            d.rounded_rectangle([x * k, top + 14 * k, (x + w - seg_gap) * k, bot - 14 * k],
-                                radius=12 * k, fill=color)
-            x += w
-        y += h + gap
+    layers = [SI, SD, SUS, SUP, SP] if detail else [SUS, SUP, SP]
+    t, g = (0.08, 0.15) if detail else (0.16, 0.14)   # épaisseur et vide entre dalles, en côtés de dalle
+    span = 2 * COS                                       # largeur à l'écran d'une dalle de côté 1
+    height = 1 + len(layers) * t + (len(layers) - 1) * g
+    a = min((S - 2 * 150) / span, (S - 2 * 140) / height)
+    top_z = (len(layers) - 1) * (t + g) + t
+    ox, oy = S / 2, (S - height * a) / 2 + top_z * a     # origine (0, 0, 0) : angle arrière de la dalle du bas
 
-    # pastille de contrôle (accent pervenche), cerclée de graphite pour se détacher des dalles
-    cx, cy, r = (792, 792, 168) if detail else (770, 770, 214)
-    d.ellipse([(cx - r - 34) * k, (cy - r - 34) * k, (cx + r + 34) * k, (cy + r + 34) * k], fill=GRAPHITE)
-    d.ellipse([(cx - r) * k, (cy - r) * k, (cx + r) * k, (cy + r) * k], fill=ACCENT)
-    pts = [(cx - r * 0.48, cy + r * 0.02), (cx - r * 0.12, cy + r * 0.36), (cx + r * 0.50, cy - r * 0.34)]
-    d.line([(px * k, py * k) for px, py in pts], fill=WHITE, width=int(r * 0.22 * k), joint="curve")
-    for px, py in (pts[0], pts[-1]):   # extrémités arrondies
-        rr = r * 0.11
-        d.ellipse([(px - rr) * k, (py - rr) * k, (px + rr) * k, (py + rr) * k], fill=WHITE)
+    def p(x: float, y: float, z: float) -> tuple[float, float]:
+        """(x, y) sur la dalle de côté 1, z vers le haut (côtés de dalle) → pixels du dessin agrandi."""
+        return ((ox + (x - y) * COS * a) * k, (oy + ((x + y) * SIN - z) * a) * k)
+
+    for i, color in enumerate(layers):
+        z1 = top_z - (len(layers) - 1 - i) * (t + g)
+        z0 = z1 - t
+        d.polygon([p(1, 0, z1), p(1, 1, z1), p(1, 1, z0), p(1, 0, z0)], fill=_shade(color, 0.62))   # face droite
+        d.polygon([p(0, 1, z1), p(1, 1, z1), p(1, 1, z0), p(0, 1, z0)], fill=_shade(color, 0.80))   # face gauche
+        d.polygon([p(0, 0, z1), p(1, 0, z1), p(1, 1, z1), p(0, 1, z1)], fill=_mix(color, "#FFFFFF", 0.10))
+        if detail and i == len(layers) - 1:
+            # locaux de la SP : cloisons sur la face supérieure, comme les surfaces Treegram d'un étage
+            line = _shade(color, 0.55)
+            w = int(10 * k)
+            for (x0, y0), (x1, y1) in [((0.42, 0), (0.42, 1)), ((0.42, 0.55), (1, 0.55)), ((0, 0.36), (0.42, 0.36)),
+                                       ((0.72, 0.55), (0.72, 1)), ((0.42, 0.24), (1, 0.24))]:
+                d.line([p(x0, y0, z1), p(x1, y1, z1)], fill=line, width=w)
+            # un local mis en évidence (SUP), comme une sélection dans la visionneuse
+            d.polygon([p(0.72, 0.55, z1), p(1, 0.55, z1), p(1, 1, z1), p(0.72, 1, z1)], fill=_mix(SUP, "#FFFFFF", 0.05))
+            for (x0, y0), (x1, y1) in [((0.72, 0.55), (1, 0.55)), ((0.72, 0.55), (0.72, 1))]:
+                d.line([p(x0, y0, z1), p(x1, y1, z1)], fill=line, width=w)
     return im.resize((S, S), Image.LANCZOS)
 
 
@@ -72,6 +87,7 @@ def main() -> None:
     frames = [(simple if s <= 32 else full).resize((s, s), Image.LANCZOS) for s in sizes]
     frames[-1].save(ASSETS / "SiaCheck.ico", format="ICO", sizes=[(s, s) for s in sizes], append_images=frames[:-1])
     # planche de contrôle (non versionnée)
+    (ROOT / "report").mkdir(exist_ok=True)
     sheet = Image.new("RGBA", (sum(sizes) + 10 * len(sizes) + 532, 532), "#F3F4F6")
     x = 10
     for f in frames:

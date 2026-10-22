@@ -131,7 +131,7 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Style="{StaticResource TextTitle}" Text="{Binding ProjectName}" VerticalAlignment="Center" />
-                        <TextBlock Style="{StaticResource TextCaption}" Margin="16,0,0,0" VerticalAlignment="Center" MaxWidth="420"
+                        <TextBlock Style="{StaticResource TextCaption}" Margin="16,0,0,0" VerticalAlignment="Center" MaxWidth="240" TextTrimming="CharacterEllipsis"
                                    Text="{Binding ProjectDir}" ToolTip="{Binding ProjectDir}" />
                         <TextBlock Style="{StaticResource TextCaption}" Margin="16,0,0,0" VerticalAlignment="Center" Text="{Binding AnalysedAt}" />
                         <!-- Corrections appliquées par la dernière analyse : lien vers l'onglet Sujets -->
@@ -356,6 +356,10 @@
                                 <TextBlock Grid.Row="3" Style="{StaticResource TextCaption}" Text="Lot" />
                                 <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource TextMono}" Text="{Binding Surface.Lot}" />
                             </Grid>
+                            <ui:Button Margin="0,8,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon Cut20}" Content="Découper cette surface…"
+                                       Command="{Binding DataContext.OpenTraceForSurfaceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                       MinHeight="{StaticResource TargetSize}"
+                                       ToolTip="Tracer sur le plan du niveau la part de cette surface qui change de catégorie" />
                             <TextBlock Style="{StaticResource TextSection}" Text="Points d'attention qui citent cette surface"
                                        Visibility="{Binding Issues.Count, Converter={StaticResource VisibleWhen}}" />
                             <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
@@ -527,6 +531,97 @@
                             <c:MarkdownViewer Markdown="{Binding AiReportMarkdown}" AutomationProperties.Name="Rapport de revue IA" />
                         </DockPanel>
                     </Border>
+
+                    <!-- ============ Module de tracé (Évolution 2.1) : volet sur la 3D et le bilan, panneau Sujets actif -->
+                    <Border Grid.Row="0" Grid.RowSpan="2" Margin="{StaticResource SpaceM}" Background="{DynamicResource BrushSurface}"
+                            BorderBrush="{DynamicResource BrushDivider}" BorderThickness="1" CornerRadius="{StaticResource RadiusCard}"
+                            Visibility="{Binding IsTraceOpen, Converter={StaticResource BoolToVisibility}}">
+                        <DockPanel>
+                            <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BrushDivider}" BorderThickness="0,0,0,1" Padding="16,8,8,8">
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                        <ui:Button Appearance="Transparent" Content="Annuler" Command="{Binding CancelTraceCommand}" MinHeight="{StaticResource TargetSize}" />
+                                        <ui:Button Margin="8,0,0,0" Appearance="Primary" Icon="{ui:SymbolIcon Save20}" Content="Enregistrer le tracé"
+                                                   Command="{Binding SaveTraceCommand}" IsEnabled="{Binding Trace.CanSave}" MinHeight="{StaticResource TargetSize}" />
+                                        <ui:Button Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss20}" Command="{Binding CancelTraceCommand}"
+                                                   ToolTip="Fermer le tracé (Échap)" AutomationProperties.Name="Fermer le tracé"
+                                                   MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource TextSection}" Margin="0" VerticalAlignment="Center">
+                                            <Run Text="Tracé · " /><Run Text="{Binding TraceTitle, Mode=OneWay}" FontFamily="{StaticResource FontMono}" />
+                                        </TextBlock>
+                                        <ComboBox Margin="8,0,0,0" MinWidth="80" ItemsSource="{Binding TraceTargets}" SelectedItem="{Binding TraceTarget}"
+                                                  FontFamily="{StaticResource FontMono}" AutomationProperties.Name="Catégorie cible"
+                                                  Visibility="{Binding IsTraceManual, Converter={StaticResource BoolToVisibility}}" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                            <!-- Barre d'outils -->
+                            <Border DockPanel.Dock="Top" Padding="12,6" BorderBrush="{DynamicResource BrushDivider}" BorderThickness="0,0,0,1">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Background="{DynamicResource BrushBackground}" CornerRadius="{StaticResource RadiusControl}" Padding="2">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton Style="{StaticResource Segment}" GroupName="TraceMode" Content="Tracer" IsChecked="{Binding Trace.IsDrawMode}"
+                                                         ToolTip="Ajouter des points ; Entrée ou double-clic ferme le polygone" />
+                                            <RadioButton Style="{StaticResource Segment}" GroupName="TraceMode" Content="Modifier" IsChecked="{Binding Trace.IsEditMode}"
+                                                         ToolTip="Déplacer, ajouter ou retirer des sommets" />
+                                        </StackPanel>
+                                    </Border>
+                                    <TextBlock Margin="16,0,6,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center" Text="Accrochage" />
+                                    <ToggleButton Style="{StaticResource Chip}" FontFamily="{StaticResource FontUI}" Content="Sommets" IsChecked="{Binding Trace.SnapToVertices}"
+                                                  ToolTip="Accrocher aux sommets des surfaces (Alt : sans accrochage pour ce clic)" />
+                                    <ToggleButton Style="{StaticResource Chip}" FontFamily="{StaticResource FontUI}" Content="Arêtes" IsChecked="{Binding Trace.SnapToEdges}"
+                                                  ToolTip="Accrocher aux arêtes des surfaces et de l'emprise du niveau inférieur" />
+                                    <ui:Button Margin="16,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon ArrowUndo20}" Content="Annuler le geste"
+                                               Command="{Binding TraceUndoCommand}" ToolTip="Ctrl+Z (Ctrl+Y : rétablir)" MinHeight="{StaticResource TargetSize}" />
+                                    <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon Eraser20}" Content="Effacer"
+                                               Command="{Binding TraceClearCommand}" ToolTip="Effacer tout le tracé" MinHeight="{StaticResource TargetSize}" />
+                                    <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ZoomFit20}" Content="Cadrer"
+                                               Command="{Binding TraceFitCommand}" ToolTip="F" MinHeight="{StaticResource TargetSize}" />
+                                </StackPanel>
+                            </Border>
+                            <TextBlock DockPanel.Dock="Bottom" Margin="12,6" Style="{StaticResource TextCaption}" TextWrapping="Wrap" Text="{Binding Trace.Help}" />
+                            <!-- Chiffres : aire comptée, décomposition, écart R3 du niveau -->
+                            <Border DockPanel.Dock="Right" Width="248" Padding="16,12" BorderBrush="{DynamicResource BrushDivider}" BorderThickness="1,0,0,0">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource TextSection}" Margin="0,0,0,4" Text="Aire du tracé" />
+                                    <TextBlock Style="{StaticResource TextNumber}" FontSize="{StaticResource FontSizeTitle}" FontFamily="{StaticResource FontUISemibold}"
+                                               HorizontalAlignment="Left" Text="{Binding Trace.CountedText}" />
+                                    <Grid Margin="0,12,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                        <TextBlock Style="{StaticResource TextCaption}" Text="{Binding Trace.SourceLabel}" />
+                                        <TextBlock Grid.Column="1" Style="{StaticResource TextNumber}" Text="{Binding Trace.OnSourceText}" />
+                                        <TextBlock Grid.Row="1" Style="{StaticResource TextCaption}" Text="retiré : SEU / SED / SEI"
+                                                   Visibility="{Binding Trace.HasClassified, Converter={StaticResource BoolToVisibility}}" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource TextNumber}" Text="{Binding Trace.RemovedText}"
+                                                   Visibility="{Binding Trace.HasClassified, Converter={StaticResource BoolToVisibility}}" />
+                                        <TextBlock Grid.Row="2" Style="{StaticResource TextCaption}" Text="{Binding Trace.OutsideLabel}" />
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource TextNumber}" Text="{Binding Trace.OutsideText}" />
+                                    </Grid>
+                                    <Border Margin="0,12,0,0" Style="{StaticResource Banner}" Padding="8,4"
+                                            Visibility="{Binding Trace.HasMessage, Converter={StaticResource BoolToVisibility}}">
+                                        <TextBlock x:Name="TraceMessage" Style="{StaticResource TextCaption}" TextWrapping="Wrap" Text="{Binding Trace.Message}" />
+                                    </Border>
+                                    <TextBlock Style="{StaticResource TextSection}" Margin="0,20,0,4" Text="Écart R3 du niveau" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource TextNumber}" Foreground="{DynamicResource BrushTextSecondary}" TextDecorations="Strikethrough"
+                                                   Text="{Binding Trace.R3BeforeText}" />
+                                        <TextBlock Margin="6,0" Style="{StaticResource TextCaption}" Text="→" />
+                                        <c:VerdictGlyph Verdict="{Binding Trace.R3Verdict}" />
+                                        <TextBlock Margin="4,0,0,0" Style="{StaticResource TextNumber}" Text="{Binding Trace.R3AfterText}" />
+                                    </StackPanel>
+                                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                                               Text="si la correction est acceptée et appliquée (Analyser)" />
+                                </StackPanel>
+                            </Border>
+                            <c:TracePlan x:Name="TracePlanControl" Session="{Binding Trace}"
+                                         Palette="{Binding Palette}" Accent="{DynamicResource BrushAccent}" Primary="{DynamicResource BrushTextPrimary}"
+                                         Secondary="{DynamicResource BrushTextSecondary}" Error="{DynamicResource BrushVerdictError}"
+                                         AutomationProperties.Name="Plan du niveau pour le tracé" />
+                        </DockPanel>
+                    </Border>
                 </Grid>
 
                 <GridSplitter Grid.Column="2" Width="4" Background="{DynamicResource BrushDivider}" ResizeDirection="Columns"
@@ -663,10 +758,7 @@
                                     </StackPanel>
                                     <TextBlock Margin="0,2,0,0" Style="{StaticResource TextCaption}" Text="Aire estimée, sans tracé."
                                                Visibility="{Binding HasNoTrace, Converter={StaticResource BoolToVisibility}}" />
-                                    <DockPanel Margin="0,8,0,0" Visibility="{Binding IsEditing, Converter={StaticResource HiddenWhen}}">
-                                        <ui:Button DockPanel.Dock="Right" Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Edit20}" Content="Modifier"
-                                                   Command="{Binding DataContext.EditCorrectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                   MinHeight="{StaticResource TargetSize}" ToolTip="Modifier l'aire ou l'explication (la correction devient « manuel »)" />
+                                    <StackPanel Margin="0,8,0,0" Visibility="{Binding IsEditing, Converter={StaticResource HiddenWhen}}">
                                         <Border Background="{DynamicResource BrushBackground}" CornerRadius="{StaticResource RadiusControl}" Padding="2">
                                             <UniformGrid Rows="1">
                                                 <RadioButton Style="{StaticResource Segment}" GroupName="Decision" Content="Proposée" ToolTip="1"
@@ -677,7 +769,16 @@
                                                              IsChecked="{Binding Decision, Converter={StaticResource EqualsTo}, ConverterParameter=Rejected}" />
                                             </UniformGrid>
                                         </Border>
-                                    </DockPanel>
+                                        <StackPanel Margin="0,6,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <ui:Button Margin="0" Appearance="Transparent" Icon="{ui:SymbolIcon Pen20}" Content="Tracer…"
+                                                       Command="{Binding DataContext.OpenTraceForCorrectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       Visibility="{Binding CanTrace, Converter={StaticResource BoolToVisibility}}"
+                                                       MinHeight="{StaticResource TargetSize}" ToolTip="Dessiner ou ajuster la part de surface sur le plan du niveau (T)" />
+                                            <ui:Button Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Edit20}" Content="Modifier"
+                                                       Command="{Binding DataContext.EditCorrectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       MinHeight="{StaticResource TargetSize}" ToolTip="Modifier l'aire ou l'explication (la correction devient « manuel »)" />
+                                        </StackPanel>
+                                    </StackPanel>
                                     <!-- Édition en place : Entrée valide, Échap annule -->
                                     <StackPanel Margin="0,8,0,0" Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}"
                                                 PreviewKeyDown="CorrectionEdit_PreviewKeyDown">

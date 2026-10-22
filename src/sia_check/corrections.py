@@ -27,6 +27,11 @@ Cible (`cible`) : `ids` (identifiants de surface), `tgm_ids` (ID TGM), ou `selec
 Seules les corrections `statut` = « acceptée » sont appliquées, dans l'ordre du journal. Une correction
 inapplicable (cible introuvable, champ manquant) est rapportée, jamais appliquée à moitié.
 
+Tracés : une découpe ou une exclusion partielle peut porter son `polygone` (GeoJSON, dessiné dans la visionneuse
+ou pré-calculé par sujets.py). Quand la géométrie des surfaces est connue (`geometry`), l'aire est recalculée à
+l'application selon la règle de la visionneuse : polygone ∩ surface visée, moins les SEU / SED / SEI du niveau
+pour une SEP. Au-delà de la tolérance, l'aire recalculée remplace celle du journal, et le journal le signale.
+
 Totaux de niveau : les surfaces élémentaires font foi quand il y en a (rules.level_totals). Quand une
 correction déplace l'aire d'une surface élémentaire, le total Treegram de sa catégorie est décalé
 d'autant ; sinon un total devenu orphelin reprendrait la main sur une catégorie vidée.
@@ -217,8 +222,41 @@ class _Refuse(Exception):
     pass
 
 
-def apply(df: pd.DataFrame, journal: dict) -> Applied:
-    """Applique les corrections acceptées du journal à une copie des surfaces lues (reader.read)."""
+CLASSIFIED_EXTERNAL = ("SEU", "SED", "SEI")
+
+
+def _traced_area(df: pd.DataFrame, c: dict, geometry) -> float | None:
+    """Aire comptée du tracé d'une correction : polygone ∩ cible − sous-catégories externes classées du niveau."""
+    if geometry is None or not c.get("polygone") or not (c["op"] == "découper" or c["op"] == "exclure"):
+        return None
+    try:
+        from shapely.geometry import shape
+        from shapely import union_all
+    except ImportError:
+        return None
+    rows = df[_target(df, c["cible"])]
+    if len(rows) != 1:
+        return None
+    src = geometry(rows.iloc[0])
+    if src is None:
+        return None
+    region = shape(c["polygone"]).buffer(0).intersection(src)
+    r = rows.iloc[0]
+    if r.category == "SEP":
+        same = df[(df.building == r.building) & (df.level == r.level) & (df.kind == "leaf")
+                  & df.category.isin(CLASSIFIED_EXTERNAL) & ~df.excluded]
+        parts = [g for g in (geometry(x) for _, x in same.iterrows()) if g is not None]
+        if parts:
+            region = region.difference(union_all(parts))
+    return float(region.area)
+
+
+def apply(df: pd.DataFrame, journal: dict, geometry=None, tolerance: tuple[float, float] = (0.5, 0.005)) -> Applied:
+    """Applique les corrections acceptées du journal à une copie des surfaces lues (reader.read).
+
+    `geometry(surface) -> polygone shapely | None` : géométrie en plan d'une surface, pour recalculer l'aire des
+    corrections tracées ; `tolerance` : (m², relatif), comme config.yaml > tolerance.
+    """
     df = df.copy().reset_index(drop=True)
     df["excluded"] = False
     df["corrections"] = ""
@@ -236,6 +274,11 @@ def apply(df: pd.DataFrame, journal: dict) -> Applied:
                 entry.update(application=REFUSED, raison=reason)
             else:
                 try:
+                    computed = _traced_area(df, c, geometry)
+                    stated = float(c.get("aire") or 0)
+                    if computed is not None and abs(computed - stated) > tolerance[0]                             and abs(computed - stated) > tolerance[1] * max(stated, computed):
+                        c = {**c, "aire": round(computed, 2)}
+                        entry["raison"] = f"aire recalculée depuis le tracé : {computed:.2f} m² au lieu de {stated:.2f}"
                     df, n, m2 = _apply_one(df, c)
                     entry.update(application=APPLIED if n else NOT_FOUND, surfaces=n, m2=round(m2, 3))
                 except _Refuse as ex:
@@ -298,7 +341,7 @@ def write_summary(applied: Applied, before: rules.Result, after: rules.Result, p
     return path
 
 
-def run(df: pd.DataFrame, journal: dict, cfg: Config) -> tuple[Applied, rules.Result, rules.Result]:
+def run(df: pd.DataFrame, journal: dict, cfg: Config, geometry=None) -> tuple[Applied, rules.Result, rules.Result]:
     """(corrections appliquées, contrôles avant, contrôles après)."""
-    applied = apply(df, journal)
+    applied = apply(df, journal, geometry, (cfg.abs_m2, cfg.rel))
     return applied, rules.run(df, cfg), rules.run(applied.kept, cfg)

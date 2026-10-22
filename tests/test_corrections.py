@@ -184,3 +184,23 @@ def test_viewer_json_carries_before_excluded_and_log(tmp_path):
     assert lv["before"]["values"]["SEP"] == 30 and "SEP" not in lv["values"]
     assert [s["status"] for s in doc["surfaces"] if s["category"] == "SEP"] == ["excluded"]
     assert doc["corrections_log"][0]["application"] == "appliquée"
+
+
+def test_traced_area_recomputed_from_polygon():
+    shapely = pytest.importorskip("shapely")
+    from shapely.geometry import box
+    df = pd.DataFrame([
+        {"id": "sep", "building": "A", "level": "N00", "category": "SEP", "area": 200.0, "kind": "node"},
+        {"id": "seu", "building": "A", "level": "N00", "category": "SEU", "area": 50.0, "kind": "leaf"},
+    ])
+    shapes = {"sep": box(0, 0, 20, 10), "seu": box(15, 0, 20, 10)}
+    geometry = lambda r: shapes.get(r["id"])  # noqa: E731
+    poly = {"type": "Polygon", "coordinates": [[[10, 0], [30, 0], [30, 10], [10, 10], [10, 0]]]}
+    j = journal({"id": "c", "op": "découper", "cible": {"ids": ["sep"]}, "vers": "SA", "aire": 80.0, "polygone": poly})
+    a = corrections.apply(df, j, geometry)
+    assert a.surfaces.set_index("id").loc["sep#c", "area"] == pytest.approx(50.0)     # ∩ SEP − SEU
+    assert "recalculée" in a.log.iloc[0].raison
+    j["corrections"][0]["aire"] = 50.3                                                 # dans la tolérance : gardée
+    b = corrections.apply(df, j, geometry)
+    assert b.surfaces.set_index("id").loc["sep#c", "area"] == pytest.approx(50.3) and b.log.iloc[0].raison == ""
+    assert corrections.apply(df, j).surfaces.set_index("id").loc["sep#c", "area"] == pytest.approx(50.3)   # sans géométrie

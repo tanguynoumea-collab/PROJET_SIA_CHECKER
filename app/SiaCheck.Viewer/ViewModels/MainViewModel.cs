@@ -130,6 +130,7 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task AnalyseAsync()
     {
         if (ProjectDir is null || _engine is null || IsAnalysing) return;
+        if (IsTraceOpen) { _shell.Notify("Enregistrez ou annulez le tracé avant d'analyser."); return; }
         AnalysisError = null;
         IsAnalysing = true;
         AnalysisStep = 0;

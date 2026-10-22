@@ -235,6 +235,8 @@ internal sealed class FakeShell : IShell
     public string? PickSaveFile(string title, string fileName, string filter) => null;
     public string? PickOpenFile(string title, string filter) => null;
     public void Notify(string message, bool isError = false) => Notes.Add(message);
+    public bool ConfirmAnswer { get; set; } = true;
+    public Task<bool> ConfirmAsync(string title, string message, string yes, string no) => Task.FromResult(ConfirmAnswer);
     public void OpenFile(string path) { }
     public void Frame(Rect3D? bounds) { }
     public void ApplyTheme(string theme) { }

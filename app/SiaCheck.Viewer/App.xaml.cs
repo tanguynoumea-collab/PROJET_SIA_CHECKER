@@ -92,6 +92,7 @@ public partial class App : Application
             if (ArgAfter(Environment.GetCommandLineArgs(), "--correction") is { } cid &&
                 subject.Corrections.FirstOrDefault(c => c.Id == cid) is { } correction)
                 window.ViewModel.SelectedCorrection = correction;
+            if (Environment.GetCommandLineArgs().Contains("--trace")) window.ViewModel.OpenTraceForCorrectionCommand.Execute(null);
         }
         if (Environment.GetCommandLineArgs().Contains("--points")) window.ViewModel.ShowPointsTabCommand.Execute(null);
         if (Environment.GetCommandLineArgs().Contains("--report")) window.ViewModel.ShowAiReportCommand.Execute(null);

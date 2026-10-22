@@ -1,7 +1,7 @@
 # V2_PLAN — Corrections et export MDP
 
 > Statut : ☑ Brouillon · ☑ Validé par l'utilisateur (22.10.2026)
-> Version : 0.2 — 22.10.2026 · phases 0 à 5 livrées
+> Version : 0.2 — 22.10.2026 · phases 0 à 6 livrées
 
 ## 1. Objectif
 
@@ -119,7 +119,7 @@ Pour l'Affectation, les typologies et la forme du bâtiment : une valeur propos�
 | 3 | ☑ **Sujets et recommandations de base** | `sujets.py`, `--sujets`, `subjects` dans le fichier visionneuse ; `exclure` partiel (avec `aire`) | ☑ L'Orée sans IA : toitures 7 280 m² (S2 : 7 279), abords B03 N00 1 812,65 m² (S1), SC implicite (S6) ; propositions appliquées : R3 projet 15 091 → 250 m² |
 | 4 | ☑ **IA → corrections** | verdicts v2 (bloc `sujets` : garder, modifier, rejeter, ajouter, `par_defaut`), propositions dans les preuves, `--revue`, prompt et skill `revue-ia`, analyseur et sauvegarde dans l'app | ☑ revue L'Orée v2 : 31 décisions appliquées, 0 écartée ; journal accepté entièrement applicable (erreurs 56 → 33) |
 | 5 | ☑ **UI Sujets** (Daedalus) | onglet Sujets, carte Sujet, décisions (journal), Analyser avec compteur, avant/après dans le bilan, tracé en 3D, menu Exporter | ☑ revue visuelle par captures (`docs/DESIGN_PLAN.md`, Évolution 2.0) ; 67 tests .NET, 133 Python |
-| 6 | **Module de tracé** (Daedalus) | vue plan, tracé, découpe | S1 B03 : tracé pré-calculé ≈ 1 943 m² |
+| 6 | ☑ **Module de tracé** (Daedalus) | volet Tracé (plan du niveau, modes Tracer / Modifier, accrochage, aire comptée en direct, aperçu R3), « Découper cette surface… », sujet « Corrections manuelles », recalcul de l'aire par le moteur | ☑ S1 B03 N00 : tracé pré-calculé rouvert, 1 812,20 m² comptés (moteur : 1 812,65, sous la tolérance) ; 75 tests .NET, 134 Python |
 | 7 | **Exports corrigés** | Excel de correction, MDP corrigé, propositions d'affectation et « Inconnu », infos projet | MDP L'Orée complet, ouvert sans alerte dans Excel |
 
 Les phases 0 et 1 apportent un gain immédiat : la fin du copier-coller, et un MDP qui contient enfin les SED et SUT.

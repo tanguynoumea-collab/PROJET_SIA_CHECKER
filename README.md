@@ -140,6 +140,12 @@ La version vient de `<Version>` dans `SiaCheck.Viewer.csproj` et de `pyproject.t
   - les décisions sont gardées par projet, dans `%APPDATA%\SiaCheckViewer\corrections\` (journal lu par `sia-check --corrections`). « Analyser » les applique : son libellé compte les décisions en attente (`Analyser · 22`), et la barre de commande indique les corrections appliquées ;
   - avant/après dans le bilan par niveau : ce que les corrections ont retiré prolonge la barre en pointillé, et l'ancien résidu est barré à côté du nouveau ;
   - « Exporter » : rapports d'analyse, tableau MDP (gabarit livré ou choisi), exports Treegram, tous sur les surfaces corrigées.
+- **Module de tracé** (« Tracer… » sur une découpe ou une exclusion partielle, ou T ; « Découper cette surface… » dans la fiche d'une surface) : volet sur la 3D avec le plan du niveau.
+  - Le plan montre les surfaces aux couleurs SIA, la surface source en contour épais et l'emprise du niveau inférieur en pointillé.
+  - Modes Tracer et Modifier : accrochage aux sommets et aux arêtes (Alt pour le désactiver), Maj pour l'horizontale ou la verticale, Ctrl+Z / Ctrl+Y, F pour cadrer, molette et clic milieu pour se déplacer.
+  - L'aire comptée s'affiche en direct : tracé ∩ surface source, moins les SEU/SED/SEI pour une SEP. Elle est décomposée, et l'aperçu de l'écart R3 du niveau l'accompagne.
+  - « Enregistrer le tracé » écrit dans la correction le polygone, l'aire et la triangulation, avec l'origine « manuel ». Une découpe créée depuis une surface rejoint le sujet qui la couvre, sinon « Corrections manuelles ».
+  - À l'application, le moteur recalcule l'aire depuis le polygone (shapely) et signale un écart au-delà de la tolérance.
 - **Revue IA** (sur-vérification, procédure `.claude/skills/revue-ia/SKILL.md`) :
   - les verdicts de la dernière revue du projet s'affichent dans la liste et la carte Détail (`vrai sujet`, `à confirmer`, `faux positif`, `agrégat`, sujet `S1`…, raison) ; filtre « Verdict IA » ; « Appliquer les faux positifs » passe en « Faux positif » les points encore « À traiter » ;
   - le bouton **Revue IA** enchaîne analyse, preuves géométriques (`sia-check --preuves`, ratios compris), estimation du coût, puis, après accord, l'appel à Claude Opus 5.5 par l'API Anthropic. Le rapport s'ouvre dans un volet sur la 3D. Le bouton **Rapport IA** (ou Ctrl+I) le rouvre à tout moment sans relancer la revue ;
@@ -148,7 +154,7 @@ La version vient de `<Version>` dans `SiaCheck.Viewer.csproj` et de `pyproject.t
 - **Limite** : si le projet a été modifié après la dernière ouverture dans le viewer Treegram, le cache 3D est périmé. La visionneuse l'indique.
 
 Développement : `dotnet test app/SiaCheckViewer.sln`.
-`SiaCheck.Viewer.exe <dossier projet> --capture image.png [--focus clé] [--subject S2 [--correction id]] [--points] [--report | --ai-panel] [--profile dossier]` produit une capture pour la revue visuelle. `--profile` isole statuts, journal, revues et analyses dans un dossier jetable.
+`SiaCheck.Viewer.exe <dossier projet> --capture image.png [--focus clé] [--subject S2 [--correction id [--trace]]] [--points] [--report | --ai-panel] [--profile dossier]` produit une capture pour la revue visuelle. `--profile` isole statuts, journal, revues et analyses dans un dossier jetable.
 
 ## Règles
 

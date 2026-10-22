@@ -1,0 +1,204 @@
+using System.IO;
+using System.Text.Json;
+using System.Windows;
+using SiaCheck.Viewer.Models;
+using SiaCheck.Viewer.Services;
+using SiaCheck.Viewer.ViewModels;
+
+namespace SiaCheck.Viewer.Tests;
+
+/// <summary>Surfaces carrées au maillage triangulé, comme celles du fichier visionneuse.</summary>
+internal static class Plan
+{
+    public static Surface Square(string id, string code, double x0, double y0, double x1, double y1, string kind = "leaf", string level = "N00") =>
+        JsonSerializer.Deserialize<Surface>(JsonSerializer.Serialize(new
+        {
+            id, building = "A", level, category = code, code, kind, status = "checked", area = (x1 - x0) * (y1 - y0),
+            mesh = new { v = new[] { x0, y0, 0, x1, y0, 0, x1, y1, 0, x0, y1, 0 }, i = new[] { 0, 1, 2, 0, 2, 3 } },
+        }))!;
+
+    /// <summary>SEP 20 × 10 (200 m²) dont une terrasse SEU 5 × 10 à droite ; plancher SP au niveau inférieur.</summary>
+    public static TraceSession Session(Correction? existing = null, double r3 = 150, double applied = 0)
+    {
+        var sep = Square("sep", "SEP", 0, 0, 20, 10, kind: "node");
+        var seu = Square("seu", "SEU", 15, 0, 20, 10);
+        var below = Square("sp-s01", "SP", 0, 0, 12, 10, kind: "node", level: "S01");
+        return new TraceSession(sep, [sep, seu], [below], "SA", existing, r3, applied, new Tolerance { AbsM2 = 0.5, Rel = 0.005 });
+    }
+
+    public static void Rectangle(TraceSession s, double x0, double y0, double x1, double y1)
+    {
+        s.AddPoint(new Point(x0, y0));
+        s.AddPoint(new Point(x1, y0));
+        s.AddPoint(new Point(x1, y1));
+        s.AddPoint(new Point(x0, y1));
+        Assert.True(s.ClosePolygon());
+    }
+}
+
+public class TraceSessionTests
+{
+    [Fact]
+    public void Counted_area_is_on_source_minus_classified_terraces()
+    {
+        var s = Plan.Session();
+        Assert.True(s.HasGeometry);
+        Assert.Equal(TraceMode.Draw, s.Mode);
+        Plan.Rectangle(s, 10, 0, 30, 10);                         // 200 m², dont 100 sur la SEP et 50 sur la SEU
+        Assert.Equal(100, s.OnSource, 3);
+        Assert.Equal(50, s.RemovedClassified, 3);
+        Assert.Equal(50, s.CountedArea, 3);
+        Assert.Equal(100, s.Outside, 3);
+        Assert.Equal(TraceMode.Edit, s.Mode);
+        Assert.True(s.CanSave);
+        Assert.Equal(150 - 50, s.R3After, 3);                    // aperçu : l'écart du niveau baisse de l'aire comptée
+    }
+
+    [Fact]
+    public void Self_intersecting_or_empty_trace_cannot_be_saved()
+    {
+        var s = Plan.Session();
+        s.AddPoint(new Point(1, 1));
+        s.AddPoint(new Point(9, 9));
+        s.AddPoint(new Point(9, 1));
+        s.AddPoint(new Point(1, 9));                              // nœud papillon
+        s.ClosePolygon();
+        Assert.True(s.IsSelfIntersecting);
+        Assert.False(s.CanSave);
+        Assert.True(s.MessageIsError);
+        var t = Plan.Session();
+        Plan.Rectangle(t, 30, 0, 40, 10);                         // hors de la SEP
+        Assert.Equal(0, t.CountedArea, 3);
+        Assert.False(t.CanSave);
+        Assert.Contains("ne recouvre pas", t.Message);
+    }
+
+    [Fact]
+    public void Undo_redo_and_backspace()
+    {
+        var s = Plan.Session();
+        s.AddPoint(new Point(0, 0));
+        s.AddPoint(new Point(5, 0));
+        s.RemoveLastPoint();
+        Assert.Single(s.Polygons[0]);
+        s.Undo();                                                 // annule le retrait
+        Assert.Equal(2, s.Polygons[0].Count);
+        s.Redo();
+        Assert.Single(s.Polygons[0]);
+        Assert.True(s.CancelOpenPolygon());
+        Assert.Empty(s.Polygons);
+    }
+
+    [Fact]
+    public void Snap_prefers_vertices_then_edges()
+    {
+        var s = Plan.Session();
+        Assert.Equal(new Point(15, 0), s.Snap(new Point(15.2, 0.1), 0.5));        // coin de la SEU
+        Assert.Equal(new Point(8, 10), s.Snap(new Point(8, 10.2), 0.5));          // arête haute de la SEP
+        s.SnapToEdges = false;
+        Assert.Null(s.Snap(new Point(8, 10.2), 0.5));
+    }
+
+    [Fact]
+    public void Existing_trace_opens_in_edit_mode_and_saves_as_manual()
+    {
+        var existing = JsonSerializer.Deserialize<Correction>("""
+            {"id": "abords-A-N00", "op": "découper", "cible": {"ids": ["sep"]}, "vers": "SA", "aire": 100.0, "origine": "règle",
+             "statut": "acceptée", "explication": "x", "polygone": {"type": "Polygon", "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]]}}
+            """)!;
+        var s = Plan.Session(existing, r3: 50, applied: 100);
+        Assert.Equal(TraceMode.Edit, s.Mode);
+        Assert.Equal(100, s.CountedArea, 3);
+        Assert.False(s.CanSave);                                  // rien n'a changé
+        s.BeginChange();
+        s.MoveVertex(0, 1, new Point(12, 0));
+        s.MoveVertex(0, 2, new Point(12, 10));
+        Assert.Equal(120, s.CountedArea, 3);
+        Assert.Equal(50 + 100 - 120, s.R3After, 3);               // la correction déjà appliquée est rendue avant de compter la nouvelle
+        var c = s.BuildCorrection("ignored", "S1");
+        Assert.Equal("abords-A-N00", c.Id);
+        Assert.Equal(120, c.Area);
+        Assert.Equal("manuel", c.Origin);
+        Assert.Equal("MultiPolygon", c.Extra!["polygone"].GetProperty("type").GetString());
+        Assert.Equal(100.0, c.Extra["base"].GetProperty("aire").GetDouble());
+        var tri = c.Trace!;
+        var area = 0.0;
+        for (var k = 0; k < tri.Indices.Length; k += 3)
+        {
+            double X(int i) => tri.Vertices[2 * tri.Indices[i]];
+            double Y(int i) => tri.Vertices[2 * tri.Indices[i] + 1];
+            area += Math.Abs((X(k + 1) - X(k)) * (Y(k + 2) - Y(k)) - (X(k + 2) - X(k)) * (Y(k + 1) - Y(k))) / 2;
+        }
+        Assert.Equal(120, area, 1);                               // la triangulation couvre l'aire comptée
+    }
+}
+
+public class TraceViewModelTests
+{
+    private static Surface FixtureSurface(MainViewModel vm, string id) => vm.Document!.Surfaces.First(s => s.Id == id);
+
+    [Fact]
+    public void Retrace_a_proposal_keeps_its_decision_and_writes_the_journal()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        vm.SelectedSubject = vm.Subjects[0];
+        vm.SelectedCorrection = vm.SelectedSubject.Corrections[0];       // découpe de err-n00-sep (maillage dans la fixture)
+        vm.SetCorrectionDecisionCommand.Execute("accepted");
+        Assert.True(vm.CanTraceSelected);
+        vm.OpenTraceForCorrectionCommand.Execute(null);
+        Assert.True(vm.IsTraceOpen);
+        var t = vm.Trace!;
+        t.Clear();
+        var b = t.Shapes.First(x => x.IsSource).Paths.SelectMany(p => p).ToList();
+        var (x0, x1, y0, y1) = (b.Min(p => p.x), b.Max(p => p.x), b.Min(p => p.y), b.Max(p => p.y));
+        Plan.Rectangle(t, x0, y0, (x0 + x1) / 2, y1);                    // la moitié de la source
+        Assert.True(t.CanSave);
+        vm.SaveTraceCommand.Execute(null);
+        Assert.False(vm.IsTraceOpen);
+        var c = vm.SelectedCorrection!;
+        Assert.Equal(CorrectionDecision.Accepted, c.Decision);
+        Assert.Equal("manuel", c.Model.Origin);
+        var journal = File.ReadAllText(new AppPaths(tmp.Path, tmp.Path).CorrectionsFile(tmp.Path));
+        Assert.Contains("polygone", journal);
+        Assert.Contains("manuel", journal);
+    }
+
+    [Fact]
+    public void Cut_from_a_surface_creates_a_manual_correction_in_its_subject()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        vm.SelectSurface("err-n00-sep");
+        vm.OpenTraceForSurfaceCommand.Execute(null);
+        Assert.True(vm.IsTraceManual);
+        Assert.Equal("SA", vm.TraceTarget);
+        var t = vm.Trace!;
+        var b = t.Shapes.First(x => x.IsSource).Paths.SelectMany(p => p).ToList();
+        Plan.Rectangle(t, b.Min(p => p.x), b.Min(p => p.y), b.Max(p => p.x), b.Max(p => p.y));
+        vm.SaveTraceCommand.Execute(null);
+        Assert.Equal("S1", vm.SelectedSubject!.Id);                     // la surface est dans S1
+        var created = vm.SelectedSubject.Corrections.Single(c => c.Id.StartsWith("manuel-"));
+        Assert.Equal("SA", created.Model.To);
+        Assert.Equal(CorrectionDecision.Proposed, created.Decision);
+        Assert.Contains(SubjectFixture.Loaded(tmp).Subjects[0].Corrections, c => c.Id == created.Id);   // gardée au journal
+    }
+
+    [Fact]
+    public async Task Cancelling_a_changed_trace_asks_first()
+    {
+        using var tmp = new TempDir();
+        var shell = new FakeShell { ConfirmAnswer = false };
+        var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), new AppSettings(), enginePath: null) { AiSearchBaseDir = tmp.Path };
+        vm.LoadDocument(tmp.Path, SubjectFixture.Doc());
+        vm.SelectSurface("err-n00-sep");
+        vm.OpenTraceForSurfaceCommand.Execute(null);
+        vm.Trace!.AddPoint(new Point(0, 0));
+        await vm.CancelTraceCommand.ExecuteAsync(null);
+        Assert.True(vm.IsTraceOpen);                                    // « Continuer le tracé »
+        shell.ConfirmAnswer = true;
+        await vm.CancelTraceCommand.ExecuteAsync(null);
+        Assert.False(vm.IsTraceOpen);
+        _ = FixtureSurface(vm, "err-n00-sep");
+    }
+}

@@ -41,6 +41,9 @@ public partial class MainWindow : FluentWindow, IShell
         _snackbars.SetSnackbarPresenter(Snackbars);
         ViewModel.PropertyChanged += OnViewModelChanged;
         ViewModel.LinkedIssuesChanged += OnLinkedIssues;
+        ViewModel.TraceFitRequested += () => Dispatcher.InvokeAsync(() => { TracePlanControl.Fit(); TracePlanControl.Focus(); },
+                                                                     System.Windows.Threading.DispatcherPriority.Loaded);
+        TracePlanControl.CloseRequested += (_, _) => ViewModel.CancelTraceCommand.Execute(null);
         RestorePlacement();
         Viewport.PreviewMouseLeftButtonDown += (_, e) => _mouseDown = e.GetPosition(Viewport);
         Viewport.PreviewMouseLeftButtonUp += Viewport_Click;
@@ -78,6 +81,15 @@ public partial class MainWindow : FluentWindow, IShell
                         isError ? ControlAppearance.Danger : ControlAppearance.Secondary,
                         new SymbolIcon(isError ? SymbolRegular.ErrorCircle24 : SymbolRegular.Info24),
                         TimeSpan.FromSeconds(isError ? 8 : 4));
+
+    public async Task<bool> ConfirmAsync(string title, string message, string yes, string no)
+    {
+        var box = new Wpf.Ui.Controls.MessageBox
+        {
+            Title = title, Content = message, PrimaryButtonText = yes, CloseButtonText = no, Owner = this,
+        };
+        return await box.ShowDialogAsync() == Wpf.Ui.Controls.MessageBoxResult.Primary;
+    }
 
     public void OpenFile(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
 
@@ -213,6 +225,13 @@ public partial class MainWindow : FluentWindow, IShell
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Volet Tracé : le plan reçoit ses propres touches (Échap, F, flèches…) ; hors du plan, Échap ferme le volet.
+        if (ViewModel.IsTraceOpen)
+        {
+            if (TracePlanControl.IsKeyboardFocusWithin || Keyboard.FocusedElement is TextBoxBase or ComboBox) return;
+            if (e.Key == Key.Escape) { ViewModel.CancelTraceCommand.Execute(null); e.Handled = true; }
+            return;
+        }
         // Échap ferme d'abord la boîte Revue IA (hors revue en cours), puis le rapport, avant de quitter l'isolement.
         if (e.Key == Key.Escape && ViewModel is { IsAiPanelOpen: true, IsAiRunning: false })
         {
@@ -232,6 +251,10 @@ public partial class MainWindow : FluentWindow, IShell
         {
             case Key.F when ViewModel.SelectedIssue is not null:
                 ViewModel.FocusIssueCommand.Execute(ViewModel.SelectedIssue);
+                e.Handled = true;
+                break;
+            case Key.T when ViewModel is { ShowSubjects: true, CanTraceSelected: true }:
+                ViewModel.OpenTraceForCorrectionCommand.Execute(null);   // T sur une correction : le module de tracé
                 e.Handled = true;
                 break;
             case Key.T when ViewModel.HasDocument:

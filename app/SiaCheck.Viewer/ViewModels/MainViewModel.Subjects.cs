@@ -113,15 +113,33 @@ public sealed partial class MainViewModel
         var log = doc.CorrectionsLog.GroupBy(l => l.Id).ToDictionary(g => g.Key, g => g.Last());
         var issues = doc.Issues.ToDictionary(i => i.Key, i => i);
         Subjects.Clear();
+        var unmatched = _journal.Orphans(doc.Subjects.SelectMany(s => s.Corrections).Select(c => c.Id));
+        // Découpes tracées à la main depuis une surface : dans le sujet qui couvre cette surface s'il existe, sinon
+        // dans « Corrections manuelles » ; les autres décisions sans proposition sont à revoir.
+        var manual = unmatched.Where(c => c.Origin == "manuel" && c.Id.StartsWith("manuel-", StringComparison.Ordinal)).ToList();
+        var orphans = unmatched.Except(manual).ToList();
+        var subjectIds = doc.Subjects.Select(s => s.Id).ToHashSet();
         foreach (var s in doc.Subjects)
         {
-            var items = s.Corrections.Select(c => MakeCorrection(_journal.Overlay(c), log)).ToList();
+            var items = s.Corrections.Select(c => MakeCorrection(_journal.Overlay(c), log))
+                .Concat(manual.Where(c => c.Subject == s.Id).Select(c => MakeCorrection(c.Clone(), log))).ToList();
             var ids = items.SelectMany(c => c.TargetIds)
                 .Concat(s.Points.Where(issues.ContainsKey).SelectMany(k => issues[k].SurfaceIds))
                 .Distinct().ToList();
             Subjects.Add(Track(new SubjectItem(s, items, ids)));
         }
-        var orphans = _journal.Orphans(doc.Subjects.SelectMany(s => s.Corrections).Select(c => c.Id));
+        manual = manual.Where(c => c.Subject is null || !subjectIds.Contains(c.Subject)).ToList();
+        if (manual.Count > 0)
+        {
+            var subject = new Subject
+            {
+                Id = ManualSubject, Title = "Corrections manuelles", Action = "corriger", Origin = "manuel",
+                Explanation = "Découpes tracées dans le module de tracé, sans proposition du moteur ni de la revue IA.",
+                M2 = manual.Sum(c => c.Area ?? 0),
+            };
+            var items = manual.Select(c => MakeCorrection(c.Clone(), log)).ToList();
+            Subjects.Add(Track(new SubjectItem(subject, items, items.SelectMany(c => c.TargetIds).ToList())));
+        }
         if (orphans.Count > 0)
         {
             var revisit = new Subject
@@ -228,6 +246,7 @@ public sealed partial class MainViewModel
 
     partial void OnSelectedCorrectionChanged(CorrectionItem? oldValue, CorrectionItem? newValue)
     {
+        OnPropertyChanged(nameof(CanTraceSelected));
         if (oldValue?.IsEditing == true) oldValue.CancelEdit();
         if (newValue is not null) FocusCorrection(newValue);
     }

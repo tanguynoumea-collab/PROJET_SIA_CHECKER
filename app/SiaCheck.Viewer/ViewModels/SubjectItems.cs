@@ -94,6 +94,17 @@ public sealed partial class CorrectionItem : ObservableObject
     public bool HasTrace => Model.Trace is { Indices.Length: > 0 };
     public bool HasNoTrace => Model.Op == "découper" && !HasTrace;
     public IReadOnlyList<string> TargetIds => Model.TargetIds;
+    /// <summary>Découpe ou exclusion partielle : se trace dans le plan (« Tracer… »).</summary>
+    public bool CanTrace => Model.Op == "découper" || Model.Op == "exclure" && Model.Area is not null;
+
+    /// <summary>Correction retracée (module de tracé) : même identifiant, même décision.</summary>
+    public void ReplaceModel(Correction c)
+    {
+        c.Status = Model.Status;
+        Model = c;
+        OnPropertyChanged(string.Empty);
+    }
+
     /// <summary>L'aire est modifiable pour les opérations qui en portent une.</summary>
     public bool CanEditArea => Model.Op is "découper" or "ajuster" or "exclure";
 
@@ -187,7 +198,7 @@ public sealed partial class SubjectItem : ObservableObject
     public string Explanation => Subject.Explanation;
     public bool HasExplanation => !string.IsNullOrWhiteSpace(Explanation);
     public bool IsAi => Subject.Origin == "ia";
-    public string OriginLabel => IsAi ? "IA" : "règle";
+    public string OriginLabel => IsAi ? "IA" : Subject.Origin == "manuel" ? "manuel" : "règle";
     /// <summary>« IA · vrai sujet », ou l'origine seule.</summary>
     public string OriginTag => IsAi && !string.IsNullOrEmpty(Subject.Certainty) ? $"IA · {Subject.Certainty}" : OriginLabel;
     public string Action => Subject.Action;

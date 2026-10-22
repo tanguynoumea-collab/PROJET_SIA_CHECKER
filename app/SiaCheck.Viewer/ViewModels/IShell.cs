@@ -11,6 +11,8 @@ public interface IShell
     string? PickSaveFile(string title, string fileName, string filter);
     string? PickOpenFile(string title, string filter);
     void Notify(string message, bool isError = false);
+    /// <summary>Question à deux réponses ; true = <paramref name="yes"/>.</summary>
+    Task<bool> ConfirmAsync(string title, string message, string yes, string no);
     void OpenFile(string path);
     /// <summary>Cadre la caméra sur ces bornes (null = tout le modèle visible).</summary>
     void Frame(Rect3D? bounds);

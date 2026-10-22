@@ -86,6 +86,26 @@ def _print(result: rules.Result, show_all: bool) -> None:
     print("\n" + " · ".join(f"{v} {n}" for v, n in counts.items()))
 
 
+def _geometry_of(cache: geom.Cache):
+    """Géométrie en plan d'une surface (maillage du cache VWR), pour recalculer l'aire des tracés ; None sans shapely."""
+    try:
+        from .preuves import polygon_of
+    except ImportError:
+        return None
+    memo: dict[int, object] = {}
+
+    def get(row):
+        eid = row.get("element_id")
+        if eid is None or pd.isna(eid):
+            return None
+        eid = int(eid)
+        if eid not in memo:
+            mesh = viewer._mesh(cache.meshes.get(eid))
+            memo[eid] = polygon_of(mesh) if mesh else None
+        return memo[eid]
+    return get
+
+
 def _print_corrections(applied: corrections.Applied, before: rules.Result, after: rules.Result) -> None:
     lg = applied.log
     counts = " · ".join(f"{k} {v}" for k, v in lg.application.value_counts().items())
@@ -120,10 +140,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     df = pd.concat(frames, ignore_index=True)
     log.info("ÉTAPE 2/%d contrôles SIA 416", steps)
-    applied = before = None
+    applied = before = cache = None
     if journal is not None:
         try:
-            applied, before, result = corrections.run(df, journal, cfg)
+            geometry = None
+            if any(c.get("polygone") for c in journal["corrections"]) and models[0].suffix.lower() == ".tgm":
+                cache = geom.read_cache(models[0].parent)
+                geometry = _geometry_of(cache)
+            applied, before, result = corrections.run(df, journal, cfg, geometry)
         except corrections.JournalError as ex:
             log.error("%s", ex)
             return 2
@@ -150,7 +174,8 @@ def main(argv: list[str] | None = None) -> int:
             log.info("tableau MDP écrit : %s", mdp.write(result, cfg, args.mdp, args.mdp_template, pid, project))
         if args.viewer_json or args.sujets:
             log.info("ÉTAPE 3/%d géométrie (cache VWR)", steps)
-            cache = geom.read_cache(models[0].parent) if models[0].suffix.lower() == ".tgm" else geom.Cache()
+            if cache is None:
+                cache = geom.read_cache(models[0].parent) if models[0].suffix.lower() == ".tgm" else geom.Cache()
             modified = dt.datetime.fromtimestamp(models[0].stat().st_mtime)
             excluded = applied.surfaces[applied.surfaces.excluded] if applied is not None else None
             doc = viewer.build(result, cfg, cache, project, [str(m) for m in models], modified, before=before,

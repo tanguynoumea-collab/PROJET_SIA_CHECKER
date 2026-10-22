@@ -1,7 +1,7 @@
 # DESIGN_PLAN — SIA Check Viewer
 
 > Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (21.10.2026)
-> Évolutions : 1.1 Revue IA (validée 22.10.2026) · 2.0 Sujets et corrections (validée et implémentée 22.10.2026), en fin de document.
+> Évolutions : 1.1 Revue IA (validée 22.10.2026) · 2.0 Sujets et corrections (validée et implémentée 22.10.2026) · 2.1 Module de tracé (validée et implémentée 22.10.2026), en fin de document.
 > Phase 2 (revue visuelle) : captures de référence dans `docs/ui-baseline/` (accueil, revue, isolement sombre, isolement clair).
 > Version : 1.0 — 21.10.2026 · Mode CRÉATION
 
@@ -555,3 +555,181 @@ Captures L'Orée, en sombre et en clair : sujet S2 avec une correction d'attique
 | Calque SA gris | Mineur | Corrigé : couleur des abords (`SiaSA`) |
 | « Tout afficher » recouvert par la barre de défilement du panneau gauche (défaut V1, révélé par le calque SA) | Mineur | Corrigé : marge droite, grille des calques resserrée |
 | Écarts au plan, assumés : la frise au-delà de 40 corrections n'a pas de barre segmentée (compteur seul) ; la liste des sujets ne se replie pas sous 1 080 px ; l'export MDP ne demande pas l'ID projet (celui du gabarit fait foi) | Mineur | Roadmap |
+
+---
+
+## Évolution 2.1 — Module de tracé (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (22.10.2026) ☑ Implémenté, revue visuelle faite
+> Captures de référence : `docs/ui-baseline/trace-dark.png` (découpe B03 N00), `trace-attic-dark.png` (exclusion partielle A01 N07).
+> Version : 2.1 — 22.10.2026 · référence : `docs/V2_PLAN.md` §5.2 (phase 6). Repart de l'écran Sujets livré (captures `docs/ui-baseline/subjects-*.png`).
+
+### Ancrage
+
+- **Le besoin** : une correction partielle (S1 : la dalle sur sous-sol d'une SEP, S2 : la part sous toiture d'un attique) ne se décrit bien qu'en plan. Aujourd'hui, le tracé vient du moteur et on ne peut changer que l'aire, à la main, ce qui détruit le tracé (`a_retracer`).
+- **Job du module** : *dessiner ou ajuster, sur le plan d'un niveau, la part d'une surface qui change de catégorie, et voir tout de suite ce que cela fait à l'écart du niveau.*
+- **Usage** : ponctuel, quelques tracés par livraison (9 sur L'Orée). Il faut de la précision (accrochage), pas de la vitesse. On reste en densité production, mais avec moins d'éléments que l'espace de revue.
+
+### Retour sur un choix rejeté en V1
+
+Le V1 avait retiré un « onglet plan 2D par niveau », couvert par la vue de dessus (touche T). Ce motif valait pour **regarder**. Pour **dessiner**, la 3D vue de dessus ne convient pas : la perspective déforme, le test d'impact passe par les maillages extrudés, et on ne peut ni accrocher un sommet ni lire des cotes. Le plan 2D revient donc, **mais seulement comme outil de tracé** : un volet ouvert pour une correction, pas un deuxième mode de navigation.
+
+### Emplacement — décision
+
+| Option | Verdict |
+|---|---|
+| **Volet « Tracé » posé sur la zone 3D + bilan, comme le rapport IA** | ✅ **Retenue.** Même gabarit que le volet Rapport (évolution 1.1). Le panneau Sujets reste visible et actif à droite : on voit la correction qu'on trace et son sujet. Fermer le volet rend la 3D. |
+| Fenêtre séparée | ❌ Perd le lien avec la carte Sujet ; une fenêtre de plus à gérer sur un écran déjà chargé. |
+| Dessin dans la 3D (vue de dessus) | ❌ Perspective, extrusions, pas d'accrochage fiable (voir ci-dessus). |
+| Onglet du bilan | ❌ 220 px de haut : trop petit pour dessiner. |
+
+### Points d'entrée
+
+1. **Carte Sujet, correction sélectionnée** (`découper`, ou `exclure` avec aire) : bouton **« Tracer… »** à côté de « Modifier ». Le tracé existant (pré-calculé ou déjà ajusté) s'ouvre en mode Modifier.
+2. **Fiche d'une surface cliquée en 3D** (SEP, SEU…) : **« Découper cette surface… »**. Le volet s'ouvre en mode Tracer, avec une catégorie cible à choisir (SA par défaut pour une SEP, liste des catégories SIA sinon). Enregistrer crée une correction « manuel », rangée dans le sujet de ses points s'il y en a un, sinon dans un sujet **« Corrections manuelles »**.
+3. Raccourci **T**, sur une correction sélectionnée de l'onglet Sujets, ouvre aussi le volet. Hors de ce contexte, T reste la vue de dessus.
+
+### Wireframe — volet Tracé (sur la zone 3D + bilan)
+
+```
+┌ TRACÉ · B03·N00 · SEP → SA ─────────────────────────────────────────────────────────── [Annuler] [Enregistrer le tracé] [✕] ┐
+│ ( Tracer | Modifier )   Accrochage [■ Sommets] [■ Arêtes]   [⟲ Annuler Ctrl+Z] [⌫ Effacer]   [⌖ Cadrer F]                  │  barre d'outils
+├────────────────────────────────────────────────────────────────────────────────────────────────┬──────────────────────────┤
+│                                                                                                │ AIRE DU TRACÉ             │
+│     ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐   emprise du niveau inférieur (S01),         │   1 812,65 m²             │  signature du volet
+│     ╎  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ ╎   contour pointillé TextSecondary             │   chiffres 20 px tabulaires│
+│     ╎  ░░ SEP (source : contour épais) ░░░░░ ╎                                                │                           │
+│     ╎  ░░┌────────┐░░░░░░░░░░▓▓▓▓▓▓▓▓▓▓▓░░░ ╎   ▓ = tracé : liseré Accent + aplat Accent 20 % │ sur la SEP      1 961,75  │
+│     ╎  ░░│ SP N00 │░░ ■───────────────■ ░░░ ╎   ■ = sommets (8 px), le sommet survolé grossit │ retiré : SEU/SED  149,10  │  ce que le tracé ne compte pas
+│     ╎  ░░│ (gris) │░░ │ ▓▓▓▓▓▓▓▓▓▓▓▓▓ │ ░░░ ╎   ◇ = point d'accrochage sous le curseur         │ hors de la SEP      0,00  │
+│     ╎  ░░└────────┘░░ ■───────────────■ ░░░ ╎   SEU / SED : aplats pâles de leur couleur,     │                           │
+│     └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘   jamais recouverts par le tracé compté         │ ÉCART R3 DU NIVEAU        │
+│                                                                                                │  1 812,57 → ⊘ 0,08        │  aperçu : comme le bilan
+│  ⊢──── 10 m ────⊣                                          x 2 541 312,40  y 1 117 805,12      │  (si la correction est    │
+│  échelle                                                    coordonnées du curseur (mono)      │   appliquée)              │
+├────────────────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────┤
+│ Clic : ajouter un point · Entrée ou double-clic : fermer · ⌫ : retirer le dernier point · Échap : annuler le point en cours │  aide contextuelle (Caption)
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  Panneau droit (onglet Sujets) toujours actif ; la correction tracée reste sélectionnée dans la carte Sujet.
+```
+
+**Hiérarchie** : 1. le plan avec le tracé (le lieu) ; 2. l'aire du tracé (le chiffre qu'on règle) ; 3. l'écart du niveau, avant et après.
+**Action primaire du volet** : « Enregistrer le tracé », accentuée. C'est le précédent de la boîte Revue IA : l'accent passe à la seule action de la superposition, et « Analyser » est inaccessible tant que le volet est ouvert.
+
+### Ce que l'aire compte
+
+- **Aire du tracé = (polygone ∩ surface source) − sous-catégories classées de la même famille** : SEU, SED et SEI pour une SEP ; aucune pour une surface élémentaire.
+- C'est la règle des tracés pré-calculés (S1), désormais visible : les trois lignes sous l'aire disent ce qui est compté et ce qui ne l'est pas.
+- Un tracé qui déborde de la source n'est pas une erreur : seule la part sur la source compte (ligne « hors de la SEP »).
+- L'aperçu de l'écart R3 du niveau reprend la forme du bilan : ancien écart, flèche, nouveau verdict et nouvel écart.
+
+### Interactions
+
+| Geste | Mode Tracer | Mode Modifier |
+|---|---|---|
+| Clic | ajoute un sommet (accroché si un sommet ou une arête est à moins de 8 px) | sélectionne un sommet |
+| Glisser | — | déplace le sommet sélectionné (accrochage actif) ; glisser l'intérieur du tracé le déplace en entier |
+| Double-clic sur une arête du tracé | — | insère un sommet |
+| Entrée / double-clic | ferme le polygone, passe en Modifier | — |
+| ⌫ / Suppr | retire le dernier sommet | supprime le sommet sélectionné (minimum 3) |
+| Maj maintenue | segment horizontal ou vertical | idem pendant le glisser |
+| Molette / glisser au clic milieu ou Espace | zoom autour du curseur / déplacement | idem |
+| Ctrl+Z / Ctrl+Y | annuler / rétablir (pile de 50 gestes) | idem |
+| F | cadrer le niveau | idem |
+| Échap | annule le point en cours, puis ferme le volet (avec confirmation si le tracé a changé) | ferme le volet (même confirmation) |
+
+- **Accrochage** : sommets d'abord, puis arêtes, des surfaces du niveau et de l'emprise du niveau inférieur (c'est souvent le bord de la dalle).
+- Le losange ◇ montre le point d'accrochage. Maintenir **Alt** le désactive pour ce clic.
+- Plusieurs polygones par tracé (ex. dalle en deux parties) : en mode Tracer, un nouveau polygone peut commencer hors du premier. Les trous ne se dessinent pas ; on les obtient par l'inverse (tracer moins large).
+
+### Rendu du plan (contenu, pas chrome)
+
+- Surfaces du niveau aux couleurs SIA en aplat pâle, comme dans la 3D (`ExternalTint`). SP en gris clair sous les pièces.
+- Surface source : contour épais (2 px) TextPrimary.
+- Emprise du niveau inférieur : contour pointillé TextSecondary, sans remplissage.
+- Tracé : aplat Accent à 20 % et liseré Accent 2 px. C'est la même règle qu'en 3D.
+- Fond : token Background, sans grille. Échelle graphique en bas à gauche.
+- Infobulle au survol d'une surface : code, aire, identifiant. Même contenu que la fiche surface.
+
+### Tokens
+
+Aucun nouveau token. L'aire du tracé utilise FontSizeTitle (20) en chiffres tabulaires : c'est le chiffre réglé, il doit dominer le volet comme le titre de projet domine la barre de commande.
+
+### Mapping fonctionnalités → emplacements
+
+| Fonctionnalité (V2_PLAN §5.2) | Emplacement |
+|---|---|
+| Vue en plan 2D d'un niveau, couleurs SIA | volet Tracé, plan |
+| Emprise du niveau inférieur en fond | volet Tracé, contour pointillé |
+| Tracé de polygone | mode Tracer |
+| Accrochage aux sommets et aux arêtes | bascules Accrochage, ◇, Alt pour désactiver |
+| Aire en direct | colonne droite : aire du tracé et sa décomposition |
+| Découpe sur la surface source, catégorie cible | titre du volet (`SEP → SA`) ; choix de la cible à l'ouverture depuis la fiche surface |
+| Ajuster les tracés pré-calculés | « Tracer… » sur une correction, mode Modifier |
+| Géométrie conservée dans le journal | « Enregistrer le tracé » : polygone, aire et triangulation enregistrés dans la correction (origine « manuel ») |
+| Créer une découpe sans proposition | fiche surface : « Découper cette surface… », sujet « Corrections manuelles » |
+
+### États non-nominaux
+
+| Situation | Rendu |
+|---|---|
+| Niveau sans géométrie dans le cache VWR | Le volet ne s'ouvre pas : « Pas de géométrie pour ce niveau dans le cache VWR : ajustez l'aire avec Modifier. » (snackbar) |
+| Tracé vide (mode Tracer, aucun point) | Plan seul, avec l'aide contextuelle « Clic : ajouter un point… » ; « Enregistrer » désactivé |
+| Polygone qui se recoupe | Liseré VerdictError sur les arêtes concernées et message sous l'aire : « Le contour se recoupe : déplacez un sommet. » ; « Enregistrer » désactivé |
+| Tracé hors de la source (aire 0) | Aire 0,00 et « Le tracé ne recouvre pas la SEP du niveau. » ; « Enregistrer » désactivé |
+| Aire du tracé = toute la source | Message neutre : « Le tracé couvre toute la surface : une exclusion ou un reclassement entier serait plus simple. » ; on peut quand même enregistrer |
+| Fermeture avec un tracé modifié non enregistré | « Abandonner le tracé ? » [Continuer le tracé] [Abandonner] |
+| Correction tracée puis aire modifiée à la main | `a_retracer` (déjà en V2) : « Tracer… » rouvre le dernier tracé, avec le bandeau « L'aire a été modifiée à la main depuis ce tracé. » |
+
+### Contrat de données et technique
+
+- **Géométrie** : les maillages du fichier visionneuse sont déjà dans le repère du plan, en mètres. Les contours se recalculent dans l'app : on prend les arêtes de bord des triangles, comme `SceneController.BoundaryEdges`.
+- **Calcul en direct dans l'app** : Clipper2 (NuGet, licence Boost) pour les intersections, différences et aires ; LibTessDotNet (MIT) pour trianguler le tracé pour la 3D. Ce sont deux bibliothèques sans dépendance native.
+- **Correction enregistrée** :
+  - `polygone` (GeoJSON, même format que le moteur), `aire` (aire comptée), `trace` (triangulation), `origine` « manuel » ;
+  - `base` garde la proposition d'origine ;
+  - `a_retracer` est remis à faux.
+- **Le moteur reste l'autorité** : à l'application, `corrections.py` recalcule l'aire depuis `polygone` avec shapely, selon la même règle (∩ source − SEU/SED/SEI). Si l'écart dépasse la tolérance, il le signale dans `corrections_log` (« aire recalculée : 1 812,40 m² au lieu de 1 812,65 »). L'app l'affiche comme une correction appliquée avec avertissement.
+- **Corrections manuelles ajoutées** : le journal sait déjà les garder ; l'app les range dans « Corrections manuelles » au lieu de « à revoir ». Le critère : origine « manuel » et identifiant `manuel-…`.
+
+### Passe B — auto-critique
+
+- **« Produirais-je ce plan pour une autre app ? »**
+  - Premier jet : un éditeur de polygones générique, avec une grille, une palette d'outils à gauche et une liste des sommets avec leurs coordonnées. C'était un mini-CAO, hors sujet. On ne dessine pas un plan : on délimite une part de surface existante. Révisé : accrochage sur la géométrie existante, une seule catégorie cible, aire décomposée à droite et aperçu de l'écart R3 du niveau. Ce sont les deux chiffres du métier.
+  - L'aperçu de l'écart reprend la notation du bilan (barré → nouveau) : le volet parle la même langue que l'élément signature, il n'en invente pas une deuxième.
+- **Checklist heuristiques**
+  - ✅ Hiérarchie : plan, puis aire, puis écart. Une seule action accentuée dans le volet.
+  - ✅ Fitts : outils de 32 px, sommets saisissables à 8 px avec une zone d'accroche de 12 px.
+  - ✅ Feedback : l'aire se recalcule à chaque mouvement de sommet. Clipper2 sur quelques centaines de sommets reste sous 16 ms.
+  - ✅ Clavier : tout le tracé est possible au clavier, sauf le placement initial des points. Les flèches déplacent le sommet sélectionné de 0,10 m (Maj : 1 m).
+  - ⚠️ Conventions : double-clic à la fois pour fermer le polygone (mode Tracer) et pour insérer un sommet (mode Modifier). C'est acceptable parce que les modes sont exclusifs et affichés, mais c'est le point le plus fragile. À surveiller en revue visuelle.
+  - ⚠️ Charge : deux modes, deux accrochages, annuler/rétablir. C'est à la limite des 7±2 pour un outil ponctuel. Le mode est choisi automatiquement (Modifier si un tracé existe, sinon Tracer), si bien qu'on bascule rarement à la main.
+  - ⚠️ Écart d'aire entre l'app (Clipper2) et le moteur (shapely) : les deux calculs diffèrent de quelques centièmes de m². Le moteur fait foi, et l'écart n'est signalé qu'au-delà de la tolérance (0,5 m² et 0,5 %).
+- **Accessoire retiré (Chanel)** :
+  - la saisie numérique des coordonnées d'un sommet : l'accrochage et les flèches suffisent pour délimiter une part de surface existante ;
+  - la mesure de distances entre deux points : utile un jour, mais ce n'est pas le job du module.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Fenêtre « Tracé » séparée | Coupe le lien avec la carte Sujet ; une fenêtre de plus | 22.10.2026 |
+| Dessin directement dans la 3D vue de dessus | Perspective et maillages extrudés : pas d'accrochage fiable | 22.10.2026 |
+| Grille et palette d'outils façon CAO | On délimite une part de surface existante, on ne dessine pas un plan | 22.10.2026 |
+| Aire « brute » du polygone | Ne correspond pas à ce que le moteur appliquerait ; l'aire comptée (∩ source − sous-catégories classées) est la seule utile | 22.10.2026 |
+| Intersection calculée seulement par le moteur | Pas d'aire en direct ; le moteur garde la vérification à l'application | 22.10.2026 |
+| Saisie des coordonnées des sommets | Accessoire : accrochage et flèches suffisent | 22.10.2026 |
+
+### Revue visuelle (Phase 2, 22.10.2026)
+
+Captures L'Orée : volet ouvert sur la découpe B03 N00 (tracé pré-calculé, 1 812,20 m² comptés, R3 −0,08 → 0,37) et sur l'exclusion partielle de l'attique A01 N07, en sombre et en clair, fenêtre maximisée et fenêtre de 1 600 px.
+
+| Constat | Classe | Suite |
+|---|---|---|
+| « Tracer… » et « Modifier » écrasaient le contrôle Proposée / Acceptée / Rejetée dans la carte Sujet | Bloquant | Corrigé : les deux boutons passent sous le contrôle |
+| Aplats éclaircis vers le blanc : en sombre, le plancher SP gris clair dominait le plan | Bloquant | Corrigé : aplats en transparence sur le fond, pâles dans les deux thèmes |
+| Bascules « Sommets » / « Arêtes » en police mono (style des puces de bâtiment) | Mineur | Corrigé : police d'interface, ce sont des mots et non des codes |
+| À 1 600 px, le badge « Cache 3D antérieur » passait sous « Analyser » (chemin du projet trop large, lien des corrections appliquées en plus) | Bloquant | Corrigé : chemin limité à 240 px, avec points de suspension |
+| Annuler / rétablir pendant le dessin perdait le polygone en cours (trouvé par les tests) | Bloquant (fonctionnel) | Corrigé : l'historique garde l'état du dessin |
+| Écart Clipper2 (app) / shapely (moteur) de l'ordre de 0,1 à 0,5 m² sur les tracés pré-calculés | Accepté | Sous la tolérance : le moteur ne recalcule qu'au-delà de 0,5 m² et 0,5 % |
+| Double-clic : fermer (Tracer) et insérer un sommet (Modifier) | À surveiller | Pas de confusion constatée : les modes sont exclusifs et affichés ; à revoir avec l'usage |

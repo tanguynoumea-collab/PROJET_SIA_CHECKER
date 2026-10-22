@@ -2,9 +2,10 @@
 
 import pandas as pd
 import pytest
+import yaml
 
-from sia_check import rules
-from conftest import pick, verdict
+from sia_check import config, rules
+from conftest import ROOT, pick, verdict
 
 
 # R1 — SP = SN + SC (SIA 416 §2)
@@ -28,14 +29,51 @@ def test_titles_cover_all_rules(result):
 
 def test_r1_small_residual_is_implicit_sc(result):
     r = pick(result, "ERR", "N01", "R1").iloc[0]
-    assert r.verdict == "INFO" and "surface de construction" in r.message and r.diff_m2 == pytest.approx(8)
-    assert "SUP 80,00 + SD 10,00 + SI 2,00" in r.message   # détail des sous-catégories dans le constat
+    assert r.verdict == "INFO" and "surface de construction" in r.message and r.diff_m2 == pytest.approx(3)
+    assert "SUP 80,00 + SUT 5,00 + SD 10,00 + SI 2,00" in r.message   # détail des sous-catégories dans le constat
     assert r.hint
 
 
-def test_r1_ignored_code_not_summed(result):
-    # SUT (100 m², ignore: true) sur ERR N01 ne doit pas combler le résidu.
-    assert pick(result, "ERR", "N01", "R1").obtained.iloc[0] == pytest.approx(92)
+def test_r1_custom_rule_counts_sut_in_su(result):
+    # Règle personnalisée P1 : SU = SUP + SUS + SUT ; les 5 m² de SUT sur ERR N01 entrent dans la SP.
+    r = pick(result, "ERR", "N01", "R1").iloc[0]
+    assert r.obtained == pytest.approx(97)
+    assert "Règle personnalisée P1 (SU = SUP + SUS + SUT) appliquée." in r.message
+
+
+def test_r1_without_custom_rule_follows_strict_norm(synth):
+    # Sans P1 (norme stricte), SUT n'appartient à aucune chaîne SIA : il ne comble pas le résidu.
+    raw = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+    raw.pop("custom_rules")
+    res = rules.run(synth, config.from_dict(raw))
+    r = pick(res, "ERR", "N01", "R1").iloc[0]
+    assert r.obtained == pytest.approx(92) and "Règle personnalisée" not in r.message
+
+
+def test_custom_rule_extends_tree(cfg):
+    assert cfg.children("SU") == ["SUP", "SUS", "SUT"]
+    assert cfg.categories["SUT"]["parent"] == "SU"
+    assert cfg.custom_rule_of("SUT").id == "P1" and cfg.custom_rule_of("SUP") is None
+
+
+@pytest.mark.parametrize("rule, error", [
+    ({"id": "X", "parent": "SU", "adds": ["NOPE"]}, "NOPE"),
+    ({"id": "X", "parent": "SU", "adds": ["SPT"]}, "ignore"),
+])
+def test_custom_rule_validation(rule, error):
+    raw = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+    raw["custom_rules"] = [rule]
+    with pytest.raises(config.ConfigError, match=error):
+        config.from_dict(raw)
+
+
+def test_r5_counts_custom_su_children(synth, cfg):
+    # Niveau sans SUP ni SUS mais avec SUT : pas d'alerte R5 sous P1.
+    import pandas as pd
+    extra = pd.DataFrame([{"id": "x-sp", "building": "X", "level": "N01", "category": "SP", "area": 50, "kind": "node"},
+                          {"id": "x-sut", "building": "X", "level": "N01", "category": "SUT", "area": 45, "kind": "leaf"}])
+    res = rules.run(pd.concat([synth, extra], ignore_index=True), cfg)
+    assert verdict(res, "X", "N01", "R5") is None
 
 
 # R2 — SU = SUP + SUS (SIA 416 §2.1.1)

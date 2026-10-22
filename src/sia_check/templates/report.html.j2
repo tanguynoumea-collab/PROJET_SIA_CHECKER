@@ -52,6 +52,11 @@
     (un écart est signalé si les deux sont dépassées)<br>
     {% for s in rep.sources %}<code>{{ s }}</code>{% if not loop.last %}<br>{% endif %}{% endfor %}
   </p>
+  {% if rep.cfg.custom_rules %}
+  <p class="meta"><b>Règles personnalisées (écarts assumés à la SIA 416)</b><br>
+    {% for r in rep.cfg.custom_rules %}<b>{{ r.id }}</b> · {{ r.title }} — {{ r.description }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+  </p>
+  {% endif %}
   <span class="status {{ 'ERREUR' if exit_code else 'OK' }}">
     {{ 'Écarts au-delà de la tolérance' if exit_code else 'Aucun écart au-delà de la tolérance' }}
   </span>

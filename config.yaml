@@ -44,7 +44,7 @@ categories:
   SVN:  {family: uspi}
   SVB:  {family: uspi}
   # Codes maison Treegram — sens déduit, à confirmer (docs/ifc-schema.md §3)
-  SUT:  {family: custom, ignore: true}   # commerces (Type = Commerce)
+  SUT:  {family: custom}                 # rattaché à SU par la règle personnalisée P1 (voir custom_rules)
   SPT:  {family: custom, ignore: true}   # toitures (Type = Toiture)
   SFN:  {family: custom, ignore: true}   # façades
   SRV:  {family: custom, ignore: true}   # vitrages
@@ -75,10 +75,25 @@ labels:
   SBH:  {name: Surface brute habitable, ref: USPI 2014, def: "SBH = SH + MEM (murs extérieurs et mitoyens)."}
   SVN:  {name: Surface de vente nette, ref: USPI 2014, def: "SVN = SH + SE (surfaces externes pondérées)."}
   SVB:  {name: Surface de vente brute, ref: USPI 2014, def: "SVB = SBH + SE."}
-  SUT:  {name: Commerces (code Treegram), ref: code maison, def: "Sens déduit du contenu (Type = Commerce). Ignoré dans les sommes : les RDC commerciaux sortent en R1."}
+  SUT:  {name: Surface utile hors logement (catégorie Treegram), ref: règle personnalisée P1, def: "Catégorie ajoutée par Treegram à côté de SUP et SUS. Sur L'Orée : activités, commerces, bureaux, école, UAPE et leurs WC (docs/classification/L_OREE_SUT.md). Comptée dans la SU (SU = SUP + SUS + SUT)."}
   SPT:  {name: Toitures (code Treegram), ref: code maison, def: "Sens déduit du contenu (Type = Toiture). Ignoré dans les sommes."}
   SFN:  {name: Façades (code Treegram), ref: code maison}
   SRV:  {name: Vitrages (code Treegram), ref: code maison}
+
+# Règles personnalisées : écarts assumés à la SIA 416, propres à la production Treegram.
+# Chaque règle rattache des codes (adds) à un parent de l'arbre normatif ; le moteur les applique au
+# chargement et les signale dans chaque message, rapport et export concerné. Retirer une règle
+# revient à contrôler selon la norme stricte (le code redevient hors chaîne).
+custom_rules:
+  - id: P1
+    title: "SU = SUP + SUS + SUT"
+    parent: SU
+    adds: [SUT]
+    description: >
+      Treegram découpe la surface utile en trois catégories au lieu de deux (SIA 416 §2.1.1) :
+      SUP, SUS et SUT, cette dernière regroupant les usages hors logement (activités, commerces,
+      bureaux, école, UAPE). SUT est donc compté dans la SU, au même rang que SUP et SUS, sans
+      être reclassé dans l'une ou l'autre.
 
 tolerance: {abs_m2: 0.5, rel: 0.005}
 

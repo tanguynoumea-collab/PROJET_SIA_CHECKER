@@ -259,6 +259,7 @@ def write_json(rep: Report, path: Path) -> None:
         "sources": rep.sources,
         "exit_code": rep.result.exit_code,
         "tolerance": {"abs_m2": rep.cfg.abs_m2, "rel": rep.cfg.rel},
+        "custom_rules": [{"id": r.id, "title": r.title, "description": r.description} for r in rep.cfg.custom_rules],
         "counts": rep.counts,
         "residuals": _records(rep.residuals),
         "unknown_codes": [{"category": r["Catégorie"], "count": r["Surfaces élémentaires"] + r["Totaux de niveau"],

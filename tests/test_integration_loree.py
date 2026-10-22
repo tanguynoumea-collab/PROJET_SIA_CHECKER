@@ -47,8 +47,15 @@ def test_counts_match_viewer(loree):
 
 @needs_tgm
 def test_known_anomaly_level_without_su(loree):
-    _, res = loree
-    assert ("I18", "N00") in failing(res, "R5")
+    # Anomalie connue « niveau avec SP sans SU » (I18 N00) : en norme stricte elle sort en R5 ;
+    # avec la règle personnalisée P1 (SU = SUP + SUS + SUT), ses 284 m² de SUT forment sa surface utile.
+    import yaml
+    from sia_check import config
+    df, res = loree
+    assert ("I18", "N00") not in failing(res, "R5")
+    raw = yaml.safe_load((Path(__file__).resolve().parents[1] / "config.yaml").read_text(encoding="utf-8"))
+    raw.pop("custom_rules")
+    assert ("I18", "N00") in failing(rules.run(df, config.from_dict(raw)), "R5")
 
 
 @needs_tgm
@@ -77,7 +84,7 @@ def test_uspi_chain_consistent(loree):
 @needs_tgm
 def test_cli_exit_code(capsys):
     assert cli.main([str(TGM), "--config", str(Path(__file__).resolve().parents[1] / "config.yaml")]) == 1
-    assert "R5" in capsys.readouterr().out
+    assert "A1" in capsys.readouterr().out
 
 
 @pytest.mark.skipif(not IFC.is_file(), reason="export IFC L'Orée absent")

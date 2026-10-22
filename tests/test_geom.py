@@ -121,5 +121,5 @@ def test_doc_shape(doc, synth):
     assert len(doc["surfaces"]) == len(synth) and all(s["mesh"] is None for s in doc["surfaces"])
     lv = next(l for l in doc["levels"] if (l["building"], l["level"]) == ("ERR", "N00"))
     assert lv["values"]["SP"] == 100 and lv["r1"]["verdict"] == "ERREUR" and "A1" in lv["alerts"]
-    assert {c["code"]: c["status"] for c in doc["categories"]}["SUT"] == "ignored"
+    assert {c["code"]: c["status"] for c in doc["categories"]}["SUT"] == "checked"
     assert not doc["cache"]["stale"]

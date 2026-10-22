@@ -43,7 +43,7 @@ def test_synthesis_counts(written):
     rep, _ = written
     cat = rep.categories.set_index("Catégorie")
     assert cat.loc["SP", "Totaux de niveau"] == 8      # OK ×2, ERR ×5, TEC ×1
-    assert cat.loc["SUT", "Statut"] == "ignorée"
+    assert cat.loc["SUT", "Statut"] == "contrôlée"
     assert cat.loc["XYZ", "Statut"] == "inconnue"
     assert rep.buildings.loc["Total", "SP"] == pytest.approx(740)
 

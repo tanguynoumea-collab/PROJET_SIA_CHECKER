@@ -5,7 +5,8 @@ Contrat (version 1) :
   "format": "sia-check-viewer", "version": 1,
   "project", "date", "sources", "exit_code", "counts", "tolerance",
   "cache": {"files", "newest", "oldest", "source_modified", "stale", "errors"},
-  "categories": [{"code", "family", "status", "color", "hatched", "name", "ref", "definition"}],
+  "custom_rules": [{"id", "title", "parent", "adds", "description"}],
+  "categories": [{"code", "family", "status", "color", "hatched", "name", "ref", "definition", "custom_rule"}],
   "surfaces":   [{"id", "building", "level", "category", "code", "kind", "status", "area",
                   "room_type", "lot", "mesh": {"v": [x, y, z, …], "i": [a, b, c, …]} | null}],
   "levels":     [{"building", "level", "rank", "values": {code: m²}, "r1": {"diff", "verdict"} | null,
@@ -45,6 +46,12 @@ def _text(v):
 
 def issue_key(r) -> str:
     return "|".join(str(x) for x in (r["rule"], r["building"], r["level"], _text(r["lot"]) or "", r["category"]))
+
+
+def custom_rules(cfg: Config) -> list[dict]:
+    """Écarts assumés à la SIA 416 actifs pour cette analyse (config.yaml > custom_rules)."""
+    return [{"id": r.id, "title": r.title, "parent": r.parent, "adds": list(r.adds), "description": r.description}
+            for r in cfg.custom_rules]
 
 
 def _subtree(code: str, cfg: Config) -> set[str]:
@@ -103,6 +110,7 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
             "name": cfg.labels.get(code, {}).get("name"),
             "ref": cfg.labels.get(code, {}).get("ref"),
             "definition": cfg.labels.get(code, {}).get("def"),
+            "custom_rule": rule.id if (rule := cfg.custom_rule_of(code)) else None,
         })
 
     surfaces = []
@@ -144,6 +152,7 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
         "project": project, "date": rep.date, "sources": rep.sources,
         "exit_code": result.exit_code, "counts": rep.counts,
         "tolerance": {"abs_m2": cfg.abs_m2, "rel": cfg.rel},
+        "custom_rules": custom_rules(cfg),
         "cache": {
             "files": cache.files,
             "newest": cache.newest.isoformat(timespec="seconds") if cache.newest else None,

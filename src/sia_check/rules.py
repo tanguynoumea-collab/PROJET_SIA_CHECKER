@@ -138,10 +138,11 @@ def _breakdown(parts: dict[str, float]) -> str:
 # Ce qu'il faut vérifier, par (règle, catégorie). Les références renvoient à la SIA 416 (2003).
 HINTS = {
     ("R1", "SP"): "Au-delà de la seule surface de construction (≈ 15 % aux étages courants), des espaces du niveau "
-                  "ne sont pas classés : commerces (code SUT ignoré), locaux sans type, pièces oubliées. "
+                  "ne sont pas classés : locaux sans type, codes maison hors de la chaîne SIA, pièces oubliées. "
                   "Comparer au même niveau des bâtiments voisins.",
     ("R1", "SN"): "La SN déclarée ne correspond pas à SU + SD + SI (SIA 416 §2.1) : vérifier le classement des pièces.",
-    ("R2", "SU"): "La SU déclarée ne correspond pas à SUP + SUS (SIA 416 §2.1.1) : vérifier le classement des pièces.",
+    ("R2", "SU"): "La SU déclarée ne correspond pas à la somme de ses sous-catégories (SIA 416 §2.1.1, et règles "
+                  "personnalisées éventuelles) : vérifier le classement des pièces.",
     ("R3", "SEP"): "Balcons ou terrasses non créés en SEU/SED, ou SEP qui ne devrait pas exister : surface en contact "
                    "avec le terrain (→ abords SA, SIA 416 §1.2) ou toiture non accessible (→ hors SEP, §3).",
     ("R3", "SEN"): "La SEN déclarée ne correspond pas à SEU + SED + SEI (SIA 416 §3.1).",
@@ -152,6 +153,24 @@ IMPLICIT_HINT = ("En général rien à faire : la surface de construction (murs,
 
 def _label(code: str, cfg: Config) -> str:
     return cfg.labels.get(code, {}).get("name", code)
+
+
+def _custom_note(codes, cfg: Config) -> str:
+    """« Règle personnalisée P1 (SU = SUP + SUS + SUT) appliquée. » quand un écart à la norme intervient."""
+    ids = []
+    for r in cfg.custom_rules:
+        if (r.parent in codes or any(a in codes for a in r.adds)) and r.id not in ids:
+            ids.append(r.id)
+    rules = [r for r in cfg.custom_rules if r.id in ids]
+    return "".join(f" Règle personnalisée {r.id} ({r.title}) appliquée." for r in rules)
+
+
+def _judge(c: dict, cfg: Config) -> dict | None:
+    """Verdict d'une sommation, avec mention des règles personnalisées qui y interviennent."""
+    row = _judge_sum(c, cfg)
+    if row is not None:
+        row["message"] += _custom_note(set(c["parts"]) | {c["code"]}, cfg)
+    return row
 
 
 # --------------------------------------------------------------------------- sommations (R1–R4)
@@ -229,7 +248,7 @@ def sum_checks(totals: pd.DataFrame, cfg: Config) -> list[dict]:
     return [r for r in out if r]
 
 
-def _judge(c: dict, cfg: Config) -> dict | None:
+def _judge_sum(c: dict, cfg: Config) -> dict | None:
     bld, lvl, code, own, obtained = c["building"], c["level"], c["code"], c["own"], c["obtained"]
     spec = cfg.categories[code]
     rule = spec.get("rule") or f"Σ{code}"
@@ -303,10 +322,11 @@ def level_checks(totals: pd.DataFrame, surf: pd.DataFrame, cfg: Config) -> list[
         # R5 — niveau avec plancher mais sans surface utile (SIA 416 §2.1.1).
         if sp > cfg.abs_m2 and su <= cfg.abs_m2 and not _matches(lvl, cfg.technical):
             out.append(_row(bld, lvl, "R5", SU, sp, su, "ALERTE",
-                            f"Plancher de {_m2(sp)} m² sans aucune surface utile (SUP + SUS = {_m2(su)} m²).",
+                            f"Plancher de {_m2(sp)} m² sans aucune surface utile "
+                            f"({' + '.join(cfg.children(SU))} = {_m2(su)} m²).{_custom_note({SU}, cfg)}",
                             hint="Niveau technique ? Le déclarer dans config.yaml (levels.technical). Sinon les pièces "
-                                 "ne sont pas classées en SUP/SUS : vérifier les commerces (code SUT, ignoré) et les "
-                                 "locaux sans type."))
+                                 "ne sont pas classées en surface utile : vérifier les locaux sans type et les codes "
+                                 "maison hors de la chaîne SIA."))
 
         if sep <= cfg.abs_m2:
             continue

@@ -1,5 +1,7 @@
 # L'Orée — que contient le code Treegram SUT ?
 
+> **Décision du 22.10.2026.** SUT n'est pas reclassé en SUP/SUS. On l'accepte comme troisième sous-catégorie de la surface utile créée par Treegram : **règle personnalisée P1, SU = SUP + SUS + SUT** (`config.yaml > custom_rules`). La recherche ci-dessous reste la référence sur le contenu réel de SUT. La « mise en œuvre proposée » en fin de document (table de reclassement) n'est pas retenue.
+
 > Recherche du 22.10.2026. Sources : plans d'exécution de l'architecte (Itten+Brechbühl, `Treegram/Projects/L OREE/pdf/*.pdf`, texte vectoriel et rendu visuel), appariés aux 47 surfaces SUT par l'aire et le niveau (`scripts/affectations_plans.py`), puis vérifiés à l'œil sur les plans.
 > Détail surface par surface : `L_OREE_SUT.csv` (id Treegram, aire, local du plan, code SIA proposé, justification, confiance).
 

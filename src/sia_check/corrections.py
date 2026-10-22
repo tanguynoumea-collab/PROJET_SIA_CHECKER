@@ -14,6 +14,8 @@ Une correction est une opération sur des surfaces lues ; le `.tgm` n'est jamais
 Opérations (`op`) :
     reclasser  catégorie des cibles -> `vers`
     exclure    cibles retirées des sommes et des exports SIA (motif dans `explication`)
+               avec `aire` : une seule cible, seule cette part est retirée (ex. toit d'attique) ;
+               `polygone` (tracé) facultatif
     découper   une seule cible : `aire` m² passent dans une nouvelle surface de catégorie `vers`, même
                bâtiment, même niveau, même sorte (élémentaire ou total) ; `polygone` (tracé) facultatif
     ajuster    aire des cibles fixée à `aire`
@@ -106,7 +108,7 @@ def _problem(c: dict) -> str | None:
         return "cible manquante (ids, tgm_ids ou selection)"
     if op in ("reclasser", "découper") and not c.get("vers"):
         return f"« vers » manquant pour {op}"
-    if op in ("découper", "ajuster"):
+    if op in ("découper", "ajuster") or (op == "exclure" and c.get("aire") is not None):
         a = c.get("aire")
         if not isinstance(a, (int, float)) or isinstance(a, bool) or a < 0:
             return f"« aire » positive attendue pour {op}"
@@ -147,12 +149,23 @@ def _apply_one(df: pd.DataFrame, c: dict) -> tuple[pd.DataFrame, int, float]:
     """Applique une correction ; renvoie (surfaces, nombre de surfaces touchées, m² déplacés ou modifiés)."""
     op, cid = c["op"], c["id"]
     idx = df.index[_target(df, c["cible"])]
-    if op == "découper" and len(idx) != 1:
-        raise _Refuse(f"découper vise une seule surface ({len(idx)} trouvées)")
+    partial = op == "exclure" and c.get("aire") is not None
+    if (op == "découper" or partial) and len(idx) != 1:
+        raise _Refuse(f"{op} d'une partie vise une seule surface ({len(idx)} trouvées)")
     if len(idx) == 0:
         return df, 0, 0.0
     moved = 0.0
-    if op == "reclasser":
+    if partial:
+        i = idx[0]
+        r = df.loc[i]
+        aire = float(c["aire"])
+        if aire > float(r.area or 0) + 1e-6:
+            raise _Refuse(f"aire exclue {aire:.2f} m² > aire de la surface {float(r.area or 0):.2f} m²")
+        if r.kind == "leaf":
+            _shift_node(df, r.building, r.level, r.category, -aire)
+        df.loc[i, "area"] = float(r.area or 0) - aire
+        moved = aire
+    elif op == "reclasser":
         for i in idx:
             r = df.loc[i]
             if r.kind == "leaf" and r.category != c["vers"]:

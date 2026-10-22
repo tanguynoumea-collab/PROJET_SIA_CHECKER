@@ -14,7 +14,9 @@ Contrat (version 1) :
   "levels":     [{"building", "level", "rank", "values": {code: m²}, "r1": {"diff", "verdict"} | null,
                   "r3": {…} | null, "alerts": [règles]}],
   "issues":     [{"key", "rule", "verdict", "building", "level", "lot", "category", "expected",
-                  "obtained", "diff_m2", "diff_pct", "message", "title", "hint", "surface_ids": [...]}]
+                  "obtained", "diff_m2", "diff_pct", "message", "title", "hint", "surface_ids": [...]}],
+  "subjects":   [{"id", "titre", "cause", "action", "explication", "points": [key], "m2",
+                  "corrections": [entrées de journal]}]   (ajoutés par la CLI, sujets.py)
 }
 `key` est stable d'une analyse à l'autre : la visionneuse y accroche statut et commentaire.
 """

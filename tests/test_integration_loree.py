@@ -158,3 +158,25 @@ def test_corrections_s1_s2(loree):
     r3 = lambda r: r.residuals.query("rule == 'R3' and building == 'B03' and level == 'N00'").diff_m2.iloc[0]  # noqa: E731
     assert r3(before) - r3(after) == pytest.approx(1800.0)
     assert not (after.residuals.query("rule == 'R4' and category == 'ST'")).size
+
+
+@needs_tgm
+def test_subjects_without_ai(loree):
+    # Revue IA du 22.10.2026 : S1 (abords, B03 N00 ≈ 1 812 m²), S2 (toitures ≈ 7 279 m²), S6 (SC implicite).
+    pytest.importorskip("shapely")
+    from sia_check import config, corrections, geom, sujets, viewer
+    cfg = config.load(Path(__file__).resolve().parents[1] / "config.yaml")
+    df, res = loree
+    doc = viewer.build(res, cfg, geom.read_cache(LOREE), "L OREE", [str(TGM)])
+    sj = {s["id"]: s for s in sujets.build(doc, cfg)["subjects"]}
+    assert sj["toitures"]["m2"] == pytest.approx(7279, abs=5)
+    b03 = next(c for c in sj["abords"]["corrections"] if c["id"] == "abords-B03-N00")
+    assert b03["aire"] == pytest.approx(1812.6, abs=1) and b03["polygone"]
+    assert sj["sc-implicite"]["action"] == "aucune" and len(sj["sc-implicite"]["points"]) > 50
+    journal = sujets.journal({"subjects": list(sj.values())})
+    for c in journal["corrections"]:
+        c["statut"] = "acceptée"
+    applied, before, after = corrections.run(df, journal, cfg)
+    assert set(applied.log.application) == {corrections.APPLIED}
+    sep = lambda r: r.residuals.query("rule == 'R3' and building == '*'").diff_m2.iloc[0]  # noqa: E731
+    assert sep(before) > 15000 and sep(after) < 300          # restent les petits écarts d'étage (S4, S5)

@@ -17,6 +17,7 @@ sia-check "L OREE.tgm" --config config.yaml --out report/ --project "L'Orée"
 sia-check model.ifc --all --verbose          # console seule, contrôles OK compris, chaque surface lue
 sia-check "L OREE.tgm" --treegram exports/   # exports au gabarit Excel Treegram, depuis le .tgm
 sia-check "L OREE.tgm" --mdp MDP-1778-Loree.xlsx --project-id 1778   # tableau MDP HRS rempli
+sia-check "L OREE.tgm" --sujets sujets.json   # sujets et corrections proposées (journal à accepter)
 sia-check "L OREE.tgm" --corrections journal.json --out report/ --mdp MDP.xlsx   # surfaces corrigées
 ```
 
@@ -60,7 +61,7 @@ Un journal JSON de corrections est appliqué aux surfaces lues avant les contrô
 | Opération | Effet |
 | --- | --- |
 | `reclasser` | change la catégorie des cibles (`vers`) |
-| `exclure` | retire les cibles des sommes et des exports |
+| `exclure` | retire les cibles des sommes et des exports ; avec `aire`, seulement cette part d'une surface (ex. toit d'attique) |
 | `découper` | fait passer `aire` m² d'une surface dans une nouvelle surface de catégorie `vers` (ex. SEP → SA), au même niveau |
 | `ajuster` | fixe l'aire des cibles |
 | `affecter` | renseigne l'affectation (tableau MDP) |
@@ -69,6 +70,22 @@ Un journal JSON de corrections est appliqué aux surfaces lues avant les contrô
 - Seules les corrections au statut « acceptée » sont appliquées. Une correction inapplicable (cible introuvable, champ manquant) est signalée et laissée de côté, jamais appliquée à moitié.
 - Quand une surface élémentaire change de catégorie ou d'aire, le total Treegram de son niveau est décalé d'autant.
 - Le bilan s'affiche en console : chaque correction, puis les verdicts avant → après. Avec `--out`, il est aussi écrit dans `<projet>_<date>_corrections.json`, contrôle par contrôle (résolu, réduit, nouveau…).
+
+## Sujets (`--sujets`)
+
+Les points d'attention sont regroupés par cause. Chaque sujet porte une correction de base, au format du journal (statut « proposée », origine « règle »). Le fichier écrit sert aussi de journal : on passe les corrections retenues à « acceptée », puis on l'applique avec `--corrections`. Les sujets figurent aussi dans le fichier visionneuse (`subjects`).
+
+| Sujet | Points | Correction proposée |
+| --- | --- | --- |
+| `toitures` | A2, et R3 des niveaux dont la SEP est recouverte par la toiture Treegram (SPT) | `exclure` la SEP d'un niveau Toiture, ou seulement sa part sous SPT (attiques), terrasses SEU/SED gardées |
+| `abords` | A1, et R3 du niveau du terrain | `découper` vers SA la SEP hors plancher et hors SEU/SED, tracé pré-calculé |
+| `sc-implicite` | R1 compatibles avec la surface de construction | aucune |
+| `agregats` | contrôles sommés par bâtiment et projet | aucune (suivent leurs niveaux) |
+| `<règle>-<catégorie>` | les autres | à vérifier |
+
+Aires et tracés viennent de la géométrie (shapely). Sans elle, les aires viennent des bilans de niveau et les découpes n'ont pas de tracé.
+
+Sur L'Orée, sans IA : `toitures` propose 7 280 m² (S2 de la revue IA : 7 279) et `abords` 1 812,65 m² pour B03 N00. Une fois toutes les propositions appliquées, l'écart R3 du projet passe de 15 091 m² à 250 m². Il reste les petits écarts d'étage, que la revue laissait à confirmer. A1 reste une alerte sur les terrasses du rez gardées en SEU/SED : la question est posée, la réponse se donne point par point.
 
 ## Ratios informatifs
 
@@ -146,6 +163,7 @@ src/sia_check/
   treegram.py exports au gabarit Excel Treegram (--treegram)
   mdp.py      tableau MDP HRS (--mdp)
   corrections.py  journal de corrections, application, avant / après (--corrections)
+  sujets.py   points regroupés par cause, corrections de base et tracés pré-calculés (--sujets)
   xlsx_tables.py  remplissage des tableaux d'un classeur sans perte (validations, tableaux croisés)
   preuves.py  preuves géométriques de la revue IA (--preuves, shapely)
   cli.py      ligne de commande

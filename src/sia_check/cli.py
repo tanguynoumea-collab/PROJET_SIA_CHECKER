@@ -8,7 +8,10 @@ avec --treegram, exports au gabarit Excel Treegram (<projet>-SurfacesNettes.xlsx
 avec --mdp, tableau MDP HRS rempli (sia_check.mdp, gabarit vierge livré ou --mdp-template) ;
 avec --corrections, journal de corrections appliqué avant les contrôles (sia_check.corrections) : rapports,
 exports et visionneuse portent sur les surfaces corrigées ; bilan avant / après en console et, avec --out,
-dans <projet>_<date>_corrections.json.
+dans <projet>_<date>_corrections.json ;
+avec --sujets, points regroupés par cause avec une correction de base proposée (sia_check.sujets) : le fichier
+écrit sert aussi de journal (--corrections) une fois les corrections acceptées. Les sujets sont aussi dans
+le fichier visionneuse.
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -23,7 +26,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import config as config_mod
-from . import corrections, geom, mdp, reader, report, rules, treegram, viewer
+from . import corrections, geom, mdp, reader, report, rules, sujets, treegram, viewer
 
 log = logging.getLogger("sia_check")
 
@@ -37,6 +40,7 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--viewer-json", type=Path, help="fichier JSON pour SIA Check Viewer (un seul projet)")
     ap.add_argument("--preuves", type=Path, help="preuves géométriques pour la revue IA (avec --viewer-json)")
     ap.add_argument("--treegram", type=Path, help="dossier des exports au gabarit Excel Treegram (depuis le .tgm)")
+    ap.add_argument("--sujets", type=Path, help="sujets et corrections proposées (JSON, utilisable comme journal)")
     ap.add_argument("--corrections", type=Path, help="journal de corrections (JSON) à appliquer")
     ap.add_argument("--mdp", type=Path, help="tableau MDP HRS à écrire (fichier .xlsx)")
     ap.add_argument("--mdp-template", type=Path, help="gabarit MDP (défaut : gabarit vierge livré) ; ses tableaux sont remplacés")
@@ -140,12 +144,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.mdp:
             pid = int(args.project_id) if args.project_id and args.project_id.isdigit() else args.project_id
             log.info("tableau MDP écrit : %s", mdp.write(result, cfg, args.mdp, args.mdp_template, pid, project))
-        if args.viewer_json:
+        if args.viewer_json or args.sujets:
             log.info("ÉTAPE 3/%d géométrie (cache VWR)", steps)
             cache = geom.read_cache(models[0].parent) if models[0].suffix.lower() == ".tgm" else geom.Cache()
             modified = dt.datetime.fromtimestamp(models[0].stat().st_mtime)
             doc = viewer.build(result, cfg, cache, project, [str(m) for m in models], modified)
-            log.info("fichier visionneuse écrit : %s", viewer.write(doc, args.viewer_json))
+            sj = sujets.build(doc, cfg)
+            doc["subjects"] = sj["subjects"]
+            if args.viewer_json:
+                log.info("fichier visionneuse écrit : %s", viewer.write(doc, args.viewer_json))
+            if args.sujets:
+                p = sujets.write(sj | sujets.journal(sj, project), args.sujets)
+                log.info("sujets écrits : %s (%s)", p, sujets.summary(sj))
         if args.preuves:
             log.info("ÉTAPE 4/%d preuves géométriques", steps)
             try:

@@ -280,14 +280,28 @@ public sealed partial class MainViewModel
             AiStage = AiStage.Writing;
             AiStepWriting = "réflexion du modèle…";
             var expected = Math.Max(estimate.MinOutputTokens, 1);
+            // Le flux reste muet pendant la réflexion du modèle (plusieurs minutes) : l'horloge tourne à part.
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            AiStreamProgress? last = null;
+            void ShowWriting()
+            {
+                var e = clock.Elapsed;
+                var t = $"{(int)e.TotalMinutes} min {e.Seconds:00} s";
+                AiStepWriting = last is { Writing: true } p ? $"~{p.ApproxTokens:N0} / ~{expected:N0} jetons · {t}" : $"réflexion du modèle… {t}";
+            }
+            var ticker = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            ticker.Tick += (_, _) => ShowWriting();
             var stream = new Progress<AiStreamProgress>(p =>
             {
-                var t = $"{(int)p.Elapsed.TotalMinutes} min {p.Elapsed.Seconds:00} s";
+                last = p;
                 AiProgressKnown = p.Writing;
                 AiProgress = Math.Min(0.98, (double)p.ApproxTokens / expected);
-                AiStepWriting = p.Writing ? $"~{p.ApproxTokens:N0} / ~{expected:N0} jetons · {t}" : $"réflexion du modèle… {t}";
+                ShowWriting();
             });
-            var response = await client.RunAsync(prompt, stream, ct);
+            AiReviewResponse response;
+            ticker.Start();
+            try { response = await client.RunAsync(prompt, stream, ct); }
+            finally { ticker.Stop(); }
             if (response.StopReason == "max_tokens")
                 throw new AiReviewException($"Réponse tronquée à {AiPricing.MaxOutputTokens:N0} jetons : relancez la revue.");
             if (response.StopReason == "refusal")

@@ -179,6 +179,11 @@ public sealed class AiReviewClient(string apiKey)
         catch (AnthropicUnauthorizedException ex) { throw new AiReviewException("Clé API refusée par Anthropic. Vérifiez-la ou saisissez-en une autre.", ex); }
         catch (AnthropicForbiddenException ex) { throw new AiReviewException("Cette clé API n'a pas accès au modèle " + AiPricing.ModelLabel + ".", ex); }
         catch (AnthropicRateLimitException ex) { throw new AiReviewException("Limite d'utilisation de l'API atteinte. Réessayez dans quelques minutes.", ex); }
+        catch (AnthropicBadRequestException ex) when (ex.Message.Contains("anthropic-workspace-id", StringComparison.Ordinal))
+        {
+            throw new AiReviewException("Cette clé API n'est rattachée à aucun espace de travail (workspace). Dans la console Anthropic, " +
+                                        "créez une clé dans un espace de travail (Settings → Workspaces), puis « Remplacer » la clé ici.", ex);
+        }
         catch (AnthropicBadRequestException ex) { throw new AiReviewException($"Requête refusée par l'API : {ex.Message}", ex); }
         catch (Anthropic5xxException ex) { throw new AiReviewException("Service Anthropic indisponible. Réessayez plus tard.", ex); }
         catch (AnthropicIOException ex) { throw new AiReviewException($"Connexion à l'API Anthropic impossible : {ex.Message}", ex); }

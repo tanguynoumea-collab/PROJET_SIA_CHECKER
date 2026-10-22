@@ -42,11 +42,20 @@ def doc():
     }
 
 
-def test_residual_recomputed_with_ignored_codes(doc):
+def test_residual_recomputed_when_sut_ignored(doc):
+    # Fichier sans statut de catégorie (antérieur aux règles personnalisées) : SUT était ignoré.
     n00 = next(l for l in preuves.build(doc)["levels"] if l["level"] == "N00")
-    assert n00["SUT_ignored"] == 5.0
+    assert n00["SUT"] == 5.0 and not n00["SUT_counted_by_engine"]
     assert n00["R1_residual_if_SUT_counted"] == 5.0
     assert n00["R1_pct_if_SUT_counted"] == 5.0
+
+
+def test_sut_not_subtracted_twice_under_custom_rule(doc):
+    # Règle personnalisée P1 : le moteur a déjà compté SUT dans la SU, donc dans le résidu R1.
+    doc["categories"] = [{"code": "SUT", "status": "checked", "custom_rule": "P1"}]
+    n00 = next(l for l in preuves.build(doc)["levels"] if l["level"] == "N00")
+    assert n00["SUT_counted_by_engine"] and n00["SUT_custom_rule"] == "P1"
+    assert n00["R1_residual_if_SUT_counted"] == n00["R1_residual"] == 10.0
 
 
 def test_overlap_and_outside_footprint(doc):

@@ -9,7 +9,8 @@ Les règles R1–R5 / A1–A3 disent OÙ la sommation ne boucle pas. Ce script r
 faut pour dire POURQUOI, avant la rédaction du rapport par l'IA (étape 2, voir
 .claude/skills/revue-ia/SKILL.md) :
 
-- bilan par niveau enrichi des codes ignorés (SUT commerces, SPT toitures) ;
+- bilan par niveau enrichi des codes maison (SUT hors logement, SPT toitures), en tenant compte des
+  règles personnalisées : un code déjà compté par le moteur (ex. SUT sous P1) n'est pas recompté ;
 - géométrie (projection en plan, aires en m²) :
     * surfaces intérieures hors de l'emprise SP de leur niveau,
     * recouvrements entre surfaces intérieures du même niveau (doublons, A4 du brief),
@@ -86,6 +87,12 @@ def build(doc: dict) -> dict:
             parts += [g for _, g in geo[key].get(c, [])] or [g for _, g in geo_nodes[key].get(c, [])]
         return union_all(parts) if parts else None
 
+    # SUT est-il déjà dans les sommes du moteur (règle personnalisée P1) ? Les fichiers antérieurs aux
+    # règles personnalisées n'ont pas de statut : SUT y était ignoré.
+    cat_status = {c["code"]: c for c in doc.get("categories", [])}
+    sut_info = cat_status.get("SUT", {})
+    sut_counted = sut_info.get("status") == "checked"
+
     out_levels, outside, overlaps, sep_split, uspi_totals = [], [], [], [], []
     for key in sorted(levels, key=lambda k: (k[0], rank_of(k, ranks))):
         b, lvl = key
@@ -97,11 +104,14 @@ def build(doc: dict) -> dict:
         out_levels.append({
             "building": b, "level": lvl, "rank": ranks[key], "SP": r(sp),
             **{c: r(vals.get(c, 0)) for c in ("SUP", "SUS", "SD", "SI", "SEP", "SEU", "SED")},
-            "SUT_ignored": r(sut), "SPT_ignored": r(spt),
+            "SUT": r(sut), "SUT_counted_by_engine": sut_counted,
+            "SUT_custom_rule": sut_info.get("custom_rule"), "SPT_ignored": r(spt),
             "R1_residual": r(r1) if r1 is not None else None,
             "R1_pct": r(100 * r1 / sp) if r1 is not None and sp else None,
-            "R1_residual_if_SUT_counted": r(r1 - sut) if r1 is not None else None,
-            "R1_pct_if_SUT_counted": r(100 * (r1 - sut) / sp) if r1 is not None and sp else None,
+            # Résidu avec SUT compté : déjà le cas si le moteur l'a compté (P1), sinon on le retranche.
+            "R1_residual_if_SUT_counted": r(r1 - (0 if sut_counted else sut)) if r1 is not None else None,
+            "R1_pct_if_SUT_counted": (r(100 * (r1 - (0 if sut_counted else sut)) / sp)
+                                      if r1 is not None and sp else None),
             "alerts": lv["alerts"],
         })
 

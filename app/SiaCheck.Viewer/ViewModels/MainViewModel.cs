@@ -216,6 +216,23 @@ public sealed partial class MainViewModel : ObservableObject
                              $"Tableau MDP enregistré : {path}.", path);
     }
 
+    /// <summary>Excel de correction : chaque surface telle que lue, son état corrigé, la correction et son explication.</summary>
+    [RelayCommand]
+    private Task ExportCorrectionsAsync()
+    {
+        if (ProjectDir is null || _engine is null || Document is null) return Task.CompletedTask;
+        var inputs = CurrentEngineInputs(ProjectDir);
+        if (inputs.Journal is null)
+        {
+            _shell.Notify("Aucune décision sur les corrections pour ce projet : l'Excel de correction serait vide.");
+            return Task.CompletedTask;
+        }
+        var path = _shell.PickSaveFile("Enregistrer l'Excel de correction", $"{AiReviewFiles.Prefix(Document.Project)}-Corrections.xlsx", "Classeur Excel|*.xlsx");
+        return path is null ? Task.CompletedTask
+            : RunExportAsync(() => _engine.ExportCorrectionsAsync(ProjectDir, path, inputs, CancellationToken.None),
+                             $"Excel de correction enregistré : {path}.", path);
+    }
+
     /// <summary>Exports au gabarit Excel Treegram (SurfacesNettes, SurfacesBrutes), surfaces corrigées.</summary>
     [RelayCommand]
     private Task ExportTreegramAsync()

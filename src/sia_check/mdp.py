@@ -13,8 +13,10 @@ Le gabarit est un MDP existant ou vierge : ses tableaux de données sont vidés 
 | InfosBatiment              | Tableau3           | étages hors-sol / sous-sol, dimensions (SP)              |
 | InfosProjet                | InfosProjet        | comptages : bâtiments, étages, logements, chambres       |
 
-Ce que le `.tgm` ne donne pas reste vide : affectation, typologies, nombre de pièces, champs
-administratifs. Le tableau croisé de la feuille SurfacesEnveloppe n'est pas recalculé.
+Affectation, typologies, nombre de pièces et forme des bâtiments : propositions acceptées dans la
+visionneuse (propositions.py, corrections « affecter » et « renseigner »), « Inconnu » si elles sont
+refusées, vides sinon. Les champs administratifs restent vides. Le tableau croisé de la feuille
+SurfacesEnveloppe n'est pas recalculé.
 """
 
 from __future__ import annotations
@@ -139,10 +141,32 @@ def uspi_records(lots: pd.DataFrame, cfg, pid) -> list[dict]:
     return out
 
 
-def logements_records(lots: pd.DataFrame, cfg, pid) -> list[dict]:
-    return [{"ID Projet": Formula(PROJECT_ID, pid), "Partie d'Ouvrage": r["building"], "Etage": r["level"],
-             "Appartement_Unite": r["lot"], "Nbr de chambres": None if pd.isna(r["bedrooms"]) else int(r["bedrooms"])}
-            for r in _ordered(lots, cfg, "lot").to_dict("records")]
+def _champs(infos: list[dict], columns, **key) -> dict:
+    """Champs « renseigner » dont la sélection correspond à la ligne (bedrooms, building), limités au tableau."""
+    out = {}
+    for info in infos or []:
+        sel = info["selection"]
+        if all(_matches(sel.get(k), v) for k, v in key.items() if k in sel) and any(k in sel for k in key):
+            out.update({c: v for c, v in info["champs"].items() if c in columns})
+    return out
+
+
+def _matches(want, value) -> bool:
+    values = want if isinstance(want, list) else [want]
+    try:
+        return any(float(w) == float(value) for w in values)
+    except (TypeError, ValueError):
+        return any(str(w) == str(value) for w in values)
+
+
+def logements_records(lots: pd.DataFrame, cfg, pid, infos=None, columns=()) -> list[dict]:
+    out = []
+    for r in _ordered(lots, cfg, "lot").to_dict("records"):
+        beds = None if pd.isna(r["bedrooms"]) else int(r["bedrooms"])
+        out.append({"ID Projet": Formula(PROJECT_ID, pid), "Partie d'Ouvrage": r["building"], "Etage": r["level"],
+                    "Appartement_Unite": r["lot"], "Nbr de chambres": beds,
+                    **_champs(infos, columns, bedrooms=beds, building=r["building"])})
+    return out
 
 
 def enveloppe_records(result, cfg, pid) -> list[dict]:
@@ -164,7 +188,7 @@ def enveloppe_records(result, cfg, pid) -> list[dict]:
              "Surface nette (m2)": r["nette"], "Surface vitrée": r["vitree"]} for r in df.to_dict("records")]
 
 
-def batiments_records(levels: pd.DataFrame, pid) -> list[dict]:
+def batiments_records(levels: pd.DataFrame, pid, infos=None, columns=()) -> list[dict]:
     out = []
     for bld, g in levels.groupby("building", sort=True):
         above = g[g.kind == ABOVE]
@@ -173,7 +197,8 @@ def batiments_records(levels: pd.DataFrame, pid) -> list[dict]:
         out.append({"ID Projet": Formula(PROJECT_ID, pid), "Partie d'Ouvrage": bld,
                     "Nbr d'étages hors-sol": len(above), "Nbr d'étages sous-sol": int((g.kind == BELOW).sum()),
                     "Largeur du bâtiment (m)": round(dims[0], 2) if len(dims) == 2 else None,
-                    "Longueur  du bâtiment": round(dims[-1], 2) if dims else None})
+                    "Longueur  du bâtiment": round(dims[-1], 2) if dims else None,
+                    **_champs(infos, columns, building=bld)})
     return out
 
 
@@ -193,7 +218,9 @@ def projet_values(levels: pd.DataFrame, lots: pd.DataFrame) -> dict[str, object]
     return values
 
 
-def build(result: rules.Result, cfg: Config, template: str | Path, project_id=None, project_name=None) -> Workbook:
+def build(result: rules.Result, cfg: Config, template: str | Path, project_id=None, project_name=None,
+          infos: list[dict] | None = None) -> Workbook:
+    """`infos` : champs des corrections « renseigner » appliquées (corrections.Applied.infos)."""
     wb = Workbook(template)
     missing = [c for c in ["tgm_id", *reader.EXTRA_COLUMNS] if c not in result.surfaces]
     if missing:   # source sans propriétés Treegram (IFC) : colonnes vides
@@ -211,9 +238,9 @@ def build(result: rules.Result, cfg: Config, template: str | Path, project_id=No
     wb.fill_table("SurfacesSIA4168", brutes_records(result, cfg, kinds, pid))
     wb.fill_table("SurfacesSIA41610", nettes_records(result, cfg, pid))
     wb.fill_table("SurfacesSIA41611", uspi_records(lots, cfg, pid))
-    wb.fill_table("Logements", logements_records(lots, cfg, pid))
+    wb.fill_table("Logements", logements_records(lots, cfg, pid, infos, wb.tables["Logements"].columns))
     wb.fill_table("SurfacesSIA416", enveloppe_records(result, cfg, pid))
-    wb.fill_table("Tableau3", batiments_records(levels, pid))
+    wb.fill_table("Tableau3", batiments_records(levels, pid, infos, wb.tables["Tableau3"].columns))
     for desc, value in projet_values(levels, lots).items():
         if desc in info:
             wb.set_cell("InfosProjet", f"C{info_row(desc)}", value)
@@ -221,5 +248,5 @@ def build(result: rules.Result, cfg: Config, template: str | Path, project_id=No
 
 
 def write(result: rules.Result, cfg: Config, path: str | Path, template: str | Path | None = None,
-          project_id=None, project_name=None) -> Path:
-    return build(result, cfg, template or DEFAULT_TEMPLATE, project_id, project_name).save(path)
+          project_id=None, project_name=None, infos: list[dict] | None = None) -> Path:
+    return build(result, cfg, template or DEFAULT_TEMPLATE, project_id, project_name, infos).save(path)

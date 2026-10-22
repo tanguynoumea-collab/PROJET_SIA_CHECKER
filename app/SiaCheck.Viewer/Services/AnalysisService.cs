@@ -61,6 +61,10 @@ public sealed partial class AnalysisService(string enginePath)
                   .. string.IsNullOrWhiteSpace(projectId) ? Array.Empty<string>() : ["--project-id", projectId.Trim()],
                   .. inputs.Args()], null, ct);
 
+    /// <summary>Excel de correction (treegram.write_corrections) : demande le journal (<paramref name="inputs"/>).</summary>
+    public Task<EngineRun> ExportCorrectionsAsync(string projectDir, string xlsxPath, EngineInputs inputs, CancellationToken ct) =>
+        RunAsync(["-q", projectDir, "--corrections-xlsx", xlsxPath, .. inputs.Args()], null, ct);
+
     /// <summary>Exports au gabarit Excel Treegram (sia_check.treegram) dans un dossier.</summary>
     public Task<EngineRun> ExportTreegramAsync(string projectDir, string outDir, EngineInputs inputs, CancellationToken ct) =>
         RunAsync(["-q", projectDir, "--treegram", outDir, .. inputs.Args()], null, ct);

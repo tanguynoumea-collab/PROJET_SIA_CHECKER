@@ -119,6 +119,8 @@
                                               ToolTip="Choisir d'abord un MDP vierge ou déjà rempli : ses tableaux de surfaces sont remplacés" />
                                     <MenuItem Header="Exports Treegram…" Command="{Binding ExportTreegramCommand}"
                                               ToolTip="SurfacesNettes et SurfacesBrutes au gabarit Excel Treegram, surfaces corrigées" />
+                                    <MenuItem Header="Excel de correction…" Command="{Binding ExportCorrectionsCommand}"
+                                              ToolTip="Gabarit Treegram tel que lu, avec la catégorie et l'aire corrigées, la correction et son explication, et le journal" />
                                 </ContextMenu>
                             </ui:DropDownButton.Flyout>
                         </ui:DropDownButton>
@@ -765,7 +767,7 @@
                                                              IsChecked="{Binding Decision, Converter={StaticResource EqualsTo}, ConverterParameter=Proposed}" />
                                                 <RadioButton Style="{StaticResource Segment}" GroupName="Decision" Content="Acceptée" ToolTip="2"
                                                              IsChecked="{Binding Decision, Converter={StaticResource EqualsTo}, ConverterParameter=Accepted}" />
-                                                <RadioButton Style="{StaticResource Segment}" GroupName="Decision" Content="Rejetée" ToolTip="3"
+                                                <RadioButton Style="{StaticResource Segment}" GroupName="Decision" Content="{Binding RejectLabel}" ToolTip="3"
                                                              IsChecked="{Binding Decision, Converter={StaticResource EqualsTo}, ConverterParameter=Rejected}" />
                                             </UniformGrid>
                                         </Border>

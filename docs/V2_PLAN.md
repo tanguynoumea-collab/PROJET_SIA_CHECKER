@@ -120,12 +120,12 @@ Pour l'Affectation, les typologies et la forme du bâtiment : une valeur propos�
 | 4 | ☑ **IA → corrections** | verdicts v2 (bloc `sujets` : garder, modifier, rejeter, ajouter, `par_defaut`), propositions dans les preuves, `--revue`, prompt et skill `revue-ia`, analyseur et sauvegarde dans l'app | ☑ revue L'Orée v2 : 31 décisions appliquées, 0 écartée ; journal accepté entièrement applicable (erreurs 56 → 33) |
 | 5 | ☑ **UI Sujets** (Daedalus) | onglet Sujets, carte Sujet, décisions (journal), Analyser avec compteur, avant/après dans le bilan, tracé en 3D, menu Exporter | ☑ revue visuelle par captures (`docs/DESIGN_PLAN.md`, Évolution 2.0) ; 67 tests .NET, 133 Python |
 | 6 | ☑ **Module de tracé** (Daedalus) | volet Tracé (plan du niveau, modes Tracer / Modifier, accrochage, aire comptée en direct, aperçu R3), « Découper cette surface… », sujet « Corrections manuelles », recalcul de l'aire par le moteur | ☑ S1 B03 N00 : tracé pré-calculé rouvert, 1 812,20 m² comptés (moteur : 1 812,65, sous la tolérance) ; 75 tests .NET, 134 Python |
-| 7 | **Exports corrigés** | Excel de correction, MDP corrigé, propositions d'affectation et « Inconnu », infos projet | MDP L'Orée complet, ouvert sans alerte dans Excel |
+| 7 | ☑ **Exports corrigés** | `propositions.py` (affectation, typologies, formes), opération `renseigner`, refus → « Inconnu », SA dans les exports bruts, `--corrections-xlsx`, « Inconnu » et « Excel de correction… » dans l'app | ☑ L'Orée, 62 corrections : MDP brutes SP 80, SEP 71, SA 9 (7 561 m²), 3 294 locaux tous affectés, 9 formes ; Excel de correction 3 294 + 169 lignes et journal ; les deux s'ouvrent dans Excel sans réparation ; 75 tests .NET, 140 Python |
 
 Les phases 0 et 1 apportent un gain immédiat : la fin du copier-coller, et un MDP qui contient enfin les SED et SUT.
 
 ## 8. Points ouverts (sans blocage pour les phases 0 à 2)
 
-- Convention de comptage des pièces GE et VD.
+- Convention de comptage des pièces GE et VD : proposée (VD = chambres + 1,5, GE = chambres + 2), à valider.
 - Libellés « Nom du local » : garder le `Type` Treegram, comme aujourd'hui, ou proposer la liste MDP (`Chambre principale`, `Gaine technique`…).
 - Source des murs d'enceinte (feuille Enveloppe).

@@ -202,3 +202,15 @@ def test_review_v2_reorients_subjects(loree):
     applied, before, after = corrections.run(df, j, cfg)
     assert set(applied.log.application) == {corrections.APPLIED}
     assert corrections.counts(after)["ERREUR"] < corrections.counts(before)["ERREUR"]
+
+
+@needs_tgm
+def test_mdp_proposals_on_loree(loree):
+    from sia_check import config, propositions
+    cfg = config.load(Path(__file__).resolve().parents[1] / "config.yaml")
+    _, res = loree
+    by = {s["id"]: s for s in propositions.build(res, cfg)}
+    aff = {c["id"]: c["affectation"] for c in by["affectation"]["corrections"]}
+    assert aff["affectation-Gaine-lot"] == "Gaines" and aff["affectation-Chambre-lot"] == "Logement general"
+    assert [c["id"] for c in by["typologies"]["corrections"]] == [f"typologie-{n}ch" for n in range(5)]   # sans le lot à −1
+    assert len(by["formes"]["corrections"]) == 9

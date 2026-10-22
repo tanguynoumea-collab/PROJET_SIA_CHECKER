@@ -28,7 +28,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import config as config_mod
-from . import corrections, geom, mdp, reader, report, rules, sujets, treegram, viewer
+from . import corrections, geom, mdp, propositions, reader, report, rules, sujets, treegram, viewer
 
 log = logging.getLogger("sia_check")
 
@@ -45,6 +45,8 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--sujets", type=Path, help="sujets et corrections proposées (JSON, utilisable comme journal)")
     ap.add_argument("--revue", type=Path, help="verdicts d'une revue IA dont les décisions réorientent les sujets")
     ap.add_argument("--corrections", type=Path, help="journal de corrections (JSON) à appliquer")
+    ap.add_argument("--corrections-xlsx", type=Path,
+                    help="Excel de correction (gabarit Treegram + colonnes de correction ; avec --corrections)")
     ap.add_argument("--mdp", type=Path, help="tableau MDP HRS à écrire (fichier .xlsx)")
     ap.add_argument("--mdp-template", type=Path, help="gabarit MDP (défaut : gabarit vierge livré) ; ses tableaux sont remplacés")
     ap.add_argument("--project-id", help="ID projet HRS écrit dans InfosProjet (défaut : celui du gabarit)")
@@ -171,7 +173,13 @@ def main(argv: list[str] | None = None) -> int:
                 log.info("export Treegram écrit : %s", p)
         if args.mdp:
             pid = int(args.project_id) if args.project_id and args.project_id.isdigit() else args.project_id
-            log.info("tableau MDP écrit : %s", mdp.write(result, cfg, args.mdp, args.mdp_template, pid, project))
+            infos = applied.infos if applied is not None else None
+            log.info("tableau MDP écrit : %s", mdp.write(result, cfg, args.mdp, args.mdp_template, pid, project, infos))
+        if args.corrections_xlsx:
+            if applied is None:
+                log.error("--corrections-xlsx demande un journal (--corrections)")
+                return 2
+            log.info("Excel de correction écrit : %s", treegram.write_corrections(applied, journal, cfg, args.corrections_xlsx))
         if args.viewer_json or args.sujets:
             log.info("ÉTAPE 3/%d géométrie (cache VWR)", steps)
             if cache is None:
@@ -186,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
             if applied is not None:
                 doc["corrections_log"] = json.loads(applied.log.to_json(orient="records", force_ascii=False))
             base = sujets.build(raw, cfg)
+            base["subjects"] += propositions.build(before if before is not None else result, cfg)
             sj = sujets.apply_review(base, review, {s["id"] for s in raw["surfaces"]}) if review else base
             doc["subjects"] = sj["subjects"]
             doc["review"] = sj.get("revue")

@@ -40,6 +40,7 @@ class Config:
     labels: dict[str, dict] = field(default_factory=dict)   # code -> {name, ref, def}
     custom_rules: list[CustomRule] = field(default_factory=list)
     ratios: list[dict] = field(default_factory=list)   # ratios informatifs (ratios.py)
+    mdp: dict = field(default_factory=dict)            # tableau MDP : propositions (propositions.py)
 
     def children(self, code: str) -> list[str]:
         return self.categories.get(code, {}).get("children") or []
@@ -117,4 +118,5 @@ def from_dict(raw: dict) -> Config:
         labels=raw.get("labels") or {},
         custom_rules=custom,
         ratios=_ratios(raw.get("ratios"), cats),
+        mdp=raw.get("mdp") or {},
     )

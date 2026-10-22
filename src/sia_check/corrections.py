@@ -20,9 +20,15 @@ Opérations (`op`) :
                bâtiment, même niveau, même sorte (élémentaire ou total) ; `polygone` (tracé) facultatif
     ajuster    aire des cibles fixée à `aire`
     affecter   colonne `affectation` (tableau MDP) fixée à `affectation`
+    renseigner champs du tableau MDP sans surface (`champs` : {colonne: valeur}), pour les lots ou les
+               bâtiments visés par `selection` (`bedrooms`, `building`) : typologies, forme (propositions.py)
+
+Propositions refusées : une correction `affecter` ou `renseigner` au statut « rejetée » écrit « Inconnu »
+(V2_PLAN §5.3 : la proposition se prend, ou l'on répond « Inconnu »).
 
 Cible (`cible`) : `ids` (identifiants de surface), `tgm_ids` (ID TGM), ou `selection` : critères sur
-`building`, `level`, `category`, `kind`, `room_type`, `lot` ; une valeur ou une liste, « * » ou absent = tous.
+`building`, `level`, `category`, `kind`, `room_type`, `lot`, `bedrooms` ; une valeur ou une liste, « * » ou absent
+= tous ; `avec_lot` : true / false (surface d'appartement ou non).
 
 Seules les corrections `statut` = « acceptée » sont appliquées, dans l'ordre du journal. Une correction
 inapplicable (cible introuvable, champ manquant) est rapportée, jamais appliquée à moitié.
@@ -40,7 +46,7 @@ d'autant ; sinon un total devenu orphelin reprendrait la main sur une catégorie
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
@@ -48,9 +54,11 @@ import pandas as pd
 from . import rules
 from .config import Config
 
-OPS = ("reclasser", "exclure", "découper", "ajuster", "affecter")
+OPS = ("reclasser", "exclure", "découper", "ajuster", "affecter", "renseigner")
+REJECTED = "rejetée"
+UNKNOWN = "Inconnu"
 ACCEPTED = "acceptée"
-SELECT_FIELDS = ("building", "level", "category", "kind", "room_type", "lot")
+SELECT_FIELDS = ("building", "level", "category", "kind", "room_type", "lot", "bedrooms", "avec_lot")
 APPLIED, NOT_FOUND, REFUSED, SKIPPED = "appliquée", "cible introuvable", "refusée", "non acceptée"
 
 
@@ -62,6 +70,7 @@ class JournalError(ValueError):
 class Applied:
     surfaces: pd.DataFrame   # toutes les surfaces, exclues comprises ; colonnes de suivi ci-dessous
     log: pd.DataFrame        # une ligne par correction du journal
+    infos: list[dict] = field(default_factory=list)   # « renseigner » : [{"selection", "champs"}] pour le MDP
 
     @property
     def kept(self) -> pd.DataFrame:
@@ -117,6 +126,8 @@ def _problem(c: dict) -> str | None:
         a = c.get("aire")
         if not isinstance(a, (int, float)) or isinstance(a, bool) or a < 0:
             return f"« aire » positive attendue pour {op}"
+    if op == "renseigner" and not isinstance(c.get("champs"), dict):
+        return "« champs » attendu pour renseigner ({colonne: valeur})"
     if op == "affecter" and not c.get("affectation"):
         return "« affectation » manquante"
     return None
@@ -131,10 +142,16 @@ def _target(df: pd.DataFrame, cible: dict) -> pd.Series:
     for field, want in (cible.get("selection") or {}).items():
         if field not in SELECT_FIELDS:
             raise JournalError(f"critère de sélection inconnu « {field} » (attendu : {', '.join(SELECT_FIELDS)})")
+        if field == "avec_lot":
+            mask &= df["lot"].notna() if want else df["lot"].isna()
+            continue
         if want in (None, "*") or field not in df:
             continue
-        values = [want] if isinstance(want, str) else list(want)
-        mask &= df[field].astype(str).isin([str(v) for v in values])
+        values = [want] if isinstance(want, (str, int, float)) else list(want)
+        if field == "bedrooms":   # numérique dans le DataFrame : comparer les nombres
+            mask &= pd.to_numeric(df[field], errors="coerce").isin([float(v) for v in values])
+        else:
+            mask &= df[field].astype(str).isin([str(v) for v in values])
     return mask & ~df["excluded"]
 
 
@@ -214,6 +231,8 @@ def _apply_one(df: pd.DataFrame, c: dict) -> tuple[pd.DataFrame, int, float]:
         moved = aire
     elif op == "affecter":
         df.loc[idx, "affectation"] = c["affectation"]
+    elif op == "renseigner":   # rien sur les surfaces : les champs vont au MDP (Applied.infos)
+        return df, len(idx), 0.0
     _mark(df, idx, cid)
     return df, len(idx), moved
 
@@ -264,11 +283,13 @@ def apply(df: pd.DataFrame, journal: dict, geometry=None, tolerance: tuple[float
     df["original_area"] = df["area"]
     if "affectation" not in df:
         df["affectation"] = None
-    log = []
+    log, infos = [], []
     for c in journal.get("corrections", []):
         entry = {"id": c.get("id"), "op": c.get("op"), "sujet": c.get("sujet"), "origine": c.get("origine"),
                  "statut": c.get("statut"), "application": SKIPPED, "surfaces": 0, "m2": 0.0, "raison": ""}
-        if c.get("statut") == ACCEPTED:
+        if c.get("statut") == REJECTED and c.get("op") in ("affecter", "renseigner") and not _problem(c):
+            c = _unknown(c)   # proposition refusée : « Inconnu » au MDP
+        if c.get("statut") in (ACCEPTED, UNKNOWN):
             reason = _problem(c)
             if reason:
                 entry.update(application=REFUSED, raison=reason)
@@ -276,17 +297,30 @@ def apply(df: pd.DataFrame, journal: dict, geometry=None, tolerance: tuple[float
                 try:
                     computed = _traced_area(df, c, geometry)
                     stated = float(c.get("aire") or 0)
-                    if computed is not None and abs(computed - stated) > tolerance[0]                             and abs(computed - stated) > tolerance[1] * max(stated, computed):
+                    if computed is not None and abs(computed - stated) > tolerance[0] \
+                            and abs(computed - stated) > tolerance[1] * max(stated, computed):
                         c = {**c, "aire": round(computed, 2)}
                         entry["raison"] = f"aire recalculée depuis le tracé : {computed:.2f} m² au lieu de {stated:.2f}"
                     df, n, m2 = _apply_one(df, c)
-                    entry.update(application=APPLIED if n else NOT_FOUND, surfaces=n, m2=round(m2, 3))
+                    if c["op"] == "renseigner":
+                        infos.append({"selection": (c["cible"].get("selection") or {}), "champs": c["champs"]})
+                    entry.update(application=APPLIED if n or c["op"] == "renseigner" else NOT_FOUND,
+                                 surfaces=n, m2=round(m2, 3))
+                    if c.get("statut") == UNKNOWN:
+                        entry["raison"] = "proposition refusée : « Inconnu »"
                 except _Refuse as ex:
                     entry.update(application=REFUSED, raison=str(ex))
         log.append(entry)
     df["area"] = pd.to_numeric(df["area"], errors="coerce")
     return Applied(df, pd.DataFrame(log, columns=["id", "op", "sujet", "origine", "statut", "application",
-                                                  "surfaces", "m2", "raison"]))
+                                                  "surfaces", "m2", "raison"]), infos)
+
+
+def _unknown(c: dict) -> dict:
+    """Proposition refusée : mêmes cibles, valeurs « Inconnu » (statut interne UNKNOWN, appliqué)."""
+    if c["op"] == "affecter":
+        return {**c, "affectation": UNKNOWN, "statut": UNKNOWN}
+    return {**c, "champs": {k: UNKNOWN for k in c["champs"]}, "statut": UNKNOWN}
 
 
 # --------------------------------------------------------------------------- avant / après

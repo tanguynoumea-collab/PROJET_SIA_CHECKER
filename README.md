@@ -20,6 +20,7 @@ sia-check "L OREE.tgm" --mdp MDP-1778-Loree.xlsx --project-id 1778   # tableau M
 sia-check "L OREE.tgm" --sujets sujets.json   # sujets et corrections proposées (journal à accepter)
 sia-check "L OREE.tgm" --revue L_OREE_2026-10-22.verdicts.json --sujets sujets.json   # sujets réorientés par la revue IA
 sia-check "L OREE.tgm" --corrections journal.json --out report/ --mdp MDP.xlsx   # surfaces corrigées
+sia-check "L OREE.tgm" --corrections journal.json --corrections-xlsx 1778-Corrections.xlsx   # Excel de correction
 ```
 
 - Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet) ou `.ifc` (mapping dans `config.yaml > sources.ifc`).
@@ -66,10 +67,13 @@ Un journal JSON de corrections est appliqué aux surfaces lues avant les contrô
 | `découper` | fait passer `aire` m² d'une surface dans une nouvelle surface de catégorie `vers` (ex. SEP → SA), au même niveau |
 | `ajuster` | fixe l'aire des cibles |
 | `affecter` | renseigne l'affectation (tableau MDP) |
+| `renseigner` | renseigne des champs du MDP sans surface (`champs`), pour les lots ou bâtiments de la sélection : typologie, pièces, forme |
 
 - La cible se donne par identifiants de surface, par ID TGM ou par sélection (bâtiment, niveau, catégorie, sorte, type, lot).
 - Seules les corrections au statut « acceptée » sont appliquées. Une correction inapplicable (cible introuvable, champ manquant) est signalée et laissée de côté, jamais appliquée à moitié.
 - Quand une surface élémentaire change de catégorie ou d'aire, le total Treegram de son niveau est décalé d'autant.
+- Une proposition `affecter` ou `renseigner` au statut « rejetée » écrit « Inconnu » dans le MDP.
+- Les découpes vers SA apparaissent dans les exports bruts (`--treegram`, `--mdp`) comme une ligne de plus au niveau.
 - Le bilan s'affiche en console : chaque correction, puis les verdicts avant → après. Avec `--out`, il est aussi écrit dans `<projet>_<date>_corrections.json`, contrôle par contrôle (résolu, réduit, nouveau…).
 
 ## Sujets (`--sujets`)
@@ -83,6 +87,13 @@ Les points d'attention sont regroupés par cause. Chaque sujet porte une correct
 | `sc-implicite` | R1 compatibles avec la surface de construction | aucune |
 | `agregats` | contrôles sommés par bâtiment et projet | aucune (suivent leurs niveaux) |
 | `<règle>-<catégorie>` | les autres | à vérifier |
+| `affectation` | — | `affecter` par type Treegram (`config.yaml > mdp.affectation`) ; pièces d'appartement (`mdp.logement`) → « Logement general » |
+| `typologies` | — | `renseigner` par nombre de chambres : Nom typologie, pièces VD (chambres + 1,5) et GE (chambres + 2) |
+| `formes` | — | `renseigner` la forme de chaque bâtiment (Barre, Carré, Bloc en L) d'après l'emprise de son plus grand niveau |
+
+Les trois derniers sont des propositions pour le MDP (action « proposer », `propositions.py`) : on les prend, ou l'on répond « Inconnu ». La convention VD / GE est une proposition à valider.
+
+**Excel de correction (`--corrections-xlsx`).** Les feuilles SurfacesNettes et SurfacesBrutes au gabarit Treegram, telles que lues, avec les colonnes `Catégorie corrigée`, `Aire corrigée`, `Exclue`, `Affectation`, `Correction` (identifiant et opération) et `Explication`. Les surfaces créées (découpes SA) y sont des lignes ajoutées, sans aire d'origine. Une feuille Journal reprend chaque correction et son application.
 
 **Revue IA (`--revue`).** La revue IA reçoit ces propositions dans ses preuves (`propositions`). Elle rend, à côté des verdicts, un bloc `sujets` (verdicts version 2, format dans `.claude/skills/revue-ia/SKILL.md`, étape 6) : pour chaque sujet S1, S2…, quelles propositions garder, modifier, rejeter ou ajouter, avec un défaut par sujet de base (`"base": ["toitures"], "par_defaut": "garder"` : toutes les toitures sortent).
 - `--revue` applique ces décisions. Les points passent dans le sujet IA de leur verdict, et les corrections décidées y passent avec l'origine « ia ».
@@ -139,7 +150,8 @@ La version vient de `<Version>` dans `SiaCheck.Viewer.csproj` et de `pyproject.t
   - sélectionner un sujet ou une correction isole ses surfaces en 3D. Le tracé d'une découpe ou d'une exclusion partielle est dessiné à l'accent ;
   - les décisions sont gardées par projet, dans `%APPDATA%\SiaCheckViewer\corrections\` (journal lu par `sia-check --corrections`). « Analyser » les applique : son libellé compte les décisions en attente (`Analyser · 22`), et la barre de commande indique les corrections appliquées ;
   - avant/après dans le bilan par niveau : ce que les corrections ont retiré prolonge la barre en pointillé, et l'ancien résidu est barré à côté du nouveau ;
-  - « Exporter » : rapports d'analyse, tableau MDP (gabarit livré ou choisi), exports Treegram, tous sur les surfaces corrigées.
+  - « Exporter » : rapports d'analyse, tableau MDP (gabarit livré ou choisi), exports Treegram, tous sur les surfaces corrigées, et l'Excel de correction ;
+  - les propositions MDP (affectation, typologies, formes) se décident de même ; le troisième choix s'y appelle « Inconnu », écrit tel quel dans le MDP.
 - **Module de tracé** (« Tracer… » sur une découpe ou une exclusion partielle, ou T ; « Découper cette surface… » dans la fiche d'une surface) : volet sur la 3D avec le plan du niveau.
   - Le plan montre les surfaces aux couleurs SIA, la surface source en contour épais et l'emprise du niveau inférieur en pointillé.
   - Modes Tracer et Modifier : accrochage aux sommets et aux arêtes (Alt pour le désactiver), Maj pour l'horizontale ou la verticale, Ctrl+Z / Ctrl+Y, F pour cadrer, molette et clic milieu pour se déplacer.
@@ -186,6 +198,7 @@ src/sia_check/
   mdp.py      tableau MDP HRS (--mdp)
   corrections.py  journal de corrections, application, avant / après (--corrections)
   sujets.py   points regroupés par cause, corrections de base et tracés pré-calculés (--sujets)
+  propositions.py  propositions pour le MDP : affectation, typologies, forme du bâtiment
   xlsx_tables.py  remplissage des tableaux d'un classeur sans perte (validations, tableaux croisés)
   preuves.py  preuves géométriques de la revue IA (--preuves, shapely)
   cli.py      ligne de commande

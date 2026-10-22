@@ -141,6 +141,26 @@ levels:
     - {pattern: '(?i)^toit', offset: 1000}
 
 # Correspondance source -> colonnes normalisées (reader.py)
+# Tableau MDP HRS (mdp.py, propositions.py).
+# affectation : Affectation proposée par type Treegram (liste « Affectation » du gabarit, feuille Listes formulaire).
+# logement : types de pièces qui prennent « Logement general » dans un appartement (avec lot) ; les autres
+#   (gaines, balcons…) gardent leur affectation. Une proposition refusée écrit « Inconnu ».
+mdp:
+  logement: [Chambre, PieceDeVie, PieceSecondaire_2PointsEau, PieceSecondaire_3PointsEau, PieceSecondaire_4PointsEau,
+             Distribution, CirculationH, SUS]
+  affectation:
+    Gaine: Gaines
+    Local: Locaux techniques
+    Ascenseur: Cage d'ascenseurs
+    Escalier: Cage d'escaliers
+    CirculationH: Distribution
+    Distribution: Distribution
+    CirculationExt: Distribution
+    SUS: Abris/Caves
+    Commerce: Commerce
+    Balcon: Balcon
+    Terrasse: Terrasse
+
 sources:
   tgm:
     category_property: "Catégorie SIA"

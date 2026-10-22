@@ -58,19 +58,42 @@ public sealed partial class CorrectionItem : ObservableObject
         : WasApplied ? CorrectionState.Applied
         : CorrectionState.Accepted;
 
+    /// <summary>Proposition pour le tableau MDP (affectation, typologie, forme) : on la prend ou l'on répond « Inconnu ».</summary>
+    public bool IsProposal => Model.Op is "affecter" or "renseigner";
+    /// <summary>Libellé du refus : « Inconnu » pour une proposition MDP (écrit tel quel dans le MDP), sinon « Rejetée ».</summary>
+    public string RejectLabel => IsProposal ? "Inconnu" : "Rejetée";
+
     public string StateLabel => State switch
     {
         CorrectionState.Accepted => "acceptée · s'appliquera à la prochaine analyse",
-        CorrectionState.Applied => "appliquée",
-        CorrectionState.Rejected => "rejetée",
+        CorrectionState.Applied => IsProposal ? "appliquée · écrite dans le MDP" : "appliquée",
+        CorrectionState.Rejected => IsProposal ? "« Inconnu » dans le MDP" : "rejetée",
         CorrectionState.Failed => IsOrphan ? "à revoir : la surface visée n'existe plus" : $"inapplicable : {_log?.Reason}",
         _ => "proposée",
     };
 
     public bool IsRejected => Decision == CorrectionDecision.Rejected;
 
-    /// <summary>« A01·N07 », ou « sélection » pour une cible par critères.</summary>
-    public string Location => _target is { Building: { } b, Level: { } l } ? $"{b}·{l}" : Model.TargetIds.Count > 0 ? Model.TargetIds[0] : "sélection";
+    /// <summary>« A01·N07 », ou les critères d'une sélection (« Gaine », « 2 ch. », « A01 »).</summary>
+    public string Location => _target is { Building: { } b, Level: { } l } ? $"{b}·{l}" : Model.TargetIds.Count > 0 ? Model.TargetIds[0] : Selection();
+
+    private string Selection()
+    {
+        if (Model.Target.ValueKind != System.Text.Json.JsonValueKind.Object || !Model.Target.TryGetProperty("selection", out var sel))
+            return "sélection";
+        var parts = new List<string>();
+        if (sel.TryGetProperty("room_type", out var rt)) parts.Add(rt.ToString());
+        if (sel.TryGetProperty("bedrooms", out var bd)) parts.Add(bd.GetInt32() == 0 ? "studio" : $"{bd} ch.");
+        if (sel.TryGetProperty("building", out var bl)) parts.Add(bl.ToString());
+        if (sel.TryGetProperty("level", out var lv)) parts.Add(lv.ToString());
+        if (sel.TryGetProperty("avec_lot", out var al) && al.ValueKind == System.Text.Json.JsonValueKind.True) parts.Add("logt");
+        return parts.Count > 0 ? string.Join(" ", parts) : "sélection";
+    }
+
+    /// <summary>Champs d'une proposition « renseigner » (Nom typologie, pièces, forme…).</summary>
+    private string Fields() =>
+        Model.Extra?.TryGetValue("champs", out var ch) == true && ch.ValueKind == System.Text.Json.JsonValueKind.Object
+            ? string.Join(" · ", ch.EnumerateObject().Select(p => p.Value.ToString())) : "";
     public string TargetCode => _target?.DisplayCode ?? "";
 
     /// <summary>Ce que fait la correction, en mots : « SEP entière », « part retirée », « SEP → SA ».</summary>
@@ -82,7 +105,8 @@ public sealed partial class CorrectionItem : ObservableObject
         "découper" => $"{TargetCode} → {Model.To}".Trim(),
         "reclasser" => $"{TargetCode} → {Model.To}".Trim(),
         "ajuster" => "aire fixée",
-        "affecter" => $"affectation : {Model.Assignment}",
+        "affecter" => $"→ {Model.Assignment}",
+        "renseigner" => Fields(),
         _ => Model.Op,
     };
 
@@ -215,7 +239,7 @@ public sealed partial class SubjectItem : ObservableObject
     public bool ShowBar => Corrections.Count > MaxGlyphs;
     public int PointCount => Subject.Points.Count;
     public double M2 => Corrections.Where(c => !c.IsRejected).Sum(c => c.Area ?? 0);
-    public string M2Text => HasCorrections ? M2.ToString("#,##0", Format) + " m²" : "";
+    public string M2Text => HasCorrections && Action != "proposer" ? M2.ToString("#,##0", Format) + " m²" : "";
     public int DecidedCount => Corrections.Count(c => c.Decision != CorrectionDecision.Proposed);
     public int AcceptedCount => Corrections.Count(c => c.Decision == CorrectionDecision.Accepted);
     public int RejectedCount => Corrections.Count(c => c.Decision == CorrectionDecision.Rejected);
@@ -225,10 +249,11 @@ public sealed partial class SubjectItem : ObservableObject
         : $"{PointCount} point{(PointCount > 1 ? "s" : "")}";
     public string Progress => $"{DecidedCount} / {Corrections.Count}";
     public string AcceptAllLabel => $"Accepter les {Corrections.Count(c => !c.IsOrphan)}";
-    public string RejectAllLabel => $"Rejeter les {Corrections.Count(c => !c.IsOrphan)}";
+    public string RejectAllLabel => Corrections.All(c => c.IsProposal)
+        ? $"« Inconnu » pour les {Corrections.Count}" : $"Rejeter les {Corrections.Count(c => !c.IsOrphan)}";
 
-    /// <summary>Tri : « corriger » (surface en jeu décroissante), puis « à vérifier », puis « aucune ».</summary>
-    public (int, double, string) SortKey => (Action switch { "corriger" => 0, "à vérifier" => 1, _ => 2 }, -Subject.M2, Id);
+    /// <summary>Tri : « corriger » (surface en jeu décroissante), « proposer » (MDP), « à vérifier », « aucune ».</summary>
+    public (int, double, string) SortKey => (Action switch { "corriger" => 0, "proposer" => 1, "à vérifier" => 2, _ => 3 }, -Subject.M2, Id);
 
     private void Refresh()
     {

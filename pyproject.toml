@@ -16,7 +16,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "shapely"]
+revue = ["shapely"]
 
 [project.scripts]
 sia-check = "sia_check.cli:main"

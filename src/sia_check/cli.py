@@ -2,8 +2,9 @@
 
 Codes de sortie : 0 aucun écart au-delà de la tolérance, 1 écarts, 2 erreur de lecture/config/écriture.
 Résultats en console ; avec --out, rapports <projet>_<date>.xlsx / .html / .json ;
-avec --viewer-json, fichier pour SIA Check Viewer (surfaces, maillages du cache VWR, points liés).
-Les lignes de journal « ÉTAPE n/3 » servent d'indicateur de progression à la visionneuse.
+avec --viewer-json, fichier pour SIA Check Viewer (surfaces, maillages du cache VWR, points liés) ;
+avec --preuves, preuves géométriques de la revue IA (sia_check.preuves, shapely requis).
+Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--config", type=Path, help="défaut : config.yaml du dossier courant, sinon celle livrée")
     ap.add_argument("--out", type=Path, help="dossier des rapports xlsx, html et json")
     ap.add_argument("--viewer-json", type=Path, help="fichier JSON pour SIA Check Viewer (un seul projet)")
+    ap.add_argument("--preuves", type=Path, help="preuves géométriques pour la revue IA (avec --viewer-json)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -78,13 +80,16 @@ def main(argv: list[str] | None = None) -> int:
         models = [_resolve(m) for m in args.models]
         if args.viewer_json and len(models) != 1:
             raise reader.ReadError("--viewer-json attend un seul projet")
-        log.info("ÉTAPE 1/3 lecture des surfaces")
+        if args.preuves and not args.viewer_json:
+            raise reader.ReadError("--preuves s'utilise avec --viewer-json")
+        steps = 4 if args.preuves else 3
+        log.info("ÉTAPE 1/%d lecture des surfaces", steps)
         frames = [reader.read(p, cfg) for p in models]
     except (OSError, config_mod.ConfigError, reader.ReadError) as ex:
         log.error("%s", ex)
         return 2
     df = pd.concat(frames, ignore_index=True)
-    log.info("ÉTAPE 2/3 contrôles SIA 416")
+    log.info("ÉTAPE 2/%d contrôles SIA 416", steps)
     result = rules.run(df, cfg)
     if not args.quiet:
         _print(result, args.all)
@@ -95,11 +100,20 @@ def main(argv: list[str] | None = None) -> int:
             for p in report.write_all(rep, args.out):
                 log.info("rapport écrit : %s", p)
         if args.viewer_json:
-            log.info("ÉTAPE 3/3 géométrie (cache VWR)")
+            log.info("ÉTAPE 3/%d géométrie (cache VWR)", steps)
             cache = geom.read_cache(models[0].parent) if models[0].suffix.lower() == ".tgm" else geom.Cache()
             modified = dt.datetime.fromtimestamp(models[0].stat().st_mtime)
             doc = viewer.build(result, cfg, cache, project, [str(m) for m in models], modified)
             log.info("fichier visionneuse écrit : %s", viewer.write(doc, args.viewer_json))
+        if args.preuves:
+            log.info("ÉTAPE 4/%d preuves géométriques", steps)
+            try:
+                from . import preuves  # shapely : dépendance de la revue IA seulement
+            except ImportError as ex:
+                log.error("preuves impossibles : %s (pip install shapely)", ex)
+                return 2
+            ev = preuves.build(doc)
+            log.info("preuves écrites : %s (%s)", preuves.write(ev, args.preuves), preuves.summary(ev))
     except OSError as ex:  # ex. classeur ouvert dans Excel
         log.error("écriture impossible : %s", ex)
         return 2

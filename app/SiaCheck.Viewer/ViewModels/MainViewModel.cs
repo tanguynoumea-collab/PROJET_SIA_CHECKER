@@ -244,6 +244,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         _store = ReviewStore.Open(_paths.ReviewFile(ProjectDir!), ProjectDir!);
         LoadIssues(doc);
+        LoadAiReview(doc);
         Document = doc;
         _suspendSceneUpdates = false;
         OnBuildingsChanged();
@@ -276,7 +277,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         item.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(IssueItem.Status)) { SaveReview(item); IssuesView.Refresh(); }
+            if (e.PropertyName == nameof(IssueItem.Status)) { SaveReview(item); IssuesView.Refresh(); UpdateAiCounts(); }
             else if (e.PropertyName == nameof(IssueItem.Comment)) { _commentSave.Stop(); _commentSave.Start(); }
         };
         return item;
@@ -400,7 +401,7 @@ public sealed partial class MainViewModel : ObservableObject
         };
         var sel = SelectedBuildings?.ToHashSet();
         var buildingOk = sel is null || i.Building == "*" || sel.Contains(i.Building);
-        return verdictOk && statusOk && buildingOk && (RuleFilter == "" || i.Rule == RuleFilter);
+        return verdictOk && statusOk && buildingOk && (RuleFilter == "" || i.Rule == RuleFilter) && MatchesAi(i);
     }
 
     /// <summary>Message de liste vide : aucun écart (bonne nouvelle) ou filtres trop stricts (plan §5).</summary>
@@ -414,6 +415,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         ShowErrors = ShowWarnings = ShowInfos = true;
         RuleFilter = "";
+        AiFilter = "";
         StatusFilter = "all";
         SelectAllBuildings();
     }

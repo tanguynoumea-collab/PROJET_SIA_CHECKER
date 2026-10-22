@@ -114,6 +114,17 @@ public sealed partial class IssueItem : ObservableObject
     [ObservableProperty] private bool _isFocused;
     /// <summary>Point qui cite la surface cliquée dans la 3D.</summary>
     [ObservableProperty] private bool _isLinked;
+
+    /// <summary>Verdict de la dernière revue IA du projet (null : pas de revue, ou point absent de la revue).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAi), nameof(AiKind), nameof(AiTag), nameof(AiReason))]
+    private AiVerdict? _ai;
+
+    public bool HasAi => Ai is not null;
+    public AiVerdictKind AiKind => Ai?.Kind ?? AiVerdictKind.Unknown;
+    /// <summary>« S1 · vrai sujet », « faux positif ».</summary>
+    public string AiTag => Ai is null ? "" : Ai.Subject is { } s ? $"{s} · {AiVerdict.Label(AiKind)}" : AiVerdict.Label(AiKind);
+    public string AiReason => Ai?.Reason ?? "";
 }
 
 /// <summary>Une ligne du bilan par niveau (élément signature, plan §6).</summary>

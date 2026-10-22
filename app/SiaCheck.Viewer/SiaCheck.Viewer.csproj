@@ -13,6 +13,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Revue IA : la procédure de Claude Code sert de prompt, le rapport de L'Orée d'exemple de forme -->
+    <EmbeddedResource Include="..\..\.claude\skills\revue-ia\SKILL.md" LogicalName="SiaCheck.Viewer.Prompts.revue-ia.SKILL.md" />
+    <EmbeddedResource Include="..\..\docs\revue-ia\L_OREE_2026-10-22.md" LogicalName="SiaCheck.Viewer.Prompts.revue-ia.exemple.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Anthropic" Version="13.1.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="HelixToolkit.Wpf" Version="3.1.2" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />

@@ -11,15 +11,11 @@ Exemple de référence : `docs/revue-ia/L_OREE_2026-10-22.md` (L'Orée, 156 poin
 
 ## Étapes
 
-1. **Analyse fraîche** (dossier du projet Treegram, qui contient `Nom.tgm` et `VWR\`) :
+1. **Analyse fraîche et preuves**, en une exécution (dossier du projet Treegram, qui contient `Nom.tgm` et `VWR\` ; shapely requis : `.venv/Scripts/python -m pip install -e ".[revue]"`) :
    ```bash
-   .venv/Scripts/sia-check "<dossier projet>" -q --viewer-json report/<projet>.viewer.json
+   .venv/Scripts/sia-check "<dossier projet>" -q --viewer-json report/<projet>.viewer.json --preuves docs/revue-ia/<PROJET>_<date>.preuves.json
    ```
-2. **Preuves** (shapely requis : `.venv/Scripts/python -m pip install shapely`) :
-   ```bash
-   .venv/Scripts/python -I scripts/revue_ia_preuves.py report/<projet>.viewer.json docs/revue-ia/<PROJET>_<date>.preuves.json
-   ```
-   Le fichier contient :
+2. **Preuves** (calculées par `sia_check.preuves` ; à partir d'un fichier visionneuse existant : `scripts/revue_ia_preuves.py`). Le fichier contient :
    - un bilan par niveau enrichi des codes ignorés (SUT commerces, SPT toitures), avec le résidu R1 recalculé SUT compris ;
    - la décomposition géométrique de chaque SEP : sous la SP du même niveau, au-dessus du niveau inférieur, au-dessus d'un sous-sol seul, au-dessus de rien, part classée SEU/SED, part recouverte par SPT ;
    - les recouvrements entre pièces (doublons) et les pièces hors de l'emprise SP ;
@@ -52,6 +48,6 @@ Exemple de référence : `docs/revue-ia/L_OREE_2026-10-22.md` (L'Orée, 156 poin
 - Distinguer **modélisation** (géométrie fausse), **classement** (bonne géométrie, mauvaise catégorie) et **nomenclature** (code hors SIA).
 - L'IA ne voit ni les plans ni l'accessibilité réelle des toitures : le dire, et renvoyer à une vérification ciblée (« ouvrir B03 N01 dans Treegram »).
 
-## À terme
+## Dans la visionneuse
 
-Le même enchaînement (preuves → rapport + verdicts) est prévu dans la visionneuse avec une clé API : le script de preuves reste identique, et ce fichier sert de base au prompt.
+SIA Check Viewer fait le même enchaînement avec une clé API (bouton « Revue IA ») : ce fichier y est embarqué comme prompt, et le modèle reçoit le fichier de preuves complet. Rapport et verdicts sont écrits au même format, dans `%APPDATA%\SiaCheckViewerevue-ia\<projet>\`.

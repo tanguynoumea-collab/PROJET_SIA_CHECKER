@@ -125,6 +125,22 @@ public partial class MainWindow : FluentWindow, IShell
 
     private void CloseSurface_Click(object sender, RoutedEventArgs e) => ViewModel.SelectSurface(null);
 
+    // ------------------------------------------------------------------ revue IA
+
+    /// <summary>La clé ne transite que par le PasswordBox : jamais liée, vidée dès qu'elle est chiffrée.</summary>
+    private void SaveApiKey_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.SaveApiKeyCommand.Execute(ApiKeyBox.Password);
+        ApiKeyBox.Password = "";
+    }
+
+    private void ApiKeyBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        SaveApiKey_Click(sender, e);
+        e.Handled = true;
+    }
+
     // ------------------------------------------------------------------ clavier et liste
 
     /// <summary>Clic sur un point : l'isole ; reclic sur le point isolé : quitte l'isolement.</summary>
@@ -154,6 +170,19 @@ public partial class MainWindow : FluentWindow, IShell
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Échap ferme d'abord la boîte Revue IA (hors revue en cours), puis le rapport, avant de quitter l'isolement.
+        if (e.Key == Key.Escape && ViewModel is { IsAiPanelOpen: true, IsAiRunning: false })
+        {
+            ViewModel.CloseAiPanelCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Escape && ViewModel.IsAiReportOpen)
+        {
+            ViewModel.CloseAiReportCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
         // Raccourcis à une touche : jamais pendant la saisie d'un commentaire ou d'un filtre.
         if (Keyboard.FocusedElement is TextBoxBase or ComboBox || Keyboard.Modifiers != ModifierKeys.None) return;
         switch (e.Key)

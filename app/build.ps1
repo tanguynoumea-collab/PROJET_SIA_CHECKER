@@ -17,10 +17,12 @@ if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
 
 # 1. Moteur : onedir (démarrage rapide, pas de décompression à chaque analyse).
 #    ifcopenshell est exclu : la visionneuse lit les projets .tgm ; la CLI complète reste disponible via pip.
-& $py -m pip install -q pyinstaller
+#    shapely est embarqué pour les preuves de la revue IA (sia-check --preuves, importé à la demande).
+& $py -m pip install -q pyinstaller shapely
 & $py -m PyInstaller --noconfirm --clean --name sia-check --console `
     --distpath (Join-Path $work 'dist') --workpath (Join-Path $work 'build') --specpath $work `
     --exclude-module ifcopenshell --exclude-module numpy.tests --exclude-module pytest `
+    --hidden-import sia_check.preuves --collect-submodules shapely `
     --paths (Join-Path $root 'src') (Join-Path $root 'src\sia_check\__main__.py')
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller a échoué' }
 

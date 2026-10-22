@@ -48,10 +48,15 @@ La commande produit `app/dist/SiaCheckViewer/`. Ce dossier se copie tel quel : i
 
   Statuts et commentaires sont conservés d'une analyse à l'autre, dans `%APPDATA%\SiaCheckViewer\reviews\`. Un point suivi qui disparaît passe en « résolu ».
 - **Bilan par niveau** : barres de sommation SP → SUP/SUS/SD/SI pour un bâtiment. Un clic sur une barre isole le niveau.
+- **Revue IA** (sur-vérification, procédure `.claude/skills/revue-ia/SKILL.md`) :
+  - les verdicts de la dernière revue du projet s'affichent dans la liste et la carte Détail (`vrai sujet`, `à confirmer`, `faux positif`, `agrégat`, sujet `S1`…, raison) ; filtre « Verdict IA » ; « Appliquer les faux positifs » passe en « Faux positif » les points encore « À traiter » ;
+  - le bouton **Revue IA** enchaîne analyse, preuves géométriques (`sia-check --preuves`), estimation du coût, puis, après accord, l'appel à Claude Opus 5.5 par l'API Anthropic. Le rapport s'ouvre dans un volet sur la 3D ;
+  - la clé API est saisie dans l'app et chiffrée avec DPAPI pour le compte Windows (`%LOCALAPPDATA%\SiaCheckViewernthropic-key.bin`), jamais en clair ;
+  - revues lancées depuis l'app : `%APPDATA%\SiaCheckViewerevue-ia\<projet>\` ; revues faites dans Claude Code : `docs/revue-ia/` (lu quand l'app tourne depuis le dépôt).
 - **Limite** : si le projet a été modifié après la dernière ouverture dans le viewer Treegram, le cache 3D est périmé. La visionneuse l'indique.
 
 Développement : `dotnet test app/SiaCheckViewer.sln`.
-`SiaCheck.Viewer.exe <dossier projet> --capture image.png [--focus clé]` produit une capture pour la revue visuelle.
+`SiaCheck.Viewer.exe <dossier projet> --capture image.png [--focus clé] [--report | --ai-panel]` produit une capture pour la revue visuelle.
 
 ## Règles
 
@@ -77,6 +82,8 @@ src/sia_check/
   tgm.py      décodeur du format binaire Treegram (non documenté, voir docs/ifc-schema.md §2.2)
   reader.py   .tgm / .ifc -> DataFrame normalisé (seul module à lire les fichiers)
   rules.py    règles, fonctions pures sur le DataFrame
+  viewer.py   fichier pour SIA Check Viewer (--viewer-json)
+  preuves.py  preuves géométriques de la revue IA (--preuves, shapely)
   cli.py      ligne de commande
 tests/        jeu synthétique (tests/data/synth.csv) + intégration L'Orée (ignorée si le projet est absent)
 docs/         ifc-schema.md (phase 0), normes de référence

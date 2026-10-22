@@ -39,7 +39,8 @@ public partial class App : Application
         MainWindow = window;
         window.Show();
         // SiaCheck.Viewer.exe "C:\…\Projects\L OREE" : ouvre directement un projet.
-        // --capture fichier.png [--focus clé] : capture de la fenêtre puis fermeture (revue visuelle, plan Phase 2).
+        // --capture fichier.png [--focus clé] [--report | --ai-panel] : capture de la fenêtre puis fermeture
+        // (revue visuelle, plan Phase 2 ; rapport et boîte de la revue IA, Évolution 1.1).
         var project = e.Args.FirstOrDefault(a => !a.StartsWith("--") && Directory.Exists(a));
         var capture = ArgAfter(e.Args, "--capture");
         if (project is not null) _ = OpenThenCaptureAsync(window, project, capture, ArgAfter(e.Args, "--focus"), ArgAfter(e.Args, "--click"));
@@ -78,6 +79,8 @@ public partial class App : Application
             window.ClickAtRelative(double.Parse(cx, System.Globalization.CultureInfo.InvariantCulture),
                                    double.Parse(cy, System.Globalization.CultureInfo.InvariantCulture));
         }
+        if (Environment.GetCommandLineArgs().Contains("--report")) window.ViewModel.ShowAiReportCommand.Execute(null);
+        if (Environment.GetCommandLineArgs().Contains("--ai-panel")) window.ViewModel.OpenAiPanelCommand.Execute(null);
         if (capture is not null) await CaptureAsync(window, capture);
     }
 

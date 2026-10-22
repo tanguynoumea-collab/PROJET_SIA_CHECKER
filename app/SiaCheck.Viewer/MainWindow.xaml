@@ -89,6 +89,9 @@
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                         <ui:Button Appearance="Primary" Icon="{ui:SymbolIcon Play20}" Content="Analyser"
                                    Command="{Binding AnalyseCommand}" ToolTip="Relancer l'analyse du projet (Ctrl+R)" MinHeight="{StaticResource TargetSize}" />
+                        <ui:Button Margin="8,0,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon Sparkle20}" Content="Revue IA"
+                                   Command="{Binding OpenAiPanelCommand}" MinHeight="{StaticResource TargetSize}"
+                                   ToolTip="Sur-vérification par IA : regroupe les points par cause et donne un verdict à chacun" />
                         <ui:Button Margin="8,0,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon ArrowExportUp20}" Content="Exporter les rapports…"
                                    Command="{Binding ExportCommand}" MinHeight="{StaticResource TargetSize}" />
                         <ui:Button Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon DarkTheme20}"
@@ -103,6 +106,16 @@
                         <TextBlock Style="{StaticResource TextCaption}" Margin="16,0,0,0" VerticalAlignment="Center" MaxWidth="420"
                                    Text="{Binding ProjectDir}" ToolTip="{Binding ProjectDir}" />
                         <TextBlock Style="{StaticResource TextCaption}" Margin="16,0,0,0" VerticalAlignment="Center" Text="{Binding AnalysedAt}" />
+                        <!-- Dernière revue IA : lien vers son rapport -->
+                        <Button Style="{StaticResource RowButton}" Padding="6,2" Margin="12,0,0,0" VerticalAlignment="Center"
+                                Command="{Binding ShowAiReportCommand}" ToolTip="{Binding AiReportTitle}"
+                                Visibility="{Binding HasAiReview, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="{Binding AiSummary}" />
+                                <ui:SymbolIcon Margin="4,0,0,0" Symbol="Open16" Foreground="{DynamicResource BrushAccent}"
+                                               Visibility="{Binding HasAiReport, Converter={StaticResource BoolToVisibility}}" />
+                            </StackPanel>
+                        </Button>
                         <Border Margin="16,0,0,0" Style="{StaticResource Banner}" Padding="6,2" VerticalAlignment="Center"
                                 Visibility="{Binding CacheIsStale, Converter={StaticResource BoolToVisibility}}" ToolTip="{Binding CacheWarning}">
                             <StackPanel Orientation="Horizontal">
@@ -382,6 +395,27 @@
                             </ScrollViewer>
                         </DockPanel>
                     </Border>
+
+                    <!-- ============ Rapport de revue IA : volet sur la 3D, la liste reste cliquable -->
+                    <Border Grid.Row="0" Grid.RowSpan="2" Margin="{StaticResource SpaceM}" Background="{DynamicResource BrushSurface}"
+                            BorderBrush="{DynamicResource BrushDivider}" BorderThickness="1" CornerRadius="{StaticResource RadiusCard}"
+                            Visibility="{Binding IsAiReportOpen, Converter={StaticResource BoolToVisibility}}">
+                        <DockPanel>
+                            <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BrushDivider}" BorderThickness="0,0,0,1" Padding="16,8,8,8">
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                        <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon Open20}" Content="Ouvrir le fichier"
+                                                   Command="{Binding OpenAiReportFileCommand}" MinHeight="{StaticResource TargetSize}" />
+                                        <ui:Button Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss20}"
+                                                   Command="{Binding CloseAiReportCommand}" ToolTip="Fermer le rapport (Échap)"
+                                                   AutomationProperties.Name="Fermer le rapport" MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
+                                    </StackPanel>
+                                    <TextBlock Style="{StaticResource TextSection}" Margin="0" VerticalAlignment="Center" Text="{Binding AiReportTitle}" />
+                                </DockPanel>
+                            </Border>
+                            <c:MarkdownViewer Markdown="{Binding AiReportMarkdown}" AutomationProperties.Name="Rapport de revue IA" />
+                        </DockPanel>
+                    </Border>
                 </Grid>
 
                 <GridSplitter Grid.Column="2" Width="4" Background="{DynamicResource BrushDivider}" ResizeDirection="Columns"
@@ -416,6 +450,23 @@
                                 <ComboBox Grid.Column="2" ItemsSource="{Binding StatusChoices}" DisplayMemberPath="Label" SelectedValuePath="Value"
                                           SelectedValue="{Binding StatusFilter}" AutomationProperties.Name="Filtrer par statut" />
                             </Grid>
+                            <!-- Revue IA chargée : filtre par verdict IA et application des faux positifs -->
+                            <Grid Margin="0,0,0,8" Visibility="{Binding HasAiReview, Converter={StaticResource BoolToVisibility}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox ItemsSource="{Binding AiChoices}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                          SelectedValue="{Binding AiFilter}" AutomationProperties.Name="Filtrer par verdict IA" />
+                                <ui:Button Grid.Column="2" Appearance="Secondary" HorizontalAlignment="Stretch" MinHeight="{StaticResource TargetSize}"
+                                           Command="{Binding ApplyAiFalsePositivesCommand}"
+                                           ToolTip="Passe en « Faux positif » les points « À traiter » que l'IA juge faux positifs ; la raison de l'IA devient le commentaire">
+                                    <TextBlock>
+                                        <Run Text="Appliquer les faux positifs (" /><Run Text="{Binding AiFalsePositiveCount, Mode=OneWay}" /><Run Text=")" />
+                                    </TextBlock>
+                                </ui:Button>
+                            </Grid>
                         </StackPanel>
 
                         <!-- Détail du point sélectionné -->
@@ -435,6 +486,21 @@
                                     <StackPanel>
                                         <TextBlock Style="{StaticResource TextSection}" Margin="0,0,0,2" Text="À vérifier" />
                                         <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding Hint}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Margin="0,8,0,0" Padding="8,6" CornerRadius="{StaticResource RadiusControl}" Background="{DynamicResource BrushBackground}"
+                                        Visibility="{Binding HasAi, Converter={StaticResource BoolToVisibility}}">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,4">
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" VerticalAlignment="Center"
+                                                    Command="{Binding DataContext.ShowAiReportCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    Visibility="{Binding DataContext.HasAiReport, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibility}}">
+                                                <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Voir le rapport ↗" />
+                                            </Button>
+                                            <TextBlock Style="{StaticResource TextSection}" Margin="0,0,8,0" VerticalAlignment="Center" Text="Revue IA" />
+                                            <c:AiVerdictTag Kind="{Binding AiKind}" Text="{Binding AiTag}" HorizontalAlignment="Left" />
+                                        </DockPanel>
+                                        <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding AiReason}" />
                                     </StackPanel>
                                 </Border>
                                 <Grid Margin="0,8,0,0" Visibility="{Binding IsResolved, Converter={StaticResource HiddenWhen}}">
@@ -516,7 +582,9 @@
                                             </StackPanel>
                                             <TextBlock Grid.Column="4" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
                                                        Text="{Binding DiffM2, Converter={StaticResource Area}}" />
-                                            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" Style="{StaticResource TextBody}" Text="{Binding Title}" />
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Style="{StaticResource TextBody}" Text="{Binding Title}" />
+                                            <c:AiVerdictTag Grid.Row="1" Grid.Column="4" Margin="8,1,0,1" HorizontalAlignment="Right"
+                                                            Kind="{Binding AiKind}" Text="{Binding AiTag}" ToolTip="{Binding AiReason}" />
                                             <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="4" Style="{StaticResource TextCaption}" Text="{Binding Message}" />
                                         </Grid>
                                     </DataTemplate>
@@ -557,6 +625,102 @@
                     </TextBlock>
                     <ui:Button Margin="0,16,0,0" HorizontalAlignment="Right" Appearance="Secondary" Content="Annuler"
                                Command="{Binding CancelAnalysisCommand}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ================================================================ REVUE IA (superposition) -->
+        <Grid Grid.Row="1" Visibility="{Binding IsAiPanelOpen, Converter={StaticResource BoolToVisibility}}">
+            <Rectangle Fill="{DynamicResource BrushBackground}" Opacity="0.7" />
+            <Border Style="{StaticResource Card}" Background="{DynamicResource BrushSurface}" Width="520"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{StaticResource SpaceXL}">
+                <StackPanel>
+                    <DockPanel>
+                        <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss20}" Padding="4"
+                                   Command="{Binding CloseAiPanelCommand}" ToolTip="Fermer (annule la revue en cours)"
+                                   AutomationProperties.Name="Fermer la revue IA" />
+                        <TextBlock Style="{StaticResource TextSubtitle}" VerticalAlignment="Center">
+                            <Run Text="Revue IA de " /><Run Text="{Binding ProjectName, Mode=OneWay}" />
+                        </TextBlock>
+                    </DockPanel>
+
+                    <!-- Clé API : chiffrée DPAPI, jamais affichée en clair -->
+                    <TextBlock Style="{StaticResource TextSection}" Text="Clé API Anthropic" />
+                    <DockPanel Visibility="{Binding IsReplacingKey, Converter={StaticResource HiddenWhen}}">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" IsEnabled="{Binding IsAiIdle}">
+                            <ui:Button Appearance="Secondary" Content="Remplacer" Command="{Binding ReplaceApiKeyCommand}" MinHeight="{StaticResource TargetSize}" />
+                            <ui:Button Margin="8,0,0,0" Appearance="Transparent" Content="Oublier" Command="{Binding ForgetApiKeyCommand}" MinHeight="{StaticResource TargetSize}"
+                                       ToolTip="Supprime la clé chiffrée de ce poste" />
+                        </StackPanel>
+                        <TextBlock VerticalAlignment="Center" Style="{StaticResource TextBody}">
+                            <Run Text="Clé enregistrée  " /><Run Text="{Binding ApiKeyMasked, Mode=OneWay}" FontFamily="{StaticResource FontMono}" />
+                        </TextBlock>
+                    </DockPanel>
+                    <DockPanel Visibility="{Binding IsReplacingKey, Converter={StaticResource BoolToVisibility}}">
+                        <ui:Button DockPanel.Dock="Right" Margin="8,0,0,0" Appearance="Secondary" Content="Enregistrer"
+                                   Click="SaveApiKey_Click" MinHeight="{StaticResource TargetSize}" />
+                        <ui:PasswordBox x:Name="ApiKeyBox" PlaceholderText="sk-ant-…" FontFamily="{StaticResource FontMono}"
+                                        AutomationProperties.Name="Clé API Anthropic" KeyDown="ApiKeyBox_KeyDown" />
+                    </DockPanel>
+                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                               Text="Chiffrée pour votre compte Windows (DPAPI), jamais écrite en clair ni dans le dépôt." />
+
+                    <!-- Étapes -->
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="24" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="26" /><RowDefinition Height="26" /><RowDefinition Height="26" /><RowDefinition Height="26" />
+                        </Grid.RowDefinitions>
+                        <ui:SymbolIcon Symbol="CheckmarkCircle20" Foreground="{DynamicResource BrushStatusSeen}" Visibility="{Binding AiAnalysisDone, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Grid.Column="1" Style="{StaticResource TextBody}" VerticalAlignment="Center" Text="Analyse sia-check" />
+                        <TextBlock Grid.Column="2" Margin="12,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding AiStepAnalysis}" />
+                        <ui:SymbolIcon Grid.Row="1" Symbol="CheckmarkCircle20" Foreground="{DynamicResource BrushStatusSeen}" Visibility="{Binding AiAnalysisDone, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource TextBody}" VerticalAlignment="Center" Text="Preuves géométriques" />
+                        <TextBlock Grid.Row="1" Grid.Column="2" Margin="12,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding AiStepEvidence}" />
+                        <ui:SymbolIcon Grid.Row="2" Symbol="CheckmarkCircle20" Foreground="{DynamicResource BrushStatusSeen}" Visibility="{Binding AiEstimateDone, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource TextBody}" VerticalAlignment="Center" Text="Estimation du coût" />
+                        <TextBlock Grid.Row="2" Grid.Column="2" Margin="12,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding AiStepEstimate}" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource TextBody}" VerticalAlignment="Center">
+                            <Run Text="Rédaction par " /><Run Text="{Binding AiModelLabel, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock Grid.Row="3" Grid.Column="2" Margin="12,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding AiStepWriting}" />
+                    </Grid>
+                    <ProgressBar Margin="0,4,0,0" Height="4" Minimum="0" Maximum="1" Value="{Binding AiProgress}"
+                                 IsIndeterminate="{Binding AiProgressKnown, Converter={StaticResource EqualsTo}, ConverterParameter=False}"
+                                 Visibility="{Binding IsAiWriting, Converter={StaticResource BoolToVisibility}}" />
+
+                    <!-- Coût et confidentialité -->
+                    <TextBlock Margin="0,12,0,0" Style="{StaticResource TextSubtitle}" Text="{Binding AiCostText}"
+                               Visibility="{Binding AiCostText, Converter={StaticResource VisibleWhen}}" />
+                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                               Text="Envoyés à l'API Anthropic : les preuves chiffrées (aires, identifiants de surfaces et de niveaux), pas la géométrie ni le fichier .tgm. Tarif Claude Opus 5.5 : 4 USD par million de jetons en entrée, 20 USD en sortie." />
+
+                    <Border Style="{StaticResource Banner}" BorderBrush="{DynamicResource BrushVerdictError}" Margin="0,12,0,0"
+                            Visibility="{Binding HasAiError, Converter={StaticResource BoolToVisibility}}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" VerticalAlignment="Top" Command="{Binding ShowLogCommand}">
+                                <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Voir le journal" />
+                            </Button>
+                            <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding AiError}" />
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Actions -->
+                    <StackPanel Margin="0,16,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <ui:Button Appearance="Secondary" Content="Annuler" Command="{Binding CancelAiReviewCommand}"
+                                   Visibility="{Binding IsAiRunning, Converter={StaticResource BoolToVisibility}}" MinHeight="{StaticResource TargetSize}" />
+                        <ui:Button Margin="8,0,0,0" Appearance="Primary" Icon="{ui:SymbolIcon Send20}" Content="Envoyer à Claude"
+                                   Command="{Binding ConfirmAiReviewCommand}" MinHeight="{StaticResource TargetSize}"
+                                   Visibility="{Binding IsAwaitingConfirm, Converter={StaticResource BoolToVisibility}}" />
+                        <ui:Button Margin="8,0,0,0" Appearance="Primary" Icon="{ui:SymbolIcon Play20}" Content="Lancer la revue"
+                                   Command="{Binding StartAiReviewCommand}" IsEnabled="{Binding CanStartAiReview}" MinHeight="{StaticResource TargetSize}"
+                                   Visibility="{Binding IsAiIdle, Converter={StaticResource BoolToVisibility}}"
+                                   ToolTip="Analyse, preuves et estimation du coût : rien n'est envoyé à Claude avant votre accord" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </Grid>

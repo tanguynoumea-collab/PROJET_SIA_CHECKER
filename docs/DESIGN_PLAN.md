@@ -250,3 +250,81 @@ C'est la traduction directe du métier, puisque la SIA 416 est une **sommation p
 | Liste triée par écart seul (Phase 2) | Les agrégats « Projet » et « tous niveaux » occupaient le haut de la liste ; ils sont maintenant placés après les points de niveau, qui sont actionnables | 21.10.2026 |
 | Isolement par simple fantôme (Phase 2) | Les étages en fantôme voilaient le niveau isolé, y compris ceux des bâtiments voisins sur un socle commun ; ajout d'une coupe à l'altitude du point isolé | 21.10.2026 |
 | Accent via la surcharge « thème » de WPF UI (Phase 2) | Éclaircissait la pervenche jusqu'au blanc en sombre ; les 4 teintes sont désormais imposées | 21.10.2026 |
+
+---
+
+## Évolution 1.1 — Revue IA (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ **VALIDÉ PAR L'UTILISATEUR** (22.10.2026)
+> Aucun nouveau token : tout reprend §2 (Surface, SurfaceRaised, TextSecondary, verdicts en trait). L'accent reste réservé à « Analyser » dans l'espace de revue ; dans la boîte « Revue IA », seule action visible, « Envoyer à Claude » le prend.
+
+### Règle de lecture
+
+Le verdict IA est une **étiquette contourée avec son libellé**, jamais une pastille pleine (règle §2 : le trait dit le verdict).
+`vrai sujet` → trait VerdictError · `à confirmer` → trait VerdictWarning · `faux positif` et `agrégat` → trait TextSecondary.
+Le sujet (`S1`…) est en mono. Le libellé est toujours écrit : la couleur ne porte jamais seule l'information.
+
+### Zones nouvelles ou modifiées
+
+```
+Barre de commande
+│ L'ORÉE  …\L OREE  analysé 22.10 14:02  [IA 22.10 · 3 sujets ↗]      [▶ Analyser] [✦ Revue IA] [Exporter…] ◐ ⌂ │
+                                          └ lien : ouvre le rapport        └ secondaire : ouvre la boîte Revue IA
+
+Panneau droit — filtres (2e ligne, visible si une revue est chargée)
+│ Règle [Toutes ▾]          Statut [À traiter ▾]  │
+│ Verdict IA [Tous ▾]   [Appliquer les faux positifs (98)] │   bouton secondaire ; ne touche que les points « À traiter »
+
+Ligne de la liste (2e ligne : l'étiquette IA à droite du titre)
+│ ⊘ R3  B03·N00                         1 812,57 │
+│    SEP non sous-classifiée   ╭ S1 · vrai sujet ╮│
+│    SEP 1961,75 m², sous-catégories 149,18 m²     │
+
+Carte Détail (bloc sous « À vérifier », même gabarit)
+│ REVUE IA   ╭ S1 · vrai sujet ╮            Voir le rapport ↗ │
+│ 1943 m² de cette SEP reposent sur l'emprise du sous-sol :   │
+│ dalle sur sous-sol, donc abords SA (SIA 416 §1.2).          │
+
+Rapport — volet posé sur la zone 3D (la liste reste cliquable à droite)
+┌ REVUE IA — L OREE · 22.10.2026 · Claude Opus 5.5 ─────── [Ouvrir le fichier] [✕] ┐
+│  # Revue IA … (markdown rendu : titres, tableaux, listes, gras, code en mono)      │
+│  …défilement…                                                                      │
+└────────────────────────────────────────────────────────────────────────────────────┘
+
+Boîte « Revue IA » — superposition centrée, 520 px, même gabarit que « Analyse en cours »
+┌ Revue IA de L OREE ──────────────────────────────────────────────┐
+│ CLÉ API ANTHROPIC                                                │
+│ Clé enregistrée  sk-ant-…x7Qa            [Remplacer] [Oublier]   │
+│   (sinon : [••••••••••••••] [Enregistrer])                       │
+│   Chiffrée pour votre compte Windows (DPAPI), jamais en clair.   │
+│                                                                  │
+│ ✔ Analyse sia-check            6 090 surfaces                    │
+│ ✔ Preuves géométriques         80 niveaux, 62 SEP                │
+│ ✔ Estimation                   61 200 jetons envoyés             │
+│ ○ Rédaction par Claude Opus 5.5                                  │
+│                                                                  │
+│ Coût estimé : 0,51 – 1,04 USD                                    │
+│ Envoyés à l'API Anthropic : les preuves chiffrées (aires,        │
+│ identifiants), pas la géométrie ni le fichier .tgm.              │
+│                                    [Annuler] [Envoyer à Claude]  │
+└──────────────────────────────────────────────────────────────────┘
+  pendant la rédaction : barre ━━━━○── « ~4 200 / ~13 400 jetons · 1 min 12 s » + [Annuler]
+  à la fin : la boîte se ferme, le rapport s'ouvre, snackbar « Revue terminée · coût réel 0,74 USD »
+```
+
+### États non-nominaux
+
+| Zone | Vide | Chargement | Erreur |
+|---|---|---|---|
+| Barre / filtres / carte | Pas de revue pour ce projet : ni lien, ni filtre, ni bloc (aucun bruit) | — | Fichier de verdicts illisible : ignoré, on cherche le précédent |
+| Boîte Revue IA | Pas de clé : saisie seule, « Lancer » désactivé | Étapes cochées une à une, annulable à chaque étape (le moteur est tué, l'appel API coupé) | Bandeau trait VerdictError avec le message de l'API (clé refusée, quota, réponse tronquée) ; la clé et les résultats précédents sont conservés |
+| Rapport | — | — | Rapport absent à côté des verdicts : lien masqué |
+
+### Choix rejetés
+
+| Proposition | Raison du rejet |
+|---|---|
+| Badge IA en pastille pleine colorée | Viole « remplissage = catégorie » ; se confond avec SUP/SUS |
+| Onglet « Rapport » à la place de la 3D | Perd le lien rapport → point ; le volet laisse la liste active |
+| Clé API dans les paramètres JSON | En clair sur disque ; DPAPI par utilisateur à la place |
+| Appliquer les faux positifs sans condition | Écraserait un « Vu » posé à la main ; on ne touche que « À traiter » |

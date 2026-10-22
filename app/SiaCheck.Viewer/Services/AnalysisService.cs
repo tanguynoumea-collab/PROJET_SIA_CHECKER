@@ -29,6 +29,11 @@ public sealed partial class AnalysisService(string enginePath)
                                          CancellationToken ct) =>
         RunAsync(["-q", projectDir, "--viewer-json", viewerJson], progress, ct);
 
+    /// <summary>Analyse + preuves géométriques de la revue IA (sia_check.preuves), en une seule exécution (4 étapes).</summary>
+    public Task<EngineRun> AnalyseWithEvidenceAsync(string projectDir, string viewerJson, string evidenceJson,
+                                                    IProgress<AnalysisProgress>? progress, CancellationToken ct) =>
+        RunAsync(["-q", projectDir, "--viewer-json", viewerJson, "--preuves", evidenceJson], progress, ct);
+
     public Task<EngineRun> ExportAsync(string projectDir, string outDir, CancellationToken ct) =>
         RunAsync(["-q", projectDir, "--out", outDir], null, ct);
 

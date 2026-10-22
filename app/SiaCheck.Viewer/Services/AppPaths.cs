@@ -21,6 +21,12 @@ public sealed class AppPaths(string roamingRoot, string localRoot)
 
     public string LogFile(string projectDir) => Path.Combine(localRoot, "analyses", $"{Slug(projectDir)}.log");
 
+    /// <summary>Revues IA lancées depuis l'app (rapport, verdicts, preuves) : suivent l'utilisateur, comme les statuts.</summary>
+    public string AiReviewDir(string projectDir) => Path.Combine(roamingRoot, "revue-ia", Slug(projectDir));
+
+    /// <summary>Clé API Anthropic chiffrée (DPAPI, utilisateur courant) : locale, jamais dans le dépôt.</summary>
+    public string ApiKeyFile => Path.Combine(localRoot, "anthropic-key.bin");
+
     /// <summary>Nom lisible + empreinte du chemin complet : deux projets homonymes ne se mélangent pas.</summary>
     public static string Slug(string projectDir)
     {

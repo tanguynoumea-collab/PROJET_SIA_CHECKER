@@ -73,10 +73,13 @@ def test_read_cache_without_vwr(tmp_path):
 
 
 def test_element_id_from_record_header():
-    header = b"\x12\x00\x00\x00\xaa\x00\x00\x00\x04" + struct.pack("<i", 2617) + b"\x04\x01" + b"\x00" * 30
+    # en-tête réel, puis une référence de même forme (conteneur 3) qui ne doit pas être prise pour lui
+    header = (b"\x12\x00\x00\x00\x00\x00\x00\x00\xaa\x00\x00\x00\x04" + struct.pack("<i", 2617) + b"\x04\x01"
+              + b"\x00" * 7 + b"\x5a" * 48 + b"\x00\x00\x00\x00\x01\x00\x00\x00\x03\x00\x00\x00\x04\x52\x00\x00\x00"
+              + b"\x04\x01\x00\x00\x00\x01" + b"\x00" * 10)
     data = header + bag("A_N01_ShellByTgm-1_SpaceByTgm-1_SUP", {"Catégorie SIA": "SUP", "Area": 1.0})
     b = next(g for g in tgm.scan(data) if g.name.endswith("_SUP"))
-    assert b.element_id == 2617
+    assert (b.element_id, b.container_id, b.tgm_id) == (2617, 170, "H170::H2617")
 
 
 # --------------------------------------------------------------------------- export visionneuse

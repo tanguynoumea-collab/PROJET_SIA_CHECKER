@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from sia_check import cli, reader, rules
+from sia_check import cli, reader, rules, treegram
 
 LOREE = Path(os.environ.get(
     "SIA_LOREE_DIR",
@@ -97,3 +97,18 @@ def test_promoter_ifc_only_unknown_codes():
     assert set(res.residuals.rule) == {"A3", "R0"}
     assert set(res.surfaces.category) == {"ST"}
     assert len(res.unknown) == 880 - 80
+
+
+@needs_tgm
+def test_treegram_exports_match_treegram(loree):
+    # Comparé le 22.10.2026 aux exports Treegram 1778-SurfacesNettes / -SurfacesBrutes : mêmes lignes, mêmes
+    # valeurs, même ordre ; s'y ajoutent les 26 SED et 47 SUT que l'export Treegram omet.
+    from sia_check import config
+    cfg = config.load(Path(__file__).resolve().parents[1] / "config.yaml")
+    _, res = loree
+    n, b = treegram.nettes(res, cfg), treegram.brutes(res, cfg)
+    assert len(n) == 3221 + 26 + 47 and len(b) == 160
+    assert n["Catégorie SIA"].value_counts()[["SED", "SUT"]].tolist() == [26, 47]
+    assert n["ID TGM"].iloc[0] == "H170::H2527" and n["ID TGM"].is_unique and n["ID TGM"].notna().all()
+    assert b.Area.sum() == pytest.approx(74518.54, abs=0.01)
+    assert b.Perimeter.sum() == pytest.approx(17233.96, abs=0.01)

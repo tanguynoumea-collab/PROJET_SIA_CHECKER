@@ -91,7 +91,7 @@ Pour chaque nœud qui a des enfants, `aire du nœud = Σ enfants` à 0,05 m² pr
 Le viewer Treegram met en cache, par niveau, les maillages des surfaces SIA :
 `VWR/<dossier>/_Data/<Bât>_<Niv>-SiaSurface.3drtgm`, plus des variantes `…SiaSurface1/2.3drtgm`. Il y a 80 jeux pour L'Orée. Le décodeur est `src/sia_check/geom.py`, où le format est détaillé.
 
-- **Lien surface → maillage** : chaque objet du fichier porte l'identifiant interne de l'élément du `.tgm`. Cet identifiant se lit dans l'en-tête d'enregistrement qui précède chaque sac de propriétés : `aa 00 00 00 04 <int32 id> 04 01` (`tgm.Bag.element_id`).
+- **Lien surface → maillage** : chaque objet du fichier porte l'identifiant interne de l'élément du `.tgm`. Cet identifiant se lit dans l'en-tête d'enregistrement qui précède chaque sac de propriétés : `<int32 conteneur> 04 <int32 id> 04 01 00×7` (`tgm.Bag.element_id`, `container_id`). Le couple forme l'« ID TGM » des exports Excel Treegram, `H<conteneur>::H<id>` (L'Orée : conteneur 170 pour toutes les surfaces SIA).
 - **Couverture L'Orée** :
   - 4 890 / 4 890 surfaces élémentaires ont une géométrie ;
   - 707 / 1 200 totaux de niveau en ont une ;

@@ -12,6 +12,10 @@ Colonnes produites (SURFACE_COLUMNS) :
     elevation  altitude du niveau si la source la donne
     source     chemin du fichier lu
     element_id identifiant interne Treegram (.tgm) : clé de la géométrie du cache VWR
+    tgm_id     « ID TGM » des exports Excel Treegram (H<conteneur>::H<élément>)
+    perimeter, gross_height, dx, dy, bedrooms
+               propriétés Treegram reprises telles quelles (sources.tgm.extra_properties) ;
+               vides pour l'IFC
 
 Seul ce module touche à IfcOpenShell et au format `.tgm`.
 """
@@ -30,8 +34,10 @@ from .config import Config
 
 log = logging.getLogger(__name__)
 
+EXTRA_COLUMNS = {"perimeter": "Perimeter", "gross_height": "GrossHeight", "dx": "DeltaX", "dy": "DeltaY",
+                 "bedrooms": "Bedrooms"}
 SURFACE_COLUMNS = ["id", "building", "level", "category", "area", "kind", "room_type", "lot", "elevation", "source",
-                   "element_id"]
+                   "element_id", "tgm_id", *EXTRA_COLUMNS]
 
 
 class ReadError(RuntimeError):
@@ -64,7 +70,8 @@ def read(path: str | Path, cfg: Config) -> pd.DataFrame:
 def _frame(rows: list[dict], path: Path) -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=SURFACE_COLUMNS)
     df["source"] = str(path)
-    df["area"] = pd.to_numeric(df["area"], errors="coerce")
+    for c in ["area", *EXTRA_COLUMNS]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
     return df
 
 
@@ -88,6 +95,7 @@ def read_tgm(path: Path, cfg: Config) -> pd.DataFrame:
     lot_p = src.get("lot_property", "ApartmentByTgm")
     name_re = re.compile(src.get("name_pattern", r"^(?P<building>[^_]+)_(?P<level>[^_]+)_"))
     lot_re = re.compile(src["lot_pattern"]) if src.get("lot_pattern") else None
+    extra = EXTRA_COLUMNS | (src.get("extra_properties") or {})
 
     bags = [g for g in tgm.scan(path.read_bytes()) if cat_p in g.props]
     if not bags:
@@ -97,7 +105,8 @@ def read_tgm(path: Path, cfg: Config) -> pd.DataFrame:
     for g in bags:
         code = str(g.props[cat_p]).strip()
         m = name_re.match(g.name)
-        row = {"category": code, "area": g.props.get(area_p), "room_type": g.props.get(type_p), "element_id": g.element_id}
+        row = {"category": code, "area": g.props.get(area_p), "room_type": g.props.get(type_p),
+               "element_id": g.element_id, "tgm_id": g.tgm_id} | {c: g.props.get(p) for c, p in extra.items()}
         if m is None:
             if block < 0 or code in block_codes:
                 block, block_codes = block + 1, set()

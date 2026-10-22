@@ -15,6 +15,7 @@ python -m venv .venv
 sia-check model.ifc --config config.yaml --out report/
 sia-check "L OREE.tgm" --config config.yaml --out report/ --project "L'Orée"
 sia-check model.ifc --all --verbose          # console seule, contrôles OK compris, chaque surface lue
+sia-check "L OREE.tgm" --treegram exports/   # exports au gabarit Excel Treegram, depuis le .tgm
 ```
 
 - Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet) ou `.ifc` (mapping dans `config.yaml > sources.ifc`).
@@ -27,6 +28,12 @@ sia-check model.ifc --all --verbose          # console seule, contrôles OK comp
 - **xlsx** : onglets *Résidus* (contrôles hors OK, écart décroissant), *Surfaces* (toutes les surfaces lues), *Codes inconnus*, *Synthèse* (par catégorie, puis aire par bâtiment), *Contrôles* (tous les contrôles, OK compris), *Ratios*.
 - **html** : même contenu, lisible sans Excel, avec un tableau par niveau aux couleurs de la légende SIA 416 (surfaces externes hachurées).
 - **json** : pour n8n : `exit_code`, `counts` par verdict, `residuals` (hors OK), `unknown_codes`, `ratios`.
+
+## Exports au gabarit Treegram (`--treegram`)
+
+`<projet>-SurfacesNettes.xlsx` (une ligne par local) et `<projet>-SurfacesBrutes.xlsx` (SP et SEP par niveau), colonnes et ordre des exports Excel de Treegram, clé `ID TGM` (`H<conteneur>::H<élément>`, lu dans le `.tgm`).
+
+Sur L'Orée, les lignes, les valeurs et l'ordre sont identiques à l'export Treegram du 22.10.2026, à une différence près : celui-ci omet les surfaces SED (26 coursives) et SUT (47 commerces), que `--treegram` garde. Les codes ignorés (SPT…) et USPI n'y figurent pas.
 
 ## Ratios informatifs
 
@@ -101,6 +108,7 @@ src/sia_check/
   rules.py    règles, fonctions pures sur le DataFrame
   ratios.py   ratios informatifs SIA 416 / USPI
   viewer.py   fichier pour SIA Check Viewer (--viewer-json)
+  treegram.py exports au gabarit Excel Treegram (--treegram)
   preuves.py  preuves géométriques de la revue IA (--preuves, shapely)
   cli.py      ligne de commande
 tests/        jeu synthétique (tests/data/synth.csv) + intégration L'Orée (ignorée si le projet est absent)

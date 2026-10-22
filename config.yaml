@@ -148,6 +148,8 @@ sources:
     # bâtiment et niveau sont lus dans le préfixe du nom des surfaces élémentaires
     name_pattern: '^(?P<building>[^_]+)_(?P<level>[^_]+)_'
     lot_pattern: '^(?P<lot>[^_]+_[^_]+_Apart-\d+)_'
+    # propriétés reprises telles quelles pour les exports (colonne : propriété Treegram)
+    extra_properties: {perimeter: Perimeter, gross_height: GrossHeight, dx: DeltaX, dy: DeltaY, bedrooms: Bedrooms}
   ifc:
     classes: [IfcSlab, IfcSpace, IfcBuildingElementProxy]
     category: {attribute: Name}            # ou {pset: ..., property: ...}

@@ -11,8 +11,11 @@ Structure observée (rétro-ingénierie sur L'Orée, Treegram juin 2026 — docs
     int64 len, nom de l'élément UTF-8
 
 Chaque sac est précédé (à moins de 200 octets) d'un en-tête d'enregistrement contenant
-l'identifiant interne de l'élément : `aa 00 00 00 04 <int32 id> 04 01`. Cet identifiant
-est celui que référencent les géométries du cache VWR (geom.py).
+l'identifiant du conteneur et l'identifiant interne de l'élément :
+`<int32 conteneur> 04 <int32 id> 04 01 00×7`. L'identifiant est celui que référencent les géométries
+du cache VWR (geom.py) ; le couple donne l'« ID TGM » des exports Excel Treegram,
+`H<conteneur>::H<id>` (ex. `H170::H2527` sur L'Orée, dont les surfaces SIA sont toutes dans le
+conteneur 170).
 
 Chaque sac est repéré en balayant le fichier à la recherche d'un compteur plausible
 suivi d'une propriété décodable. Le format pouvant changer avec Treegram, toute
@@ -29,7 +32,9 @@ from typing import Iterator
 STR, DBL, INT = 0x02, 0x04, 0x08
 NAME_RE = re.compile(rb"[\x20-\x7e\xc2-\xf4][\x20-\x7e\x80-\xbf\xc2-\xf4]{0,80}")
 BAG_START_RE = re.compile(rb"[\x01-\x3c]\x00\x00\x00[\x01-\x50]\x00\x00\x00")
-RECORD_ID_RE = re.compile(rb"\xaa\x00\x00\x00\x04(....)\x04\x01", re.S)
+# Les 7 octets nuls qui suivent distinguent l'en-tête des références `<int32> 04 <int32> 04 01 00 00 00 01`
+# qui le suivent dans l'enregistrement.
+RECORD_ID_RE = re.compile(rb"(....)\x04(....)\x04\x01\x00\x00\x00\x00\x00\x00\x00", re.S)
 MAX_PROPS, MAX_PROP_NAME, MAX_STR, MAX_ELEMENT_NAME = 60, 80, 4096, 200
 RECORD_HEADER_WINDOW = 200
 
@@ -40,14 +45,25 @@ class Bag:
     name: str
     props: dict[str, object]
     element_id: int | None = None  # identifiant interne Treegram (lien vers la géométrie)
+    container_id: int | None = None
+
+    @property
+    def tgm_id(self) -> str | None:
+        """Identifiant des exports Excel Treegram (colonne « ID TGM »)."""
+        if self.element_id is None or self.container_id is None:
+            return None
+        return f"H{self.container_id}::H{self.element_id}"
 
 
-def _element_id(b: bytes, start: int) -> int | None:
+def _record_ids(b: bytes, start: int) -> tuple[int | None, int | None]:
+    """(conteneur, élément) du dernier en-tête d'enregistrement avant le sac."""
     window = b[max(0, start - RECORD_HEADER_WINDOW) : start]
     last = None
     for last in RECORD_ID_RE.finditer(window):
         pass
-    return struct.unpack("<i", last.group(1))[0] if last else None
+    if last is None:
+        return None, None
+    return struct.unpack("<i", last.group(1))[0], struct.unpack("<i", last.group(2))[0]
 
 
 def _prop(b: bytes, i: int) -> tuple[str, object, int] | None:
@@ -105,7 +121,8 @@ def read_bag(b: bytes, start: int) -> tuple[Bag, int] | None:
     name = b[i + 8 : i + 8 + nl]
     if not NAME_RE.fullmatch(name):
         return None
-    return Bag(start, name.decode("utf-8", "replace"), props, _element_id(b, start)), i + 8 + nl
+    container, element = _record_ids(b, start)
+    return Bag(start, name.decode("utf-8", "replace"), props, element, container), i + 8 + nl
 
 
 def scan(b: bytes) -> Iterator[Bag]:

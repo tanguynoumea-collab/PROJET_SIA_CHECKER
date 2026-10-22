@@ -3,7 +3,8 @@
 Codes de sortie : 0 aucun écart au-delà de la tolérance, 1 écarts, 2 erreur de lecture/config/écriture.
 Résultats en console ; avec --out, rapports <projet>_<date>.xlsx / .html / .json ;
 avec --viewer-json, fichier pour SIA Check Viewer (surfaces, maillages du cache VWR, points liés) ;
-avec --preuves, preuves géométriques de la revue IA (sia_check.preuves, shapely requis).
+avec --preuves, preuves géométriques de la revue IA (sia_check.preuves, shapely requis) ;
+avec --treegram, exports au gabarit Excel Treegram (<projet>-SurfacesNettes.xlsx / -SurfacesBrutes.xlsx).
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -18,7 +19,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import config as config_mod
-from . import geom, reader, report, rules, viewer
+from . import geom, reader, report, rules, treegram, viewer
 
 log = logging.getLogger("sia_check")
 
@@ -31,6 +32,7 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--out", type=Path, help="dossier des rapports xlsx, html et json")
     ap.add_argument("--viewer-json", type=Path, help="fichier JSON pour SIA Check Viewer (un seul projet)")
     ap.add_argument("--preuves", type=Path, help="preuves géométriques pour la revue IA (avec --viewer-json)")
+    ap.add_argument("--treegram", type=Path, help="dossier des exports au gabarit Excel Treegram (depuis le .tgm)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -99,6 +101,9 @@ def main(argv: list[str] | None = None) -> int:
             rep = report.build(result, cfg, project, models)
             for p in report.write_all(rep, args.out):
                 log.info("rapport écrit : %s", p)
+        if args.treegram:
+            for p in treegram.write(result, cfg, args.treegram, project):
+                log.info("export Treegram écrit : %s", p)
         if args.viewer_json:
             log.info("ÉTAPE 3/%d géométrie (cache VWR)", steps)
             cache = geom.read_cache(models[0].parent) if models[0].suffix.lower() == ".tgm" else geom.Cache()

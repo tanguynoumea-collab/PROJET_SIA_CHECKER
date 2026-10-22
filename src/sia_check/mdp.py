@@ -119,8 +119,11 @@ def brutes_records(result, cfg, kinds, pid) -> list[dict]:
 
 
 def nettes_records(result, cfg, pid) -> list[dict]:
+    s = result.surfaces   # affectation : correction « affecter » (corrections.py)
+    aff = dict(zip(s["id"].astype(str), s["affectation"])) if "affectation" in s else {}
     return [{"ID Projet": Formula(PROJECT_ID, pid), "Categorie SIA416": r["Catégorie SIA"],
-             "Partie d'Ouvrage": r["BuildingByTgm"], "Affectation": None, "Etage": r["StoreyByTgm"],
+             "Partie d'Ouvrage": r["BuildingByTgm"], "Affectation": _blank(aff.get(str(r["Object.Name"]))),
+             "Etage": r["StoreyByTgm"],
              "Appartement_Unite": _blank(r["ApartmentByTgm"]), "Nºlocal": _blank(r["ID TGM"]),
              "Nom du local": _blank(r["Type"]), "m2": _blank(r["Area"])}
             for r in treegram.nettes(result, cfg).to_dict("records")]

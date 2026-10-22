@@ -255,7 +255,7 @@ def _judge_sum(c: dict, cfg: Config) -> dict | None:
     rule = spec.get("rule") or f"Σ{code}"
     parts = _breakdown(c["parts"])
     if own is None:
-        if spec.get("parent") is None and _exceeds(-obtained, 0, cfg):
+        if spec.get("parent") is None and not spec.get("absent_ok") and _exceeds(-obtained, 0, cfg):
             return _row(bld, lvl, "R4", code, 0.0, obtained, "ERREUR",
                         f"{_m2(obtained)} m² classés ({parts}) sans aucune {code} au même niveau.",
                         hint=f"Créer la {code} du niveau dans Treegram, ou vérifier que ces surfaces ne sont pas "

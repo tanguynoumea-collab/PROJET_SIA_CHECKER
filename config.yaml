@@ -5,7 +5,9 @@
 #   rule       : identifiant de la règle de sommation portée par ce parent ;
 #   optional   : sous-catégorie rarement fournie ; son absence rend un résidu positif « implicite » ;
 #   implicit_max_rel : résidu relatif max. toléré comme « implicite » (hypothèse projet, pas de valeur dans la SIA 416) ;
-#   alias_of   : code normalisé vers un autre ; ignore : exclu des sommes sans être « inconnu ».
+#   alias_of   : code normalisé vers un autre ; ignore : exclu des sommes sans être « inconnu » ;
+#   absent_ok  : racine que la source ne fournit pas (ST) ; ses sous-catégories sans elle, ex. des abords SA
+#                créés par une correction, ne sont pas un R4.
 categories:
   # SIA 416 §2 — surface de plancher
   SP:   {family: sia, parent: null, children: [SN, SC], rule: R1}
@@ -28,7 +30,7 @@ categories:
   SECP: {family: sia, parent: SEC}                                          # §3.2.1
   SECN: {family: sia, parent: SEC}                                          # §3.2.2
   # SIA 416 §1 — surface de terrain (absente de Treegram à ce jour)
-  ST:   {family: sia, parent: null, children: [SB, SA], rule: R0}
+  ST:   {family: sia, parent: null, children: [SB, SA], rule: R0, absent_ok: true}
   SB:   {family: sia, parent: ST}                                           # §1.1
   SA:   {family: sia, parent: ST, children: [SAA, SAN], rule: R0}           # §1.2
   SAA:  {family: sia, parent: SA}                                           # §1.2.1

@@ -5,7 +5,10 @@ Résultats en console ; avec --out, rapports <projet>_<date>.xlsx / .html / .jso
 avec --viewer-json, fichier pour SIA Check Viewer (surfaces, maillages du cache VWR, points liés) ;
 avec --preuves, preuves géométriques de la revue IA (sia_check.preuves, shapely requis) ;
 avec --treegram, exports au gabarit Excel Treegram (<projet>-SurfacesNettes.xlsx / -SurfacesBrutes.xlsx) ;
-avec --mdp, tableau MDP HRS rempli (sia_check.mdp, gabarit vierge livré ou --mdp-template).
+avec --mdp, tableau MDP HRS rempli (sia_check.mdp, gabarit vierge livré ou --mdp-template) ;
+avec --corrections, journal de corrections appliqué avant les contrôles (sia_check.corrections) : rapports,
+exports et visionneuse portent sur les surfaces corrigées ; bilan avant / après en console et, avec --out,
+dans <projet>_<date>_corrections.json.
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -20,7 +23,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import config as config_mod
-from . import geom, mdp, reader, report, rules, treegram, viewer
+from . import corrections, geom, mdp, reader, report, rules, treegram, viewer
 
 log = logging.getLogger("sia_check")
 
@@ -34,6 +37,7 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--viewer-json", type=Path, help="fichier JSON pour SIA Check Viewer (un seul projet)")
     ap.add_argument("--preuves", type=Path, help="preuves géométriques pour la revue IA (avec --viewer-json)")
     ap.add_argument("--treegram", type=Path, help="dossier des exports au gabarit Excel Treegram (depuis le .tgm)")
+    ap.add_argument("--corrections", type=Path, help="journal de corrections (JSON) à appliquer")
     ap.add_argument("--mdp", type=Path, help="tableau MDP HRS à écrire (fichier .xlsx)")
     ap.add_argument("--mdp-template", type=Path, help="gabarit MDP (défaut : gabarit vierge livré) ; ses tableaux sont remplacés")
     ap.add_argument("--project-id", help="ID projet HRS écrit dans InfosProjet (défaut : celui du gabarit)")
@@ -75,6 +79,17 @@ def _print(result: rules.Result, show_all: bool) -> None:
     print("\n" + " · ".join(f"{v} {n}" for v, n in counts.items()))
 
 
+def _print_corrections(applied: corrections.Applied, before: rules.Result, after: rules.Result) -> None:
+    lg = applied.log
+    counts = " · ".join(f"{k} {v}" for k, v in lg.application.value_counts().items())
+    print(f"\nCorrections : {len(lg)} au journal · {counts}")
+    for r in lg[lg.application != corrections.SKIPPED].itertuples():
+        detail = f"{r.surfaces} surface(s), {r.m2:.2f} m²" if r.application == corrections.APPLIED else r.raison
+        print(f"  {r.id:<12} {r.op:<10} {r.sujet or '':<5} {r.application:<18} {detail}")
+    b, a = corrections.counts(before), corrections.counts(after)
+    print("Verdicts avant → après : " + " · ".join(f"{v} {b[v]} → {a[v]}" for v in rules.VERDICTS))
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
@@ -91,20 +106,34 @@ def main(argv: list[str] | None = None) -> int:
         steps = 4 if args.preuves else 3
         log.info("ÉTAPE 1/%d lecture des surfaces", steps)
         frames = [reader.read(p, cfg) for p in models]
-    except (OSError, config_mod.ConfigError, reader.ReadError) as ex:
+        journal = corrections.load(args.corrections) if args.corrections else None
+    except (OSError, config_mod.ConfigError, reader.ReadError, corrections.JournalError) as ex:
         log.error("%s", ex)
         return 2
     df = pd.concat(frames, ignore_index=True)
     log.info("ÉTAPE 2/%d contrôles SIA 416", steps)
-    result = rules.run(df, cfg)
+    applied = before = None
+    if journal is not None:
+        try:
+            applied, before, result = corrections.run(df, journal, cfg)
+        except corrections.JournalError as ex:
+            log.error("%s", ex)
+            return 2
+    else:
+        result = rules.run(df, cfg)
     if not args.quiet:
         _print(result, args.all)
+    if applied is not None:
+        _print_corrections(applied, before, result)
     project = args.project or models[0].stem
     try:
         if args.out:
             rep = report.build(result, cfg, project, models)
             for p in report.write_all(rep, args.out):
                 log.info("rapport écrit : %s", p)
+            if applied is not None:
+                p = corrections.write_summary(applied, before, result, args.out / f"{rep.stem}_corrections.json")
+                log.info("bilan des corrections écrit : %s", p)
         if args.treegram:
             for p in treegram.write(result, cfg, args.treegram, project):
                 log.info("export Treegram écrit : %s", p)

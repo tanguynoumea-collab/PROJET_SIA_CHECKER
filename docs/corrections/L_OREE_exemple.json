@@ -1,0 +1,17 @@
+{
+ "version": 1,
+ "projet": "L OREE",
+ "corrections": [
+  {"id": "s2-toitures", "op": "exclure", "sujet": "S2", "origine": "ia", "statut": "acceptée",
+   "cible": {"selection": {"category": "SEP", "level": "Toiture", "kind": "node"}},
+   "explication": "Toiture non accessible : ni SP ni SEP (SIA 416 §3) ; Treegram la compte déjà en SPT.",
+   "auteur": "exemple", "date": "2026-10-22"},
+  {"id": "s1-b03-n00", "op": "découper", "sujet": "S1", "origine": "manuel", "statut": "acceptée",
+   "cible": {"ids": ["B03_N00_SEP#total"]}, "vers": "SA", "aire": 1800.0,
+   "explication": "Dalle sur sous-sol au contact du terrain : abords SA (SIA 416 §1.2). Aire à remplacer par le tracé.",
+   "auteur": "exemple", "date": "2026-10-22"},
+  {"id": "affectation-gaines", "op": "affecter", "origine": "règle", "statut": "proposée",
+   "cible": {"selection": {"room_type": "Gaine"}}, "affectation": "Gaines",
+   "explication": "Proposition : Type Treegram « Gaine »."}
+ ]
+}

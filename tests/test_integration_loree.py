@@ -137,3 +137,24 @@ def test_mdp_from_blank_template(loree, tmp_path):
     assert sum(1 for r in env if r[1] == mdp.FACADE) == 80
     info = {r[1]: r[2] for r in wb["InfosProjet"].iter_rows(min_row=2, values_only=True)}
     assert info["Nbr de bâtiments (lots)"] == 9 and info["Nbr total de logements"] == 315
+
+
+@needs_tgm
+def test_corrections_s1_s2(loree):
+    # S2 : SEP des niveaux Toiture exclues ; S1 : 1 800 m² de la SEP B03 N00 (dalle sur sous-sol) découpés en SA.
+    from sia_check import config, corrections
+    cfg = config.load(Path(__file__).resolve().parents[1] / "config.yaml")
+    df, _ = loree
+    journal = {"version": 1, "corrections": [
+        {"id": "s2", "op": "exclure", "statut": "acceptée", "sujet": "S2",
+         "cible": {"selection": {"category": "SEP", "level": "Toiture", "kind": "node"}}},
+        {"id": "s1-b03", "op": "découper", "statut": "acceptée", "sujet": "S1", "vers": "SA", "aire": 1800.0,
+         "cible": {"ids": ["B03_N00_SEP#total"]}},
+    ]}
+    applied, before, after = corrections.run(df, journal, cfg)
+    assert applied.log.set_index("id").loc["s2", "surfaces"] == 9
+    toit = lambda r: {x.rule for x in r.failing.itertuples() if x.level == "Toiture"}  # noqa: E731
+    assert {"R3", "A2"} <= toit(before) and not toit(after) & {"R3", "A2"}
+    r3 = lambda r: r.residuals.query("rule == 'R3' and building == 'B03' and level == 'N00'").diff_m2.iloc[0]  # noqa: E731
+    assert r3(before) - r3(after) == pytest.approx(1800.0)
+    assert not (after.residuals.query("rule == 'R4' and category == 'ST'")).size

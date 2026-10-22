@@ -17,6 +17,7 @@ sia-check "L OREE.tgm" --config config.yaml --out report/ --project "L'Orée"
 sia-check model.ifc --all --verbose          # console seule, contrôles OK compris, chaque surface lue
 sia-check "L OREE.tgm" --treegram exports/   # exports au gabarit Excel Treegram, depuis le .tgm
 sia-check "L OREE.tgm" --mdp MDP-1778-Loree.xlsx --project-id 1778   # tableau MDP HRS rempli
+sia-check "L OREE.tgm" --corrections journal.json --out report/ --mdp MDP.xlsx   # surfaces corrigées
 ```
 
 - Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet) ou `.ifc` (mapping dans `config.yaml > sources.ifc`).
@@ -51,6 +52,23 @@ Le tableau MDP HRS, rempli depuis le `.tgm` sans copier-coller. Le gabarit par d
 | InfosProjet | nombre de bâtiments, d'étages, de logements (par nombre de chambres) et de chambres |
 
 Restent vides, faute de source dans le `.tgm` : l'affectation, les typologies, le nombre de pièces, les cages d'escalier, la forme des bâtiments et les champs administratifs. Le reste du classeur est recopié tel quel : listes déroulantes, feuille « Listes formulaire », documents. Le tableau croisé de la feuille SurfacesEnveloppe n'est pas recalculé. Les filtres actifs sont levés, les formules gardent leur valeur en cache et sont recalculées à l'ouverture.
+
+## Corrections (`--corrections`)
+
+Un journal JSON de corrections est appliqué aux surfaces lues avant les contrôles. Le `.tgm` n'est jamais modifié. Rapports, exports (`--treegram`, `--mdp`) et visionneuse portent alors sur les surfaces corrigées. Le format est décrit dans `src/sia_check/corrections.py`, et `docs/corrections/L_OREE_exemple.json` en donne un exemple (S1, S2).
+
+| Opération | Effet |
+| --- | --- |
+| `reclasser` | change la catégorie des cibles (`vers`) |
+| `exclure` | retire les cibles des sommes et des exports |
+| `découper` | fait passer `aire` m² d'une surface dans une nouvelle surface de catégorie `vers` (ex. SEP → SA), au même niveau |
+| `ajuster` | fixe l'aire des cibles |
+| `affecter` | renseigne l'affectation (tableau MDP) |
+
+- La cible se donne par identifiants de surface, par ID TGM ou par sélection (bâtiment, niveau, catégorie, sorte, type, lot).
+- Seules les corrections au statut « acceptée » sont appliquées. Une correction inapplicable (cible introuvable, champ manquant) est signalée et laissée de côté, jamais appliquée à moitié.
+- Quand une surface élémentaire change de catégorie ou d'aire, le total Treegram de son niveau est décalé d'autant.
+- Le bilan s'affiche en console : chaque correction, puis les verdicts avant → après. Avec `--out`, il est aussi écrit dans `<projet>_<date>_corrections.json`, contrôle par contrôle (résolu, réduit, nouveau…).
 
 ## Ratios informatifs
 
@@ -127,6 +145,7 @@ src/sia_check/
   viewer.py   fichier pour SIA Check Viewer (--viewer-json)
   treegram.py exports au gabarit Excel Treegram (--treegram)
   mdp.py      tableau MDP HRS (--mdp)
+  corrections.py  journal de corrections, application, avant / après (--corrections)
   xlsx_tables.py  remplissage des tableaux d'un classeur sans perte (validations, tableaux croisés)
   preuves.py  preuves géométriques de la revue IA (--preuves, shapely)
   cli.py      ligne de commande

@@ -216,8 +216,138 @@ def build(doc: dict, cfg: Config) -> dict:
 
 
 def _propose(subject: dict, correction: dict, m2: float) -> None:
-    subject["corrections"].append({**correction, "sujet": subject["id"], "origine": "règle", "statut": "proposée"})
-    subject["m2"] += float(correction.get("aire") or m2 or 0)
+    """`m2` : surface en jeu (l'aire découpée ou exclue, sinon l'aire entière de la cible)."""
+    m2 = round(float(correction.get("aire") or m2 or 0), 2)
+    subject["corrections"].append({**correction, "m2": m2, "sujet": subject["id"], "origine": "règle",
+                                   "statut": "proposée"})
+    subject["m2"] += m2
+
+
+# --------------------------------------------------------------------------- revue IA
+
+DECISIONS = ("garder", "modifier", "rejeter", "ajouter")
+EDITABLE = ("op", "cible", "vers", "aire", "affectation", "explication")
+REJECTED = "rejetée"
+
+
+def apply_review(base: dict, review: dict, surface_ids: set[str] | None = None) -> dict:
+    """Sujets réorientés par la revue IA (fichier verdicts, bloc `sujets`).
+
+    Format du bloc (voir .claude/skills/revue-ia/SKILL.md, étape 6) :
+
+        "sujets": {"S1": {"titre", "certitude", "action": "corriger|aucune|à vérifier", "explication",
+                          "base": ["abords"], "par_defaut": "garder|rejeter",
+                          "decisions": [{"id", "decision": "garder|modifier|rejeter|ajouter", "explication",
+                                         + champs modifiés ou correction complète pour « ajouter »}]}}
+
+    - Les points dont le verdict IA cite un sujet S… passent dans ce sujet ; les autres restent dans leur
+      sujet de base (faux positifs, agrégats…).
+    - Une proposition de base décidée par l'IA passe dans son sujet, `origine` « ia » ; `par_defaut`
+      s'applique aux propositions des sujets `base` que les décisions ne citent pas.
+    - « rejeter » garde la correction au statut « rejetée », pour la traçabilité ; « modifier » change
+      les seuls champs donnés (`EDITABLE`) et retire un tracé devenu faux (`a_retracer`) ;
+      « ajouter » crée une correction complète.
+    - Une décision inapplicable (id inconnu, correction incomplète, cible absente) est écartée et listée
+      dans `revue.problemes` ; le reste de la revue s'applique.
+    Les corrections restent « proposée » : l'utilisateur les accepte.
+    """
+    from . import corrections   # évite l'import circulaire au chargement
+
+    proposals = {c["id"]: (s["id"], c) for s in base["subjects"] for c in s["corrections"]}
+    used: set[str] = set()
+    problems: list[dict] = []
+    ai_subjects = review.get("sujets") or {}
+    verdicts = review.get("points") or {}
+
+    def problem(sid, did, why):
+        problems.append({"sujet": sid, "id": did, "raison": why})
+
+    def target_ok(c) -> bool:
+        ids = (c.get("cible") or {}).get("ids")
+        return surface_ids is None or not ids or all(str(i) in surface_ids for i in ids)
+
+    out_ai = []
+    for sid, spec in ai_subjects.items():
+        decided: list[dict] = []
+        for d in spec.get("decisions") or []:
+            did, kind = d.get("id"), d.get("decision")
+            if kind not in DECISIONS:
+                problem(sid, did, f"décision inconnue « {kind} »")
+                continue
+            if kind == "ajouter":
+                if not did or did in proposals or did in used:
+                    problem(sid, did, "« ajouter » demande un id nouveau")
+                    continue
+                c = {k: v for k, v in d.items() if k != "decision"}
+                why = corrections._problem(c)
+                if why or not target_ok(c):
+                    problem(sid, did, why or "cible inconnue")
+                    continue
+                decided.append({**c, "sujet": sid, "origine": "ia", "statut": "proposée", "revue": "ajoutée"})
+                used.add(did)
+                continue
+            if did not in proposals:
+                problem(sid, did, "proposition inconnue")
+                continue
+            if did in used:
+                problem(sid, did, "proposition décidée deux fois")
+                continue
+            c = dict(proposals[did][1])
+            if kind == "modifier":
+                changes = {k: v for k, v in d.items() if k in EDITABLE}
+                if "aire" in changes and c.get("polygone"):
+                    c.pop("polygone")
+                    c["a_retracer"] = True
+                c.update(changes)
+                c["base"] = {k: proposals[did][1].get(k) for k in changes}
+                why = corrections._problem(c)
+                if why or not target_ok(c):
+                    problem(sid, did, why or "cible inconnue")
+                    continue
+            elif d.get("explication"):
+                c["explication"] = d["explication"]
+            c.update(sujet=sid, origine="ia", revue=kind, statut=REJECTED if kind == "rejeter" else "proposée")
+            decided.append(c)
+            used.add(did)
+        default = spec.get("par_defaut")
+        if default in ("garder", "rejeter"):
+            for bid in spec.get("base") or []:
+                for c in next((s["corrections"] for s in base["subjects"] if s["id"] == bid), []):
+                    if c["id"] not in used:
+                        decided.append({**c, "sujet": sid, "origine": "ia", "revue": default,
+                                        "statut": REJECTED if default == "rejeter" else "proposée"})
+                        used.add(c["id"])
+        elif default is not None:
+            problem(sid, None, f"par_defaut « {default} » : garder ou rejeter attendu")
+        out_ai.append({"id": sid, "titre": spec.get("titre") or sid, "cause": ",".join(spec.get("base") or []) or "ia",
+                       "action": spec.get("action") or ("corriger" if decided else "à vérifier"),
+                       "certitude": spec.get("certitude"), "explication": spec.get("explication") or "",
+                       "origine": "ia", "points": [], "m2": 0.0, "corrections": decided})
+
+    by_ai = {s["id"]: s for s in out_ai}
+    remaining = []
+    for s in base["subjects"]:
+        rest = dict(s, points=[], corrections=[c for c in s["corrections"] if c["id"] not in used], m2=0.0)
+        for key in s["points"]:
+            ai = (verdicts.get(key) or {}).get("sujet")
+            (by_ai[ai] if ai in by_ai else rest)["points"].append(key)
+        if rest["points"] or rest["corrections"]:
+            remaining.append(rest)
+    for s in out_ai + remaining:
+        s["m2"] = round(sum(float(c.get("aire") or c.get("m2") or 0)
+                            for c in s["corrections"] if c.get("statut") != REJECTED), 2)
+    unknown_points = sorted(set(verdicts) - {k for s in base["subjects"] for k in s["points"]})
+    return {**base, "subjects": out_ai + remaining,
+            "revue": {"date": review.get("revue_ia"), "modele": review.get("modele"),
+                      "decisions": len(used), "problemes": problems, "points_inconnus": unknown_points}}
+
+
+def load_review(path: str | Path) -> dict:
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as ex:
+        from .corrections import JournalError
+        raise JournalError(f"revue IA illisible : {path} ({ex})") from ex
 
 
 # --------------------------------------------------------------------------- journal

@@ -5,7 +5,7 @@ description: Sur-vérification par IA d'une analyse sia-check d'un projet Treegr
 
 # Revue IA d'une analyse sia-check
 
-Objectif : transformer la liste des points d'attention (souvent > 100) en **quelques vrais sujets chiffrés**, chacun avec une cause, une preuve, une action et ce qui reste à confirmer. Ensuite, donner un verdict à chaque point : `vrai sujet`, `à confirmer`, `faux positif` ou `agrégat`.
+Objectif : transformer la liste des points d'attention (souvent > 100) en **quelques vrais sujets chiffrés**, chacun avec une cause, une preuve, une action et ce qui reste à confirmer. Ensuite, donner un verdict à chaque point : `vrai sujet`, `à confirmer`, `faux positif` ou `agrégat`. Enfin, **décider des corrections** que le moteur propose, pour que l'utilisateur n'ait plus qu'à les accepter.
 
 Exemple de référence : `docs/revue-ia/L_OREE_2026-10-22.md` (L'Orée, 156 points → 3 vrais sujets).
 
@@ -22,7 +22,8 @@ Exemple de référence : `docs/revue-ia/L_OREE_2026-10-22.md` (L'Orée, 156 poin
    - les totaux de niveau Treegram qui diffèrent de la somme de leur détail ;
    - la liste des points d'attention ;
    - les **ratios informatifs** (`ratios`, définis dans `config.yaml > ratios`) : par portée (`*` = projet, puis chaque bâtiment), valeur, numérateur et dénominateur en m², repère indicatif `ref_min`–`ref_max` et statut `ok|bas|haut|info|n/a`. Les ratios USPI (SNH, SH, SBH, SVN, SVB) ne somment que les lots ; SC absente vaut SP − SN ; `LOTS` compte les lots ;
-   - les règles personnalisées actives (`custom_rules`).
+   - les règles personnalisées actives (`custom_rules`) ;
+   - les **propositions** du moteur (`propositions`, `sia_check.sujets`) : les points déjà regroupés par cause (`toitures`, `abords`, `sc-implicite`, `agregats`, puis `<règle>-<catégorie>` à vérifier), chacun avec ses corrections de base. Une correction a un `id` stable, une opération (`exclure`, `découper` vers SA, `reclasser`, `ajuster`, `affecter`), une `cible` (identifiants de surface), une `aire` et une `explication`. Les tracés ne sont pas transmis : seule l'aire compte.
 3. **Lire et regrouper.** Chercher les causes communes avant de lire les points un par un. Les questions qui ont payé sur L'Orée :
    - Un résidu R1 disparaît-il si l'on compte un code maison ? Si oui, c'est une question de nomenclature, pas de modélisation. Vérifier d'abord dans `config.yaml > custom_rules` si une règle personnalisée le compte déjà (P1 pour SUT).
    - Où repose la SEP ? Au RDC, au-dessus du sous-sol : dalle sur sous-sol, donc abords SA (SIA 416 §1.2). Recouverte par SPT : toiture comptée en SEP (§3).
@@ -45,6 +46,30 @@ Exemple de référence : `docs/revue-ia/L_OREE_2026-10-22.md` (L'Orée, 156 poin
    ```
    La clé est celle du point (`règle|bâtiment|niveau|lot|catégorie`) ; c'est elle que la visionneuse utilise pour les statuts. Chaque point de l'analyse doit recevoir un verdict.
 
+   Dans le même fichier, ajouter `"version": 2` et le bloc **`sujets`**, qui réoriente les propositions du moteur selon l'analyse :
+   ```json
+   "sujets": {"S2": {"titre": "Toitures comptées en SEP", "certitude": "vrai sujet|à confirmer|faux positif",
+                     "action": "corriger|aucune|à vérifier", "explication": "deux phrases chiffrées, norme citée",
+                     "base": ["toitures"], "par_defaut": "garder",
+                     "decisions": [
+                       {"id": "toitures-E09-N04", "decision": "garder", "explication": "…"},
+                       {"id": "toitures-H16-Toiture", "decision": "rejeter", "explication": "toiture-jardin accessible : reste en SEU"},
+                       {"id": "abords-A01-N00", "decision": "modifier", "aire": 250.0, "explication": "…"},
+                       {"id": "s2-attique-g12", "decision": "ajouter", "op": "exclure", "cible": {"ids": ["G12_N05_SEP#total"]},
+                        "aire": 120.0, "explication": "…"}]}}
+   ```
+   - Un sujet S… par sujet du rapport, et chaque sujet cité dans les verdicts y figure, même sans correction (`action` « à vérifier » ou « aucune »).
+   - `base` : les sujets du moteur que ce sujet reprend ; `par_defaut` (`garder` ou `rejeter`) tranche d'un coup toutes leurs propositions que `decisions` ne cite pas. C'est le cas courant : « toutes les toitures sortent » = `"base": ["toitures"], "par_defaut": "garder"`.
+   - `decisions` : `garder` (avec une explication si elle apporte un chiffre), `rejeter` (la proposition est fausse, dire pourquoi), `modifier` (seuls les champs donnés changent : `op`, `cible`, `vers`, `aire`, `affectation`, `explication`), `ajouter` (correction complète, `id` nouveau, cible prise dans les identifiants de surface des preuves).
+   - Ne jamais inventer un identifiant : recopier ceux de `propositions`. Une décision invalide est écartée par le moteur et signalée.
+   - Une correction reste **proposée** : c'est l'utilisateur qui l'accepte. Dans le doute (accessibilité, délimitation), `garder` et le dire dans l'explication, ou `action` « à vérifier » sans correction.
+
+7. **Vérifier** les décisions (dans Claude Code) :
+   ```bash
+   .venv/Scripts/sia-check "<dossier projet>" -q --revue docs/revue-ia/<PROJET>_<date>.verdicts.json --sujets report/<projet>.sujets.json
+   ```
+   Le journal affiche les décisions appliquées et écartées. Le fichier de sujets sert de journal de corrections : `--corrections` l'applique une fois les corrections passées à « acceptée ».
+
 ## Règles de conduite
 
 - **Honnêteté avant tout.** Si une preuve contredit une affirmation antérieure (de la revue, de `docs/ifc-schema.md` ou du rapport), la corriger explicitement. Si un chiffre du script semble aberrant (des milliers de recouvrements, par exemple), en chercher la cause avant de l'interpréter : sur L'Orée, c'était un artefact du script.
@@ -54,4 +79,4 @@ Exemple de référence : `docs/revue-ia/L_OREE_2026-10-22.md` (L'Orée, 156 poin
 
 ## Dans la visionneuse
 
-SIA Check Viewer fait le même enchaînement avec une clé API (bouton « Revue IA ») : ce fichier y est embarqué comme prompt, et le modèle reçoit le fichier de preuves complet. Rapport et verdicts sont écrits au même format, dans `%APPDATA%\SiaCheckViewer\revue-ia\<projet>\`.
+SIA Check Viewer fait le même enchaînement avec une clé API (bouton « Revue IA ») : ce fichier y est embarqué comme prompt, et le modèle reçoit le fichier de preuves complet. Rapport et verdicts (bloc `sujets` compris) sont écrits au même format, dans `%APPDATA%\SiaCheckViewer\revue-ia\<projet>\`.

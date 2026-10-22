@@ -37,7 +37,9 @@ public class AiVerdictLoadingTests
         using var tmp = new TempDir();
         var review = AiReviewFiles.FindLatest("L OREE", AiReviewFiles.SearchDirs(tmp.Path, AppContext.BaseDirectory));
         Assert.NotNull(review);
-        Assert.Equal(156, review.Data.Points.Count);
+        Assert.Equal(155, review.Data.Points.Count);
+        Assert.Equal(2, review.Data.Version);
+        Assert.Equal("garder", (string?)review.Data.Subjects!["S2"]!["par_defaut"]);
         Assert.NotNull(review.ReportPath);
         var s1 = review.Get("A1|B03|N00||SEP")!;
         Assert.Equal(AiVerdictKind.TrueIssue, s1.Kind);
@@ -191,6 +193,39 @@ public class AiResponseTests
     }
 
     [Fact]
+    public void Subjects_block_is_kept_and_optional()
+    {
+        const string head = """<rapport># R</rapport><verdicts>{"R1|B|N00||SP": {"verdict_ia": "faux positif", "raison": "r"}}</verdicts>""";
+        Assert.Null(AiReviewParser.Parse(head, Keys).Subjects);                                   // réponse v1
+        var o = AiReviewParser.Parse(head + """
+            <sujets>
+            ```json
+            {"S2": {"titre": "Toitures", "base": ["toitures"], "par_defaut": "garder",
+                    "decisions": [{"id": "toitures-E09-N04", "decision": "rejeter", "explication": "toiture-jardin"}]}}
+            ```
+            </sujets>
+            """, Keys);
+        Assert.Equal("rejeter", (string?)o.Subjects!["S2"]!["decisions"]![0]!["decision"]);
+        Assert.Throws<AiReviewException>(() => AiReviewParser.Parse(head + "<sujets>[1, 2]</sujets>", Keys));
+        Assert.Throws<AiReviewException>(() => AiReviewParser.Parse(head + "<sujets>{oups</sujets>", Keys));
+    }
+
+    [Fact]
+    public void Saved_review_keeps_subjects()
+    {
+        using var tmp = new TempDir();
+        var subjects = System.Text.Json.Nodes.JsonNode.Parse("""{"S1": {"titre": "Abords", "decisions": []}}""")!.AsObject();
+        var saved = AiReviewFiles.Save(tmp.Path, "P", "2026-10-22", "# R\n", new AiVerdictFile
+        {
+            Project = "P", AnalysisDate = "2026-10-22", ReviewDate = "2026-10-22", Version = 2, Subjects = subjects,
+            Points = new() { ["k"] = new AiVerdict { Verdict = "vrai sujet", Subject = "S1", Reason = "r" } },
+        });
+        var back = AiReviewFiles.Load(saved.VerdictsPath);
+        Assert.Equal("Abords", (string?)back.Subjects!["S1"]!["titre"]);
+        Assert.Contains("\"sujets\"", File.ReadAllText(saved.VerdictsPath));
+    }
+
+    [Fact]
     public void Missing_tags_or_bad_json_are_reported()
     {
         Assert.Throws<AiReviewException>(() => AiReviewParser.Parse("<verdicts>{}</verdicts>", Keys));
@@ -201,9 +236,9 @@ public class AiResponseTests
     [Fact]
     public void Cost_estimate_brackets_the_loree_review()
     {
-        // L'Orée : 156 points, ~13 000 jetons de texte en sortie.
-        var (min, max) = AiPricing.OutputTokens(156);
-        Assert.InRange(13_000, min - 500, max);
+        // L'Orée : 155 points, ~14 500 jetons de texte en sortie (rapport, décisions, verdicts).
+        var (min, max) = AiPricing.OutputTokens(155);
+        Assert.InRange(14_500, min - 500, max);
         Assert.True(max <= AiPricing.MaxOutputTokens);
         Assert.Equal(0.24m + 0.20m, AiPricing.Cost(60_000, 10_000));
     }
@@ -217,6 +252,7 @@ public class AiResponseTests
         Assert.Contains("# Revue IA d'une analyse sia-check", p.System);   // SKILL.md
         Assert.Contains("L'Orée", p.System);                               // exemple de rapport
         Assert.Contains("<verdicts>", p.System);
+        Assert.Contains("<sujets>", p.System);
         Assert.Contains(evidence, p.User);
     }
 }

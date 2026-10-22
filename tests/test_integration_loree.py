@@ -180,3 +180,25 @@ def test_subjects_without_ai(loree):
     assert set(applied.log.application) == {corrections.APPLIED}
     sep = lambda r: r.residuals.query("rule == 'R3' and building == '*'").diff_m2.iloc[0]  # noqa: E731
     assert sep(before) > 15000 and sep(after) < 300          # restent les petits écarts d'étage (S4, S5)
+
+
+@needs_tgm
+def test_review_v2_reorients_subjects(loree):
+    # Revue L'Orée (docs/revue-ia, version 2) : S1 et S2 gardent les propositions, S4–S6 sans correction.
+    pytest.importorskip("shapely")
+    from sia_check import config, corrections, geom, sujets, viewer
+    cfg = config.load(Path(__file__).resolve().parents[1] / "config.yaml")
+    df, res = loree
+    doc = viewer.build(res, cfg, geom.read_cache(LOREE), "L OREE", [str(TGM)])
+    rv = sujets.load_review(Path(__file__).resolve().parents[1] / "docs/revue-ia/L_OREE_2026-10-22.verdicts.json")
+    out = sujets.apply_review(sujets.build(doc, cfg), rv, {s["id"] for s in doc["surfaces"]})
+    assert out["revue"]["problemes"] == [] and out["revue"]["decisions"] == 31 and not out["revue"]["points_inconnus"]
+    by = {s["id"]: s for s in out["subjects"]}
+    assert len(by["S1"]["corrections"]) == 9 and len(by["S2"]["corrections"]) == 22
+    assert len(by["S6"]["points"]) == 71 and not by["S6"]["corrections"]
+    j = sujets.journal(out)
+    for c in j["corrections"]:
+        c["statut"] = "acceptée"
+    applied, before, after = corrections.run(df, j, cfg)
+    assert set(applied.log.application) == {corrections.APPLIED}
+    assert corrections.counts(after)["ERREUR"] < corrections.counts(before)["ERREUR"]

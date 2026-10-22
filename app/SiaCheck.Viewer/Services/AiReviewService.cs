@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Anthropic;
 using Anthropic.Exceptions;
 using Beta = Anthropic.Models.Beta.Messages;
@@ -18,12 +19,13 @@ public static class AiPricing
     public const int MaxOutputTokens = 64000;
 
     /// <summary>
-    /// Sortie attendue : ~4 000 jetons de rapport + ~60 par verdict (L'Orée : 156 points, ~13 000 jetons),
-    /// jusqu'à trois fois plus avec la réflexion du modèle, plafonnée à <see cref="MaxOutputTokens"/>.
+    /// Sortie attendue : ~4 000 jetons de rapport + ~1 500 de décisions sur les corrections + ~60 par verdict
+    /// (L'Orée : 155 points, ~14 500 jetons), jusqu'à trois fois plus avec la réflexion du modèle, plafonnée à
+    /// <see cref="MaxOutputTokens"/>.
     /// </summary>
     public static (long Min, long Max) OutputTokens(int issueCount)
     {
-        var text = 4000L + 60L * issueCount;
+        var text = 5500L + 60L * issueCount;
         return (Math.Min(text, MaxOutputTokens), Math.Min(3 * text, MaxOutputTokens));
     }
 
@@ -68,7 +70,7 @@ public sealed class AiReviewPrompt
             <exemple_rapport> est un rapport réel d'un autre passage, donné pour sa forme et son niveau d'exigence :
             ne recopie aucun de ses constats, qui doivent tous venir des preuves fournies.
 
-            Réponds exactement dans ce format, sans rien d'autre hors des deux balises :
+            Réponds exactement dans ce format, sans rien d'autre hors des trois balises :
 
             <rapport>
             (le rapport markdown complet de l'étape 5, titre compris)
@@ -76,10 +78,17 @@ public sealed class AiReviewPrompt
             <verdicts>
             {"<clé du point>": {"verdict_ia": "vrai sujet|à confirmer|faux positif|agrégat", "sujet": "S1" ou null, "raison": "une phrase chiffrée"}, …}
             </verdicts>
+            <sujets>
+            {"S1": {"titre": "…", "certitude": "vrai sujet|à confirmer|faux positif", "action": "corriger|aucune|à vérifier",
+                    "explication": "…", "base": ["<id d'un sujet de propositions>"], "par_defaut": "garder|rejeter",
+                    "decisions": [{"id": "<id d'une correction proposée>", "decision": "garder|modifier|rejeter|ajouter", "explication": "…"}]}, …}
+            </sujets>
 
             Le bloc <verdicts> est un objet JSON valide qui contient chacune des {{issueCount}} clés de la liste
-            `issues` des preuves, recopiées caractère pour caractère, et seulement elles. Les métadonnées du fichier
-            (projet, dates, modèle) sont ajoutées par l'application.
+            `issues` des preuves, recopiées caractère pour caractère, et seulement elles. Le bloc <sujets> est un
+            objet JSON valide au format de l'étape 6 de la procédure : il décide des corrections de `propositions`
+            (identifiants recopiés tels quels), et chaque sujet S… cité dans <verdicts> y figure. Les métadonnées du
+            fichier (projet, dates, modèle) sont ajoutées par l'application.
 
             <procedure>
             {{Resource("revue-ia.SKILL.md")}}
@@ -193,7 +202,8 @@ public sealed class AiReviewClient(string apiKey)
 
 /// <summary>Résultat exploitable de la réponse du modèle.</summary>
 public sealed record AiReviewOutput(string ReportMarkdown, Dictionary<string, AiVerdict> Points,
-                                    IReadOnlyList<string> MissingKeys, IReadOnlyList<string> UnknownKeys);
+                                    IReadOnlyList<string> MissingKeys, IReadOnlyList<string> UnknownKeys,
+                                    JsonObject? Subjects = null);
 
 public static class AiReviewParser
 {
@@ -209,9 +219,7 @@ public static class AiReviewParser
                      ?? throw new AiReviewException("Réponse du modèle sans rapport (balise <rapport> absente).");
         var json = Between(text, "verdicts")
                    ?? throw new AiReviewException("Réponse du modèle sans verdicts (balise <verdicts> absente).");
-        json = json.Trim();
-        if (json.StartsWith("```"))   // bloc de code markdown autour du JSON
-            json = json[(json.IndexOf('\n') + 1)..json.LastIndexOf("```", StringComparison.Ordinal)];
+        json = Unfence(json);
         Dictionary<string, AiVerdict> raw;
         try { raw = JsonSerializer.Deserialize<Dictionary<string, AiVerdict>>(json) ?? []; }
         catch (JsonException ex) { throw new AiReviewException($"Verdicts illisibles : {ex.Message}", ex); }
@@ -231,7 +239,32 @@ public static class AiReviewParser
         var missing = issueKeys.Where(k => !points.ContainsKey(k)).ToList();
         foreach (var k in missing)
             points[k] = new AiVerdict { Verdict = AiVerdict.Label(AiVerdictKind.ToConfirm), Reason = MissingReason };
-        return new AiReviewOutput(report.Trim() + "\n", points, missing, raw.Keys.Where(k => !known.Contains(k)).ToList());
+        return new AiReviewOutput(report.Trim() + "\n", points, missing, raw.Keys.Where(k => !known.Contains(k)).ToList(),
+                                  ParseSubjects(text));
+    }
+
+    /// <summary>
+    /// Bloc &lt;sujets&gt; (facultatif : une réponse au format v1 n'en a pas). Il est gardé tel quel ; le moteur
+    /// le valide décision par décision (<c>sia-check --revue</c>).
+    /// </summary>
+    private static JsonObject? ParseSubjects(string text)
+    {
+        var json = Between(text, "sujets");
+        if (json is null) return null;
+        try
+        {
+            return JsonNode.Parse(Unfence(json)) as JsonObject
+                   ?? throw new AiReviewException("Sujets illisibles : objet JSON attendu.");
+        }
+        catch (JsonException ex) { throw new AiReviewException($"Sujets illisibles : {ex.Message}", ex); }
+    }
+
+    private static string Unfence(string json)
+    {
+        json = json.Trim();
+        if (json.StartsWith("```"))   // bloc de code markdown autour du JSON
+            json = json[(json.IndexOf('\n') + 1)..json.LastIndexOf("```", StringComparison.Ordinal)];
+        return json;
     }
 
     private static string? Between(string text, string tag)

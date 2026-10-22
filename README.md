@@ -18,6 +18,7 @@ sia-check model.ifc --all --verbose          # console seule, contrôles OK comp
 sia-check "L OREE.tgm" --treegram exports/   # exports au gabarit Excel Treegram, depuis le .tgm
 sia-check "L OREE.tgm" --mdp MDP-1778-Loree.xlsx --project-id 1778   # tableau MDP HRS rempli
 sia-check "L OREE.tgm" --sujets sujets.json   # sujets et corrections proposées (journal à accepter)
+sia-check "L OREE.tgm" --revue L_OREE_2026-10-22.verdicts.json --sujets sujets.json   # sujets réorientés par la revue IA
 sia-check "L OREE.tgm" --corrections journal.json --out report/ --mdp MDP.xlsx   # surfaces corrigées
 ```
 
@@ -82,6 +83,14 @@ Les points d'attention sont regroupés par cause. Chaque sujet porte une correct
 | `sc-implicite` | R1 compatibles avec la surface de construction | aucune |
 | `agregats` | contrôles sommés par bâtiment et projet | aucune (suivent leurs niveaux) |
 | `<règle>-<catégorie>` | les autres | à vérifier |
+
+**Revue IA (`--revue`).** La revue IA reçoit ces propositions dans ses preuves (`propositions`). Elle rend, à côté des verdicts, un bloc `sujets` (verdicts version 2, format dans `.claude/skills/revue-ia/SKILL.md`, étape 6) : pour chaque sujet S1, S2…, quelles propositions garder, modifier, rejeter ou ajouter, avec un défaut par sujet de base (`"base": ["toitures"], "par_defaut": "garder"` : toutes les toitures sortent).
+- `--revue` applique ces décisions. Les points passent dans le sujet IA de leur verdict, et les corrections décidées y passent avec l'origine « ia ».
+- Une proposition rejetée reste au journal au statut « rejetée ».
+- Une décision invalide (identifiant inconnu, correction incomplète, cible absente) est écartée et signalée.
+- Tout reste « proposée » : l'utilisateur accepte.
+
+Sur L'Orée, la revue v2 (`docs/revue-ia/L_OREE_2026-10-22.verdicts.json`) donne 31 décisions appliquées et aucune écartée, réparties en S1 (9 découpes), S2 (22 exclusions), S4 et S5 à vérifier, S6 faux positifs. La revue lancée depuis la visionneuse écrit le même bloc.
 
 Aires et tracés viennent de la géométrie (shapely). Sans elle, les aires viennent des bilans de niveau et les découpes n'ont pas de tracé.
 

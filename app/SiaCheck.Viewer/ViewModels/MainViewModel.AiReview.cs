@@ -323,6 +323,7 @@ public sealed partial class MainViewModel
             {
                 Project = doc.Project, AnalysisDate = doc.Date, ReviewDate = reviewDate,
                 Model = $"{AiPricing.ModelLabel} (SIA Check Viewer)", Points = output.Points,
+                Version = output.Subjects is null ? 1 : 2, Subjects = output.Subjects,
             });
             File.Copy(evidencePath, Path.Combine(saveDir, $"{AiReviewFiles.Prefix(doc.Project)}_{reviewDate}.preuves.json"), overwrite: true);
             AiStage = AiStage.Done;

@@ -100,9 +100,9 @@
    "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
   },
   "R1|E09|N00||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "908 m² de commerces en code SUT ; avec eux le résidu tombe à 11.5 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "R3|I18|*||SEP": {
    "verdict_ia": "agrégat",
@@ -165,9 +165,9 @@
    "raison": "756 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
   },
   "R1|I14|N00||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "452 m² de commerces en code SUT ; avec eux le résidu tombe à 14.9 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "A1|A01|N00||SEP": {
    "verdict_ia": "vrai sujet",
@@ -225,24 +225,19 @@
    "raison": "443 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
   },
   "R1|G12|N00||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "361 m² de commerces en code SUT ; avec eux le résidu tombe à 12.6 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "R3|B04|N05||SEP": {
    "verdict_ia": "vrai sujet",
    "sujet": "S2",
    "raison": "432 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
   },
-  "R5|I18|N00||SU": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "284 m² de commerces en code SUT ; avec eux le résidu tombe à 11.2 % (surface de construction normale)."
-  },
   "R1|G12|S01||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "237 m² de commerces en code SUT ; avec eux le résidu tombe à 10.9 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "R3|G12|N04||SEP": {
    "verdict_ia": "vrai sujet",
@@ -260,9 +255,9 @@
    "raison": "327 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
   },
   "R1|I18|N00||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "284 m² de commerces en code SUT ; avec eux le résidu tombe à 11.2 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "A1|H16|N00||SEP": {
    "verdict_ia": "vrai sujet",
@@ -295,34 +290,34 @@
    "raison": "303 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
   },
   "R1|G12|N03||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "204 m² de commerces en code SUT ; avec eux le résidu tombe à 14.1 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "R1|G12|N02||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "204 m² de commerces en code SUT ; avec eux le résidu tombe à 14.1 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "R1|G12|N01||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "204 m² de commerces en code SUT ; avec eux le résidu tombe à 14.1 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "R1|H16|N03||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "239 m² de commerces en code SUT ; avec eux le résidu tombe à 14.9 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "R1|H16|N01||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "239 m² de commerces en code SUT ; avec eux le résidu tombe à 14.9 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "R1|H16|N02||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "239 m² de commerces en code SUT ; avec eux le résidu tombe à 14.9 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "R3|A01|N00||SEP": {
    "verdict_ia": "vrai sujet",
@@ -330,9 +325,9 @@
    "raison": "539 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
   },
   "R1|H16|N00||SP": {
-   "verdict_ia": "vrai sujet",
-   "sujet": "S3",
-   "raison": "204 m² de commerces en code SUT ; avec eux le résidu tombe à 16.0 % (surface de construction normale)."
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Sous la règle P1 (SU = SUP + SUS + SUT), le résidu R1 retombe dans la plage de la surface de construction : faux positif (l'ancien sujet S3 est réglé)."
   },
   "A2|A01|Toiture||SEP": {
    "verdict_ia": "vrai sujet",
@@ -783,6 +778,63 @@
    "verdict_ia": "à confirmer",
    "sujet": "S4",
    "raison": "5 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  }
+ },
+ "version": 2,
+ "sujets": {
+  "S1": {
+   "titre": "SEP du rez-de-chaussée = dalle sur sous-sol → abords SA",
+   "certitude": "vrai sujet",
+   "action": "corriger",
+   "base": [
+    "abords"
+   ],
+   "par_defaut": "garder",
+   "explication": "Sur les 9 rez, la SEP non classée repose sur l'emprise du sous-sol S01 (B03 : 1 943 m² sur 1 962) : dalle au contact du terrain, donc abords SA (SIA 416 §1.2, §3). Les terrasses déjà classées SEU/SED restent en SEP ; leur délimitation est à vérifier sur les plans.",
+   "decisions": []
+  },
+  "S2": {
+   "titre": "Toitures comptées en SEP",
+   "certitude": "vrai sujet",
+   "action": "corriger",
+   "base": [
+    "toitures"
+   ],
+   "par_defaut": "garder",
+   "explication": "La SEP des niveaux Toiture et des toits d'attique est recouverte par la toiture Treegram (SPT) : une toiture non accessible n'est ni SP ni SEP (SIA 416 §3). Les terrasses d'attique classées SEU restent en SEP.",
+   "decisions": [
+    {
+     "id": "toitures-E09-N04",
+     "decision": "garder",
+     "explication": "E09 N04 : seuls les 200,55 m² sous SPT sortent ; les 166,33 m² de SEU (terrasses d'attique) restent. Leur accessibilité est à confirmer sur les plans."
+    },
+    {
+     "id": "toitures-I14-N04",
+     "decision": "garder",
+     "explication": "I14 N04 : seuls les 206,54 m² sous SPT sortent ; les 90,96 m² de SEU restent, accessibilité à confirmer sur les plans."
+    }
+   ]
+  },
+  "S4": {
+   "titre": "Petits écarts de SEP aux étages courants",
+   "certitude": "à confirmer",
+   "action": "à vérifier",
+   "explication": "9 à 14 m² de SEP non classés, identiques d'un étage à l'autre (B03, B04, I17 N01–N03) : construction externe (SEC) ou type de balcon non classé. Ouvrir B03 N01 dans Treegram ; aucune correction tant que la nature n'est pas connue.",
+   "decisions": []
+  },
+  "S5": {
+   "titre": "SEP en sous-sol, I17 S01",
+   "certitude": "à confirmer",
+   "action": "à vérifier",
+   "explication": "57 m² de SEP en S01 au-dessus du S02 : garage ou rampe ouverts (admis en SEP, SIA 416 §3) ou erreur de classement. À vérifier sur le plan du S01.",
+   "decisions": []
+  },
+  "S6": {
+   "titre": "Surface de construction implicite",
+   "certitude": "faux positif",
+   "action": "aucune",
+   "explication": "Résidu R1 régulier (14–18 % aux étages, 4–15 % en sous-sol) : surface de construction non fournie par Treegram. Les 12 niveaux à commerces de l'ancien sujet S3 y entrent depuis la règle P1.",
+   "decisions": []
   }
  }
 }

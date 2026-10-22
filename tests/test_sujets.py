@@ -100,3 +100,83 @@ def test_cli_writes_subjects_usable_as_journal(tmp_path):
     data = json.loads(out.read_text(encoding="utf-8"))
     assert data["corrections"] and data["corrections"][0]["sujet"] == "toitures"
     assert corrections.validate(data) is data
+
+
+# --------------------------------------------------------------------------- revue IA (bloc « sujets »)
+
+def base_subjects():
+    def corr(cid, sid, **kw):
+        return {"id": cid, "op": "exclure", "cible": {"ids": [f"{cid}-sep"]}, "sujet": sid, "origine": "règle",
+                "statut": "proposée", "m2": 10.0, **kw}
+    return {"version": 1, "subjects": [
+        {"id": "toitures", "titre": "T", "cause": "toitures", "action": "corriger", "explication": "", "m2": 30.0,
+         "points": ["A2|A|Toiture||SEP", "A2|B|Toiture||SEP"],
+         "corrections": [corr("toit-a", "toitures"), corr("toit-b", "toitures"), corr("toit-c", "toitures")]},
+        {"id": "abords", "titre": "A", "cause": "abords", "action": "corriger", "explication": "", "m2": 50.0,
+         "points": ["A1|A|N00||SEP"],
+         "corrections": [corr("abords-a", "abords", op="découper", vers="SA", aire=50.0, polygone={"type": "Polygon"})]},
+        {"id": "sc-implicite", "titre": "SC", "cause": "sc", "action": "aucune", "explication": "", "m2": 0.0,
+         "points": ["R1|A|N01||SP"], "corrections": []},
+    ]}
+
+
+SURFACES = {"toit-a-sep", "toit-b-sep", "toit-c-sep", "abords-a-sep", "x-sep"}
+
+
+def review(**sujets_):
+    return {"revue_ia": "2026-10-22", "modele": "test", "points": {
+        "A2|A|Toiture||SEP": {"verdict_ia": "vrai sujet", "sujet": "S2"},
+        "A2|B|Toiture||SEP": {"verdict_ia": "vrai sujet", "sujet": "S2"},
+        "A1|A|N00||SEP": {"verdict_ia": "vrai sujet", "sujet": "S1"},
+        "R1|A|N01||SP": {"verdict_ia": "faux positif", "sujet": None}}, "sujets": sujets_}
+
+
+def test_review_default_keeps_all_and_rejects_one():
+    out = sujets.apply_review(base_subjects(), review(S2={
+        "titre": "Toitures", "base": ["toitures"], "par_defaut": "garder",
+        "decisions": [{"id": "toit-b", "decision": "rejeter", "explication": "toiture-jardin"}]}), SURFACES)
+    s2 = out["subjects"][0]
+    assert s2["id"] == "S2" and s2["points"] == ["A2|A|Toiture||SEP", "A2|B|Toiture||SEP"]
+    status = {c["id"]: (c["statut"], c["origine"], c["sujet"]) for c in s2["corrections"]}
+    assert status == {"toit-a": ("proposée", "ia", "S2"), "toit-b": ("rejetée", "ia", "S2"), "toit-c": ("proposée", "ia", "S2")}
+    assert s2["m2"] == 20.0
+    assert "toitures" not in {s["id"] for s in out["subjects"]}          # vidé par la revue
+    assert {s["id"] for s in out["subjects"]} >= {"abords", "sc-implicite"}   # non repris : restent tels quels
+    assert out["revue"]["problemes"] == [] and out["revue"]["decisions"] == 3
+
+
+def test_review_modify_add_and_invalid_decisions():
+    out = sujets.apply_review(base_subjects(), review(S1={
+        "titre": "Abords", "base": ["abords"],
+        "decisions": [
+            {"id": "abords-a", "decision": "modifier", "aire": 42.0, "explication": "terrasse privative gardée"},
+            {"id": "s1-x", "decision": "ajouter", "op": "découper", "cible": {"ids": ["x-sep"]}, "vers": "SA", "aire": 5.0},
+            {"id": "s1-y", "decision": "ajouter", "op": "exclure", "cible": {"ids": ["inventée"]}},
+            {"id": "s1-z", "decision": "ajouter", "op": "découper", "cible": {"ids": ["x-sep"]}},   # vers, aire manquants
+            {"id": "inconnue", "decision": "garder"},
+            {"id": "abords-a", "decision": "garder"},
+            {"id": "toit-a", "decision": "fusionner"},
+        ]}), SURFACES)
+    s1 = next(s for s in out["subjects"] if s["id"] == "S1")
+    mod = next(c for c in s1["corrections"] if c["id"] == "abords-a")
+    assert (mod["aire"], mod["base"], mod.get("a_retracer"), "polygone" in mod) == (42.0, {"aire": 50.0, "explication": None}, True, False)
+    assert next(c for c in s1["corrections"] if c["id"] == "s1-x")["revue"] == "ajoutée"
+    bad = {p["id"]: p["raison"] for p in out["revue"]["problemes"]}
+    assert set(bad) == {"s1-y", "s1-z", "inconnue", "abords-a", "toit-a"}
+    assert bad["abords-a"] == "proposition décidée deux fois" and bad["s1-y"] == "cible inconnue"
+    toits = next(s for s in out["subjects"] if s["id"] == "toitures")   # non repris : propositions intactes
+    assert len(toits["corrections"]) == 3 and toits["corrections"][0]["origine"] == "règle"
+
+
+def test_reviewed_journal_skips_rejected(synth, cfg, result):
+    doc = viewer.build(result, cfg, geom.Cache(), "Synth", ["synth.csv"], date="2026-10-21")
+    base = sujets.build(doc, cfg)
+    roof = base["subjects"][0]["corrections"][0]["id"]
+    out = sujets.apply_review(base, {"points": {}, "sujets": {"S2": {"base": ["toitures"], "decisions": [
+        {"id": roof, "decision": "rejeter", "explication": "terrasse accessible"}]}}}, {s["id"] for s in doc["surfaces"]})
+    j = sujets.journal(out)
+    for c in j["corrections"]:
+        c["statut"] = "acceptée" if c["statut"] == "proposée" else c["statut"]
+    applied, _, _ = corrections.run(synth, j, cfg)
+    log = applied.log.set_index("id")
+    assert log.loc[roof, "application"] == corrections.SKIPPED and log.loc[roof, "statut"] == "rejetée"

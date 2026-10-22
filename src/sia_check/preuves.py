@@ -17,7 +17,9 @@ faut pour dire POURQUOI, avant la rédaction du rapport par l'IA (étape 2, voir
     * SEP décomposée : sous l'emprise SP du même niveau (double compte), au-dessus du niveau
       inférieur (terrasse ou toiture sur le bâtiment), au-dessus d'un sous-sol seul (dalle sur
       sous-sol), au-dessus de rien (terrain), et part recouverte par SPT ;
-- totaux de niveau Treegram différents de la somme de leur détail.
+- totaux de niveau Treegram différents de la somme de leur détail ;
+- les sujets du moteur et leurs corrections de base (sujets.py), sans les tracés : la revue les garde,
+  les modifie, les rejette ou en ajoute (bloc `sujets` des verdicts).
 
 Dépendance : shapely (extra `revue` ; embarquée dans le moteur de la visionneuse).
 """
@@ -59,8 +61,8 @@ def r(x: float) -> float:
     return round(float(x), NDIGITS)
 
 
-def build(doc: dict) -> dict:
-    """Preuves à partir du document visionneuse (contrat de viewer.py)."""
+def build(doc: dict, subjects: list[dict] | None = None) -> dict:
+    """Preuves à partir du document visionneuse (contrat de viewer.py) et des sujets de base (sujets.py)."""
     levels = {(l["building"], l["level"]): l for l in doc["levels"]}
     ranks = {(l["building"], l["level"]): l.get("rank") or 0 for l in doc["levels"]}
 
@@ -185,6 +187,9 @@ def build(doc: dict) -> dict:
         "levels": out_levels, "sep_decomposition": sep_split,
         "interior_outside_SP": outside, "interior_overlaps": overlaps,
         "level_total_vs_detail": uspi_totals,
+        "propositions": [{**{k: v for k, v in s.items() if k != "corrections"},
+                          "corrections": [{k: v for k, v in c.items() if k != "polygone"} for c in s["corrections"]]}
+                         for s in (subjects if subjects is not None else doc.get("subjects", []))],
         "issues": [{k: i[k] for k in ("key", "rule", "verdict", "building", "level", "lot", "category",
                                      "expected", "obtained", "diff_m2", "diff_pct", "title", "message")}
                    for i in doc["issues"]],

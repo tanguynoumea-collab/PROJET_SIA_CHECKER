@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
@@ -35,14 +36,22 @@ public sealed class AiVerdict
     };
 }
 
-/// <summary>Fichier <c>&lt;PROJET&gt;_&lt;date&gt;.verdicts.json</c>, clé = clé du point (règle|bâtiment|niveau|lot|catégorie).</summary>
+/// <summary>
+/// Fichier <c>&lt;PROJET&gt;_&lt;date&gt;.verdicts.json</c>, clé = clé du point (règle|bâtiment|niveau|lot|catégorie).
+/// Version 2 : bloc <c>sujets</c>, décisions de la revue sur les corrections de base, lu par le moteur
+/// (<c>sia-check --revue</c>, sia_check.sujets.apply_review) ; l'app le conserve tel quel.
+/// </summary>
 public sealed class AiVerdictFile
 {
+    [JsonPropertyName("version")] public int Version { get; set; } = 1;
     [JsonPropertyName("projet")] public string Project { get; set; } = "";
     [JsonPropertyName("analyse")] public string AnalysisDate { get; set; } = "";
     [JsonPropertyName("revue_ia")] public string ReviewDate { get; set; } = "";
     [JsonPropertyName("modele")] public string Model { get; set; } = "";
     [JsonPropertyName("points")] public Dictionary<string, AiVerdict> Points { get; set; } = [];
+
+    [JsonPropertyName("sujets"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonObject? Subjects { get; set; }
 }
 
 /// <summary>Une revue IA trouvée sur disque : verdicts, et rapport markdown s'il est à côté.</summary>

@@ -32,10 +32,15 @@ public sealed class AppSettings
 
     public void Touch(string path, string name, DateTime analysis, int issueCount)
     {
-        Recents.RemoveAll(r => string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase));
+        // « C:/…/L OREE » et « C:\…\L OREE\ » sont le même projet (ligne de commande ou dialogue d'ouverture)
+        path = Normalize(path);
+        Recents.RemoveAll(r => string.Equals(Normalize(r.Path), path, StringComparison.OrdinalIgnoreCase));
         Recents.Insert(0, new RecentProject { Path = path, Name = name, LastAnalysis = analysis, IssueCount = issueCount });
         if (Recents.Count > MaxRecents) Recents.RemoveRange(MaxRecents, Recents.Count - MaxRecents);
     }
+
+    private static string Normalize(string path) =>
+        System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(path));
 
     public static AppSettings Load(AppPaths paths) => JsonFile.ReadOrDefault<AppSettings>(paths.SettingsFile);
     public void Save(AppPaths paths) => JsonFile.Write(paths.SettingsFile, this);

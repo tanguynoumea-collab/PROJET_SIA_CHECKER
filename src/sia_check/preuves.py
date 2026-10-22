@@ -180,6 +180,8 @@ def build(doc: dict) -> dict:
     ev = {
         "project": doc["project"], "analysis_date": doc["date"], "cache": doc["cache"],
         "counts": doc["counts"], "tolerance": doc["tolerance"],
+        # Ratios informatifs à vérifier pour leur cohérence (repères indicatifs, voir config.yaml > ratios).
+        "ratios": doc.get("ratios", []), "custom_rules": doc.get("custom_rules", []),
         "levels": out_levels, "sep_decomposition": sep_split,
         "interior_outside_SP": outside, "interior_overlaps": overlaps,
         "level_total_vs_detail": uspi_totals,

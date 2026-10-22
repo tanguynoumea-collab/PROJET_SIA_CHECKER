@@ -33,6 +33,7 @@ public sealed partial class MainViewModel : ObservableObject
         _settings = settings;
         _engine = enginePath is null ? null : new AnalysisService(enginePath);
         _isBalanceCollapsed = settings.BalanceCollapsed;
+        _showRatios = settings.ShowRatios;
         Recents = new ObservableCollection<RecentProject>(settings.Recents.Where(r => Directory.Exists(r.Path)));
         LayersView = new ListCollectionView(Layers);
         LayersView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(LayerItem.Group)));
@@ -105,14 +106,23 @@ public sealed partial class MainViewModel : ObservableObject
         }
         ProjectDir = dir;
         var cached = _paths.AnalysisFile(dir);
-        // Analyse encore valable : rouverture instantanée. Le .tgm a changé : on réanalyse.
+        // Analyse encore valable : rouverture instantanée. Le .tgm a changé, ou l'analyse vient d'un autre
+        // moteur (mise à jour de l'application : nouveaux contrôles, ratios) : on réanalyse.
         if (File.Exists(cached) && File.GetLastWriteTime(cached) > File.GetLastWriteTime(tgms[0]))
         {
-            try { Load(ViewerDocument.Load(cached)); return; }
+            try
+            {
+                var doc = ViewerDocument.Load(cached);
+                if (_engine is null || doc.ToolVersion == AppVersion) { Load(doc); return; }
+            }
             catch (Exception ex) when (ex is IOException or InvalidDataException or System.Text.Json.JsonException) { /* réanalyse */ }
         }
         await AnalyseAsync();
     }
+
+    /// <summary>Version de l'application, alignée sur celle du moteur embarqué (pyproject.toml).</summary>
+    public static string AppVersion { get; } = typeof(MainViewModel).Assembly.GetName().Version is { } v
+        ? $"{v.Major}.{v.Minor}.{v.Build}" : "";
 
     [RelayCommand]
     private async Task AnalyseAsync()
@@ -527,6 +537,17 @@ public sealed partial class MainViewModel : ObservableObject
         _settings.Save(_paths);
     }
 
+    /// <summary>Second onglet de la zone bilan : ratios informatifs du projet et du bâtiment choisi.</summary>
+    public ObservableCollection<RatioRow> RatioRows { get; } = [];
+    [ObservableProperty] private bool _showRatios;
+    public bool HasRatios => RatioRows.Count > 0;
+
+    partial void OnShowRatiosChanged(bool value)
+    {
+        _settings.ShowRatios = value;
+        _settings.Save(_paths);
+    }
+
     private void UpdateBalance()
     {
         var sel = SelectedBuildings?.ToList();
@@ -537,11 +558,21 @@ public sealed partial class MainViewModel : ObservableObject
     private void FillBalance()
     {
         BalanceRows.Clear();
+        FillRatios();
         if (Document is null || BalanceBuilding is null) return;
         var levels = Document.Levels.Where(l => l.Building == BalanceBuilding).ToList();
         var scale = levels.Select(l => Math.Max(l.Value("SP"), l.Value("SEP"))).DefaultIfEmpty(1).Max();
         foreach (var l in levels.OrderByDescending(l => l.Rank ?? 0))
             BalanceRows.Add(new BalanceRow(l, scale <= 0 ? 1 : scale));
+    }
+
+    private void FillRatios()
+    {
+        RatioRows.Clear();
+        if (Document is not null)
+            foreach (var p in Document.Ratios.Where(r => r.Building == Ratio.AllBuildings))
+                RatioRows.Add(new RatioRow(p, Document.Ratios.FirstOrDefault(r => r.Id == p.Id && r.Building == BalanceBuilding)));
+        OnPropertyChanged(nameof(HasRatios));
     }
 
     [RelayCommand]

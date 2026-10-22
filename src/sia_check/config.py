@@ -39,6 +39,7 @@ class Config:
     sources: dict[str, dict] = field(default_factory=dict)
     labels: dict[str, dict] = field(default_factory=dict)   # code -> {name, ref, def}
     custom_rules: list[CustomRule] = field(default_factory=list)
+    ratios: list[dict] = field(default_factory=list)   # ratios informatifs (ratios.py)
 
     def children(self, code: str) -> list[str]:
         return self.categories.get(code, {}).get("children") or []
@@ -74,6 +75,21 @@ def _custom_rules(raw: list[dict] | None, cats: dict[str, dict]) -> list[CustomR
     return rules
 
 
+RATIO_TOKENS = {"SC", "LOTS"}   # SC calculée (SP − SN) ; LOTS = nombre de lots USPI
+
+
+def _ratios(raw: list[dict] | None, cats: dict[str, dict]) -> list[dict]:
+    out = []
+    for r in raw or []:
+        for code in [*r.get("num", []), *r.get("den", [])]:
+            if code not in cats and code not in RATIO_TOKENS:
+                raise ConfigError(f"config : ratio {r.get('id')} cite {code}, absent de 'categories'")
+        if r.get("levels", "all") not in ("all", "above_ground"):
+            raise ConfigError(f"config : ratio {r.get('id')} : levels doit valoir all ou above_ground")
+        out.append(r)
+    return out
+
+
 def from_dict(raw: dict) -> Config:
     cats = copy.deepcopy(raw.get("categories") or {})
     if not cats:
@@ -100,4 +116,5 @@ def from_dict(raw: dict) -> Config:
         sources=raw.get("sources") or {},
         labels=raw.get("labels") or {},
         custom_rules=custom,
+        ratios=_ratios(raw.get("ratios"), cats),
     )

@@ -95,6 +95,37 @@ custom_rules:
       bureaux, école, UAPE). SUT est donc compté dans la SU, au même rang que SUP et SUS, sans
       être reclassé dans l'une ou l'autre.
 
+# Ratios informatifs du développement immobilier (SIA 416 et USPI), calculés par projet et par bâtiment.
+# num / den : listes de codes additionnés (valeur effective : propre aire, sinon somme des enfants).
+#   « SC » vaut SP − SN quand Treegram ne fournit pas la surface de construction ; « LOTS » = nombre de lots USPI.
+# levels : all (défaut) ou above_ground (niveaux de rang ≥ 0, sans sous-sols).
+# ref : fourchette de repère INDICATIVE (pratique courante en logement collectif suisse, pas une valeur normative) ;
+#   à ajuster par type de projet. Un ratio hors repère n'est pas une erreur : c'est une question pour la revue IA.
+ratios:
+  - {id: SN/SP,   family: sia,  label: "Surface nette / surface de plancher", num: [SN], den: [SP], ref: [0.78, 0.88],
+     note: "Complément de la part de construction : plus il est bas, plus murs et cloisons pèsent."}
+  - {id: SC/SP,   family: sia,  label: "Part de construction (SP − SN)", num: [SC], den: [SP], ref: [0.12, 0.22],
+     note: "SC n'est pas fournie par Treegram : calculée par différence, elle absorbe aussi les surfaces non classées."}
+  - {id: SU/SP,   family: sia,  label: "Efficience utile (SU / SP)", num: [SU], den: [SP], ref: [0.62, 0.80]}
+  - {id: SUP/SP,  family: sia,  label: "Part utile principale (SUP / SP)", num: [SUP], den: [SP], ref: [0.50, 0.72]}
+  - {id: SUP/SU,  family: sia,  label: "Principale dans l'utile (SUP / SU)", num: [SUP], den: [SU], ref: [0.70, 0.95],
+     note: "Sous la règle P1, SU comprend SUT : le ratio baisse sans que la SUP change."}
+  - {id: SD/SP,   family: sia,  label: "Part de dégagement (SD / SP)", num: [SD], den: [SP], ref: [0.05, 0.12]}
+  - {id: SI/SP,   family: sia,  label: "Part d'installations (SI / SP)", num: [SI], den: [SP], ref: [0.01, 0.05]}
+  - {id: SEP/SP,  family: sia,  label: "Surface externe / plancher (SEP / SP)", num: [SEP], den: [SP], ref: [0.05, 0.20],
+     note: "Gonflé si la SEP contient des abords ou des toitures."}
+  - {id: SNH/SP,  family: uspi, label: "Habitable nette / plancher hors sous-sol", num: [SNH], den: [SP], levels: above_ground,
+     ref: [0.55, 0.75], note: "Rendement de plan du logement ; baisse avec les usages non résidentiels (SUT)."}
+  - {id: SH/SNH,  family: uspi, label: "Construction intérieure (SH / SNH)", num: [SH], den: [SNH], ref: [1.03, 1.08],
+     note: "USPI 2014 : SCI ≈ 5 % de la SNH à défaut de précision."}
+  - {id: SBH/SH,  family: uspi, label: "Murs extérieurs et mitoyens (SBH / SH)", num: [SBH], den: [SH], ref: [1.05, 1.15]}
+  - {id: SVN/SP,  family: uspi, label: "Vendable net / plancher hors sous-sol", num: [SVN], den: [SP], levels: above_ground,
+     ref: [0.60, 0.85], note: "Rendement commercial du projet (VD, FR, NE)."}
+  - {id: SVB/SP,  family: uspi, label: "Vendable brut / plancher hors sous-sol", num: [SVB], den: [SP], levels: above_ground,
+     ref: [0.70, 0.95], note: "Rendement commercial du projet (VS)."}
+  - {id: SNH/lot, family: uspi, label: "Surface nette habitable moyenne par lot", num: [SNH], den: [LOTS], unit: m2,
+     note: "Informatif : dépend du programme (typologies)."}
+
 tolerance: {abs_m2: 0.5, rel: 0.005}
 
 levels:

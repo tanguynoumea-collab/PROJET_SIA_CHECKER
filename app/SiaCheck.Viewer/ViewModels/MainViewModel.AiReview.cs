@@ -129,6 +129,15 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private void CloseAiReport() => IsAiReportOpen = false;
 
+    /// <summary>Ctrl+I : ouvre le dernier rapport (relu sur disque, sans relancer la revue) ou le referme.</summary>
+    [RelayCommand]
+    private void ToggleAiReport()
+    {
+        if (IsAiReportOpen) CloseAiReport();
+        else if (HasAiReport) ShowAiReport();
+        else _shell.Notify("Aucun rapport IA pour ce projet : lancez une revue IA.");
+    }
+
     [RelayCommand]
     private void OpenAiReportFile()
     {

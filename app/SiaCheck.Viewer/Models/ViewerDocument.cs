@@ -25,6 +25,8 @@ public sealed class ViewerDocument
     [JsonPropertyName("surfaces")] public List<Surface> Surfaces { get; init; } = [];
     [JsonPropertyName("levels")] public List<LevelBalance> Levels { get; init; } = [];
     [JsonPropertyName("issues")] public List<Issue> Issues { get; init; } = [];
+    /// <summary>Ratios informatifs (absents des fichiers antérieurs : liste vide).</summary>
+    [JsonPropertyName("ratios")] public List<Ratio> Ratios { get; init; } = [];
 
     public static ViewerDocument Load(string path)
     {
@@ -94,6 +96,30 @@ public sealed class MeshData
 {
     [JsonPropertyName("v")] public float[] Vertices { get; init; } = [];
     [JsonPropertyName("i")] public int[] Indices { get; init; } = [];
+}
+
+/// <summary>Ratio informatif SIA 416 / USPI (src/sia_check/ratios.py) ; Building « * » = projet entier.</summary>
+public sealed class Ratio
+{
+    public const string AllBuildings = "*";
+
+    [JsonPropertyName("building")] public string Building { get; init; } = "";
+    [JsonPropertyName("id")] public string Id { get; init; } = "";
+    /// <summary>sia | uspi</summary>
+    [JsonPropertyName("family")] public string Family { get; init; } = "";
+    [JsonPropertyName("label")] public string Label { get; init; } = "";
+    [JsonPropertyName("value")] public double? Value { get; init; }
+    /// <summary>ratio | m2</summary>
+    [JsonPropertyName("unit")] public string Unit { get; init; } = "ratio";
+    [JsonPropertyName("ref_min")] public double? RefMin { get; init; }
+    [JsonPropertyName("ref_max")] public double? RefMax { get; init; }
+    /// <summary>ok | bas | haut | info | n/a</summary>
+    [JsonPropertyName("status")] public string Status { get; init; } = "";
+    [JsonPropertyName("num_m2")] public double? NumM2 { get; init; }
+    [JsonPropertyName("den_m2")] public double? DenM2 { get; init; }
+    [JsonPropertyName("note")] public string? Note { get; init; }
+
+    public bool HasReference => RefMin is not null && RefMax is not null;
 }
 
 public sealed class LevelBalance

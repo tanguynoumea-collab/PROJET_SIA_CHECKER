@@ -58,6 +58,7 @@ class Result:
     surfaces: pd.DataFrame    # surfaces connues, avec `code` normalisé et `ignored`
     unknown: pd.DataFrame     # surfaces dont la catégorie n'est pas dans la config (A3)
     totals: pd.DataFrame      # aire par (bâtiment, niveau) × code
+    ratios: pd.DataFrame | None = None   # ratios informatifs (ratios.py), par projet et bâtiment
 
     @property
     def failing(self) -> pd.DataFrame:
@@ -412,4 +413,6 @@ def run(df: pd.DataFrame, cfg: Config) -> Result:
     rows += uspi_checks(surf, cfg)
     rows += unknown_checks(unknown)
     res = pd.DataFrame(rows, columns=RESIDUAL_COLUMNS)
-    return Result(residuals=res, surfaces=surf, unknown=unknown, totals=totals)
+    from . import ratios   # import local : ratios s'appuie sur ce module
+    return Result(residuals=res, surfaces=surf, unknown=unknown, totals=totals,
+                  ratios=ratios.compute(totals, surf, cfg))

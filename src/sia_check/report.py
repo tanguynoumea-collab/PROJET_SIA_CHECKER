@@ -38,6 +38,11 @@ SURFACE_LABELS = {
     "code": "Code normalisé", "status": "Statut", "kind": "Type", "area": "Aire (m²)",
     "room_type": "Sous-type", "lot": "Lot", "source": "Source",
 }
+RATIO_LABELS = {
+    "building": "Portée", "id": "Ratio", "family": "Famille", "label": "Libellé", "value": "Valeur", "unit": "Unité",
+    "ref_min": "Repère min", "ref_max": "Repère max", "status": "Statut", "num_m2": "Numérateur", "den_m2": "Dénominateur",
+    "note": "Note",
+}
 KIND_LABELS = {"leaf": "élémentaire", "node": "total de niveau"}
 
 
@@ -176,6 +181,7 @@ def write_xlsx(rep: Report, path: Path) -> None:
         .drop(columns=["code", "status"]).rename(columns=SURFACE_LABELS),
         "Synthèse": rep.categories,
         "Contrôles": rep.result.residuals.rename(columns=RESIDUAL_LABELS),
+        "Ratios": _ratios_frame(rep).rename(columns=RATIO_LABELS),
     }
     with pd.ExcelWriter(path, engine="openpyxl") as xw:
         for name, df in sheets.items():
@@ -239,6 +245,7 @@ def write_html(rep: Report, path: Path) -> None:
         building_columns=list(rep.buildings.columns),
         unknown=rep.surfaces[rep.surfaces.status == "inconnue"].to_dict("records"),
         surfaces=rep.surfaces.to_dict("records"), kind_labels=KIND_LABELS,
+        ratios=_ratios_frame(rep).to_dict("records"),
     )
     path.write_text(html, encoding="utf-8")
 
@@ -247,6 +254,12 @@ def write_html(rep: Report, path: Path) -> None:
 
 def _records(df: pd.DataFrame) -> list[dict]:
     return json.loads(df.round(3).to_json(orient="records", force_ascii=False))
+
+
+def _ratios_frame(rep: Report) -> pd.DataFrame:
+    """Ratios informatifs (ratios.py) ; portée « * » = projet entier."""
+    r = rep.result.ratios
+    return r if r is not None else pd.DataFrame(columns=list(RATIO_LABELS))
 
 
 def write_json(rep: Report, path: Path) -> None:
@@ -262,6 +275,7 @@ def write_json(rep: Report, path: Path) -> None:
         "custom_rules": [{"id": r.id, "title": r.title, "description": r.description} for r in rep.cfg.custom_rules],
         "counts": rep.counts,
         "residuals": _records(rep.residuals),
+        "ratios": _records(_ratios_frame(rep)),
         "unknown_codes": [{"category": r["Catégorie"], "count": r["Surfaces élémentaires"] + r["Totaux de niveau"],
                            "area_m2": round(r["Aire (m²)"], 3)} for r in unknown.to_dict("records")],
     }

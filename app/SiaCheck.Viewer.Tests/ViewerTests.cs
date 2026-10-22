@@ -344,3 +344,62 @@ public class IssueItemTests
         Assert.Equal(expected, item.Location);
     }
 }
+
+public class RatioTests
+{
+    [Fact]
+    public void Ratios_are_read_with_project_scope()
+    {
+        var doc = Fixture.Synth();
+        var sn = doc.Ratios.Single(r => r.Building == "OK" && r.Id == "SN/SP");
+        Assert.Equal(0.9, sn.Value!.Value, 6);
+        Assert.Equal("haut", sn.Status);
+        Assert.True(sn.HasReference);
+        Assert.Contains(doc.Ratios, r => r.Building == Ratio.AllBuildings);
+    }
+
+    [Fact]
+    public void Row_judges_building_and_formats_swiss()
+    {
+        var doc = Fixture.Synth();
+        var row = new RatioRow(doc.Ratios.Single(r => r.Building == Ratio.AllBuildings && r.Id == "SN/SP"),
+                               doc.Ratios.Single(r => r.Building == "OK" && r.Id == "SN/SP"));
+        Assert.Equal("0,900", row.BuildingText);
+        Assert.Equal("0,780–0,880", row.ReferenceText);
+        Assert.True(row.IsOutside);
+        Assert.Contains("non normatif", row.Tooltip);
+    }
+
+    [Fact]
+    public void Area_per_lot_is_informative()
+    {
+        var doc = Fixture.Synth();
+        var lot = doc.Ratios.Single(r => r.Building == "OK" && r.Id == "SNH/lot");
+        var row = new RatioRow(lot, null);
+        Assert.Equal("80,0 m²", row.ProjectText);
+        Assert.Equal("indicatif", row.ReferenceText);
+        Assert.False(row.IsOutside);
+        Assert.Null(SiaCheck.Viewer.Controls.RatioGauge.Domain(row));
+    }
+
+    [Fact]
+    public void Gauge_domain_covers_reference_and_values()
+    {
+        var doc = Fixture.Synth();
+        var row = new RatioRow(doc.Ratios.Single(r => r.Building == Ratio.AllBuildings && r.Id == "SN/SP"),
+                               doc.Ratios.Single(r => r.Building == "OK" && r.Id == "SN/SP"));
+        var (min, max) = SiaCheck.Viewer.Controls.RatioGauge.Domain(row)!.Value;
+        Assert.True(min < 0.78 && max > 0.9);
+    }
+
+    [Fact]
+    public void Older_documents_without_ratios_still_load()
+    {
+        using var tmp = new TempDir();
+        var path = Path.Combine(tmp.Path, "old.viewer.json");
+        var json = System.Text.Json.Nodes.JsonNode.Parse(System.IO.File.ReadAllText(Fixture.File("synth.viewer.json")))!.AsObject();
+        json.Remove("ratios");
+        System.IO.File.WriteAllText(path, json.ToJsonString());
+        Assert.Empty(ViewerDocument.Load(path).Ratios);
+    }
+}

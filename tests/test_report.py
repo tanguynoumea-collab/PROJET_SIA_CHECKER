@@ -23,7 +23,7 @@ def test_file_names(written):
 def test_xlsx_sheets(written):
     rep, paths = written
     wb = openpyxl.load_workbook(paths[0])
-    assert wb.sheetnames == ["Résidus", "Surfaces", "Codes inconnus", "Synthèse", "Contrôles"]
+    assert wb.sheetnames == ["Résidus", "Surfaces", "Codes inconnus", "Synthèse", "Contrôles", "Ratios"]
     header = [c.value for c in wb["Résidus"][1]]
     for col in ("Bâtiment", "Niveau", "Règle", "Attendu (m²)", "Obtenu (m²)", "Écart (m²)", "Écart (%)", "Verdict"):
         assert col in header
@@ -55,6 +55,8 @@ def test_json_for_n8n(written):
     assert len(doc["residuals"]) == len(rep.residuals)
     assert {u["category"] for u in doc["unknown_codes"]} == {"XYZ", "(vide)"}
     assert doc["counts"]["ERREUR"] > 0
+    sn = next(r for r in doc["ratios"] if r["building"] == "OK" and r["id"] == "SN/SP")
+    assert sn["value"] == pytest.approx(0.9) and sn["status"] == "haut"
 
 
 def test_html(written):
@@ -62,6 +64,7 @@ def test_html(written):
     html = paths[1].read_text(encoding="utf-8")
     assert "Projet test/1" in html and "#B1005D" in html and "repeating-linear-gradient" in html
     assert "Bâtiment ERR" in html
+    assert "Ratios informatifs" in html and "SN/SP" in html
 
 
 def test_clean_model_report_is_empty(synth, cfg, tmp_path):

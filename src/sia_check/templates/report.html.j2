@@ -119,6 +119,24 @@
   {% else %}<div class="empty">Aucune surface contrôlée.</div>
   {% endfor %}
 
+  {% if ratios %}
+  <h2>Ratios informatifs <span class="muted">(repères indicatifs, non normatifs)</span></h2>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Portée</th><th>Ratio</th><th>Libellé</th><th class="n">Valeur</th><th class="n">Repère</th><th>Statut</th><th>Note</th></tr></thead>
+    <tbody>
+    {% for r in ratios %}
+      <tr><td>{{ 'Projet' if r.building == '*' else r.building }}</td><td>{{ r.id }}</td><td>{{ r.label }}</td>
+        <td class="n">{{ r.value|num(2 if r.unit == 'm2' else 3) }}</td>
+        <td class="n">{% if r.ref_min is not none and r.ref_min == r.ref_min %}{{ r.ref_min|num }} – {{ r.ref_max|num }}{% endif %}</td>
+        <td>{{ {'ok': 'dans le repère', 'bas': 'sous le repère', 'haut': 'au-dessus', 'info': 'informatif', 'n/a': '–'}[r.status] }}</td>
+        <td class="muted">{{ r.note }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+
   <h2>Synthèse par catégorie</h2>
   <div class="scroll">
   <table>

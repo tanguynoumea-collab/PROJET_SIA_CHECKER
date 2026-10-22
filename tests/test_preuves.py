@@ -77,3 +77,8 @@ def test_sep_over_basement(doc):
 
 def test_issues_keep_their_key(doc):
     assert [i["key"] for i in preuves.build(doc)["issues"]] == ["R1|B01|N00||SP"]
+
+
+def test_ratios_passed_to_review(doc):
+    doc["ratios"] = [{"building": "*", "id": "SN/SP", "value": 0.85, "status": "ok"}]
+    assert preuves.build(doc)["ratios"] == doc["ratios"]

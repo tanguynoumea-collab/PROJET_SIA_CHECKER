@@ -6,6 +6,8 @@
 #   SiaCheck.Viewer.exe          visionneuse (.NET 10 autonome, pas de runtime à installer)
 #   engine\sia-check.exe         moteur Python (PyInstaller), lancé par la visionneuse
 #   engine\config.yaml           nomenclature et tolérances, modifiables sans recompiler
+# et, si Inno Setup 6 est installé : app\dist\SiaCheckViewer-<version>-setup.exe (installeur par utilisateur,
+# raccourcis menu Démarrer / bureau). Version : <Version> de SiaCheck.Viewer.csproj.
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -34,3 +36,15 @@ if ($LASTEXITCODE -ne 0) { throw 'dotnet publish a échoué' }
 Copy-Item -Recurse (Join-Path $work 'dist\sia-check') (Join-Path $dist 'engine')
 Copy-Item (Join-Path $root 'config.yaml') (Join-Path $dist 'engine\config.yaml')
 Write-Host "Prêt : $dist"
+
+# 3. Installeur (Inno Setup 6, installation utilisateur ou machine).
+$version = ([xml](Get-Content (Join-Path $PSScriptRoot 'SiaCheck.Viewer\SiaCheck.Viewer.csproj'))).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+$iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+          "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($iscc) {
+    & $iscc /Q "/DAppVersion=$version" (Join-Path $PSScriptRoot 'installer\SiaCheckViewer.iss')
+    if ($LASTEXITCODE -ne 0) { throw 'Inno Setup a échoué' }
+    Write-Host "Installeur : $(Join-Path $PSScriptRoot "dist\SiaCheckViewer-$version-setup.exe")"
+} else {
+    Write-Host 'Inno Setup 6 absent : installeur non construit (dossier prêt à copier seulement).'
+}

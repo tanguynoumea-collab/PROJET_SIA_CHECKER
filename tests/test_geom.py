@@ -1,3 +1,4 @@
+import json
 """Décodeur .3drtgm (geom.py), identifiant d'élément du .tgm et export visionneuse (viewer.py)."""
 
 import struct
@@ -123,3 +124,6 @@ def test_doc_shape(doc, synth):
     assert lv["values"]["SP"] == 100 and lv["r1"]["verdict"] == "ERREUR" and "A1" in lv["alerts"]
     assert {c["code"]: c["status"] for c in doc["categories"]}["SUT"] == "checked"
     assert not doc["cache"]["stale"]
+    sn = next(r for r in doc["ratios"] if r["building"] == "OK" and r["id"] == "SN/SP")
+    assert sn["value"] == pytest.approx(0.9) and sn["ref_min"] == 0.78
+    assert doc["ratios"] == json.loads(json.dumps(doc["ratios"]))   # pas de NaN

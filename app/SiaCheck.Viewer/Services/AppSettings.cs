@@ -24,6 +24,8 @@ public sealed class AppSettings
 
     public string Theme { get; set; } = "Dark";
     public bool BalanceCollapsed { get; set; }
+    /// <summary>Zone bilan sur l'onglet Ratios.</summary>
+    public bool ShowRatios { get; set; }
     public double IssuesPanelWidth { get; set; } = 380;
     public WindowPlacement Window { get; set; } = new();
     public List<RecentProject> Recents { get; set; } = [];

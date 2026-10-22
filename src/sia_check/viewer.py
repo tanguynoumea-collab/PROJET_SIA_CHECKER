@@ -6,6 +6,8 @@ Contrat (version 1) :
   "project", "date", "sources", "exit_code", "counts", "tolerance",
   "cache": {"files", "newest", "oldest", "source_modified", "stale", "errors"},
   "custom_rules": [{"id", "title", "parent", "adds", "description"}],
+  "ratios": [{"building", "id", "family", "label", "value", "unit", "ref_min", "ref_max", "status",
+              "num_m2", "den_m2", "note"}],
   "categories": [{"code", "family", "status", "color", "hatched", "name", "ref", "definition", "custom_rule"}],
   "surfaces":   [{"id", "building", "level", "category", "code", "kind", "status", "area",
                   "room_type", "lot", "mesh": {"v": [x, y, z, …], "i": [a, b, c, …]} | null}],
@@ -46,6 +48,14 @@ def _text(v):
 
 def issue_key(r) -> str:
     return "|".join(str(x) for x in (r["rule"], r["building"], r["level"], _text(r["lot"]) or "", r["category"]))
+
+
+def ratios_records(result: rules.Result) -> list[dict]:
+    """Ratios informatifs (ratios.py) ; building « * » = projet entier."""
+    if result.ratios is None:
+        return []
+    return [{k: (_num(v) if isinstance(v, float) else v) for k, v in r.items()}
+            for r in result.ratios.to_dict("records")]
 
 
 def custom_rules(cfg: Config) -> list[dict]:
@@ -163,6 +173,7 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
             "surfaces_without_mesh": sum(1 for s in surfaces if s["mesh"] is None and (s["area"] or 0) > 0),
         },
         "categories": categories, "surfaces": surfaces, "levels": levels, "issues": issues,
+        "ratios": ratios_records(result),
     }
 
 

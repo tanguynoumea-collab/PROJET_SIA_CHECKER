@@ -10,6 +10,7 @@
                  mc:Ignorable="d"
                  d:DataContext="{d:DesignInstance vm:MainViewModel}"
                  Title="SIA Check Viewer"
+                 Icon="pack://application:,,,/Assets/SiaCheck.ico"
                  MinWidth="{StaticResource WindowMinWidth}" MinHeight="{StaticResource WindowMinHeight}"
                  Background="{DynamicResource BrushBackground}"
                  ExtendsContentIntoTitleBar="True" WindowBackdropType="None"
@@ -18,6 +19,7 @@
     <Window.InputBindings>
         <KeyBinding Key="R" Modifiers="Control" Command="{Binding AnalyseCommand}" />
         <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenProjectCommand}" />
+        <KeyBinding Key="I" Modifiers="Control" Command="{Binding ToggleAiReportCommand}" />
         <KeyBinding Key="Escape" Command="{Binding ClearFocusCommand}" />
     </Window.InputBindings>
 
@@ -28,7 +30,11 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Grid.Row="0" Title="SIA Check Viewer" />
+        <ui:TitleBar Grid.Row="0" Title="SIA Check Viewer">
+            <ui:TitleBar.Icon>
+                <ui:ImageIcon Source="pack://application:,,,/Assets/SiaCheck.png" />
+            </ui:TitleBar.Icon>
+        </ui:TitleBar>
 
         <!-- ================================================================ ACCUEIL (état vide) -->
         <Grid Grid.Row="1" Visibility="{Binding IsHome, Converter={StaticResource BoolToVisibility}}">
@@ -92,6 +98,11 @@
                         <ui:Button Margin="8,0,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon Sparkle20}" Content="Revue IA"
                                    Command="{Binding OpenAiPanelCommand}" MinHeight="{StaticResource TargetSize}"
                                    ToolTip="Sur-vérification par IA : regroupe les points par cause et donne un verdict à chacun" />
+                        <!-- Rouvre le dernier rapport sans relancer la revue (payante) -->
+                        <ui:Button Margin="8,0,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon DocumentText20}" Content="Rapport IA"
+                                   Command="{Binding ShowAiReportCommand}" MinHeight="{StaticResource TargetSize}"
+                                   ToolTip="Rouvrir le rapport de la dernière revue IA, sans la relancer (Ctrl+I)"
+                                   Visibility="{Binding HasAiReport, Converter={StaticResource BoolToVisibility}}" />
                         <ui:Button Margin="8,0,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon ArrowExportUp20}" Content="Exporter les rapports…"
                                    Command="{Binding ExportCommand}" MinHeight="{StaticResource TargetSize}" />
                         <ui:Button Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon DarkTheme20}"
@@ -355,12 +366,24 @@
                                 <ComboBox DockPanel.Dock="Right" Margin="0,0,8,0" MinWidth="90" ItemsSource="{Binding Buildings}"
                                           DisplayMemberPath="Name" SelectedValuePath="Name" SelectedValue="{Binding BalanceBuilding}"
                                           FontFamily="{StaticResource FontMono}" AutomationProperties.Name="Bâtiment du bilan" />
-                                <TextBlock Style="{StaticResource TextSection}" Margin="0" VerticalAlignment="Center">
-                                    <Run Text="Bilan par niveau" /><Run Text=" — " /><Run Text="{Binding BalanceBuilding, Mode=OneWay}" FontFamily="{StaticResource FontMono}" />
-                                </TextBlock>
+                                <StackPanel Orientation="Horizontal">
+                                    <!-- Deux onglets : bilan par niveau (signature) et ratios informatifs -->
+                                    <RadioButton Style="{StaticResource Chip}" Margin="0,0,4,0" GroupName="BalanceTab"
+                                                 IsChecked="{Binding ShowRatios, Converter={StaticResource Not}}"
+                                                 ToolTip="Sommation SIA 416 niveau par niveau du bâtiment choisi">
+                                        <TextBlock Style="{StaticResource TextSection}" Margin="0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Text="Bilan par niveau" />
+                                    </RadioButton>
+                                    <RadioButton Style="{StaticResource Chip}" Margin="0,0,8,0" GroupName="BalanceTab" IsChecked="{Binding ShowRatios}"
+                                                 ToolTip="Ratios informatifs SIA 416 / USPI du projet et du bâtiment choisi (repères indicatifs, non normatifs)">
+                                        <TextBlock Style="{StaticResource TextSection}" Margin="0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Text="Ratios" />
+                                    </RadioButton>
+                                    <TextBlock Style="{StaticResource TextSection}" Margin="0" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}"
+                                               Text="{Binding BalanceBuilding, Mode=OneWay}" />
+                                </StackPanel>
                             </DockPanel>
-                            <ScrollViewer Height="{StaticResource BalanceHeight}" VerticalScrollBarVisibility="Auto" Padding="12,0,12,8"
-                                          Visibility="{Binding IsBalanceCollapsed, Converter={StaticResource HiddenWhen}}">
+                            <Grid Height="{StaticResource BalanceHeight}" Visibility="{Binding IsBalanceCollapsed, Converter={StaticResource HiddenWhen}}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,0,12,8"
+                                          Visibility="{Binding ShowRatios, Converter={StaticResource HiddenWhen}}">
                                 <ItemsControl ItemsSource="{Binding BalanceRows}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="vm:BalanceRow">
@@ -393,6 +416,57 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </ScrollViewer>
+
+                            <!-- ============ Ratios informatifs : projet (cercle) et bâtiment (point) sur le repère indicatif -->
+                            <DockPanel Visibility="{Binding ShowRatios, Converter={StaticResource BoolToVisibility}}" Margin="12,0,12,8">
+                                <Grid DockPanel.Dock="Top" Margin="4,0,18,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="72" /><ColumnDefinition Width="*" /><ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="72" /><ColumnDefinition Width="72" /><ColumnDefinition Width="112" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource TextCaption}" Text="Ratio" />
+                                    <TextBlock Grid.Column="1" Style="{StaticResource TextCaption}" Text="Libellé" />
+                                    <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}" Text="○ projet   ● bâtiment" HorizontalAlignment="Center" />
+                                    <TextBlock Grid.Column="3" Style="{StaticResource TextCaption}" Text="Projet" HorizontalAlignment="Right" />
+                                    <TextBlock Grid.Column="4" Style="{StaticResource TextCaption}" HorizontalAlignment="Right" FontFamily="{StaticResource FontMono}"
+                                               Text="{Binding BalanceBuilding, Mode=OneWay}" />
+                                    <TextBlock Grid.Column="5" Style="{StaticResource TextCaption}" Text="Repère" HorizontalAlignment="Right" />
+                                </Grid>
+                                <TextBlock DockPanel.Dock="Top" Margin="4,8" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                                           Visibility="{Binding HasRatios, Converter={StaticResource HiddenWhen}}"
+                                           Text="Pas de ratios dans cette analyse : relancez « Analyser » pour les calculer." />
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding RatioRows}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="vm:RatioRow">
+                                                <Grid Height="{StaticResource BalanceRowHeight}" Margin="4,0,18,0" Background="Transparent" ToolTip="{Binding Tooltip}"
+                                                      ToolTipService.ShowDuration="30000" AutomationProperties.Name="{Binding Label}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="72" /><ColumnDefinition Width="*" /><ColumnDefinition Width="150" />
+                                                        <ColumnDefinition Width="72" /><ColumnDefinition Width="72" /><ColumnDefinition Width="112" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding Id}" />
+                                                    <TextBlock Grid.Column="1" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis" Text="{Binding Label}" />
+                                                    <c:RatioGauge Grid.Column="2" Margin="8,0" Row="{Binding}" Track="{DynamicResource BrushTextSecondary}"
+                                                                  Accent="{DynamicResource BrushAccent}" Warning="{DynamicResource BrushVerdictWarning}" />
+                                                    <TextBlock Grid.Column="3" Style="{StaticResource TextNumber}" VerticalAlignment="Center" Text="{Binding ProjectText}" />
+                                                    <TextBlock x:Name="Bld" Grid.Column="4" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
+                                                               Text="{Binding BuildingText}" />
+                                                    <TextBlock Grid.Column="5" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding ReferenceText}" />
+                                                </Grid>
+                                                <DataTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding IsOutside}" Value="True">
+                                                        <Setter TargetName="Bld" Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
+                                                    </DataTrigger>
+                                                </DataTemplate.Triggers>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </DockPanel>
+                            </Grid>
                         </DockPanel>
                     </Border>
 

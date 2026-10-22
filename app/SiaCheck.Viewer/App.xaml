@@ -18,6 +18,7 @@
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
             <c:VisibleWhenConverter x:Key="VisibleWhen" />
             <c:VisibleWhenConverter x:Key="HiddenWhen" Invert="True" />
+            <c:NotConverter x:Key="Not" />
             <c:EqualsConverter x:Key="EqualsTo" />
             <c:AreaConverter x:Key="Area" />
         </ResourceDictionary>

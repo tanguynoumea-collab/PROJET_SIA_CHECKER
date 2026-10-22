@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using SiaCheck.Viewer.Models;
@@ -158,3 +159,49 @@ public sealed class SurfaceInfo(Surface surface, IReadOnlyList<IssueItem> issues
 }
 
 public sealed record ChoiceItem(string Label, string Value);
+
+/// <summary>Une ligne de l'onglet Ratios : valeur du projet et, si un bâtiment est choisi, celle du bâtiment.</summary>
+public sealed class RatioRow(Ratio project, Ratio? building)
+{
+    private static readonly NumberFormatInfo Format = new() { NumberGroupSeparator = " ", NumberDecimalSeparator = "," };
+
+    public Ratio Project { get; } = project;
+    public Ratio? Building { get; } = building;
+    /// <summary>Le ratio jugé : celui du bâtiment s'il existe, sinon celui du projet.</summary>
+    public Ratio Shown => Building ?? Project;
+
+    public string Id => Project.Id;
+    public string Label => Project.Label;
+    public bool IsArea => Project.Unit == "m2";
+    public string ProjectText => Text(Project.Value);
+    public string BuildingText => Building is null ? "" : Text(Building.Value);
+    public string ReferenceText => Project.HasReference ? $"{Text(Project.RefMin)}–{Text(Project.RefMax)}" : "indicatif";
+    public bool IsOutside => Shown.Status is "bas" or "haut";
+    public string StatusText => StatusTextOf(Shown.Status);
+
+    public string Tooltip
+    {
+        get
+        {
+            var lines = new List<string> { $"{Id} — {Label}" };
+            foreach (var r in new[] { Project, Building })
+                if (r is not null)
+                    lines.Add($"{(r.Building == Ratio.AllBuildings ? "Projet" : r.Building)} : {Text(r.Value)}  "
+                              + $"({Area(r.NumM2)} / {(r.Unit == "m2" ? Count(r.DenM2) : Area(r.DenM2))}) · {StatusTextOf(r.Status)}");
+            lines.Add(Project.HasReference
+                ? $"Repère indicatif {ReferenceText}, non normatif : un écart est une question, pas une erreur."
+                : "Sans repère : valeur informative.");
+            if (!string.IsNullOrWhiteSpace(Project.Note)) lines.Add(Project.Note!);
+            return string.Join("\n", lines);
+        }
+    }
+
+    private static string StatusTextOf(string s) => s switch
+    {
+        "bas" => "sous le repère", "haut" => "au-dessus du repère", "ok" => "dans le repère", "info" => "informatif", _ => "non calculé",
+    };
+
+    private string Text(double? v) => v is not double d ? "–" : IsArea ? d.ToString("#,##0.0", Format) + " m²" : d.ToString("0.000", Format);
+    private static string Area(double? v) => v is double d ? d.ToString("#,##0", Format) + " m²" : "–";
+    private static string Count(double? v) => v is double d ? d.ToString("#,##0", Format) + " lots" : "–";
+}

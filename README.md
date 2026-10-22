@@ -24,9 +24,20 @@ sia-check model.ifc --all --verbose          # console seule, contrôles OK comp
 
 `<projet>_<date>.xlsx`, `.html` et `.json` :
 
-- **xlsx** : onglets *Résidus* (contrôles hors OK, écart décroissant), *Surfaces* (toutes les surfaces lues), *Codes inconnus*, *Synthèse* (par catégorie, puis aire par bâtiment), *Contrôles* (tous les contrôles, OK compris).
+- **xlsx** : onglets *Résidus* (contrôles hors OK, écart décroissant), *Surfaces* (toutes les surfaces lues), *Codes inconnus*, *Synthèse* (par catégorie, puis aire par bâtiment), *Contrôles* (tous les contrôles, OK compris), *Ratios*.
 - **html** : même contenu, lisible sans Excel, avec un tableau par niveau aux couleurs de la légende SIA 416 (surfaces externes hachurées).
-- **json** : pour n8n : `exit_code`, `counts` par verdict, `residuals` (hors OK), `unknown_codes`.
+- **json** : pour n8n : `exit_code`, `counts` par verdict, `residuals` (hors OK), `unknown_codes`, `ratios`.
+
+## Ratios informatifs
+
+Ratios classiques du développement immobilier, calculés pour le projet et pour chaque bâtiment (`src/sia_check/ratios.py`, définitions et repères dans `config.yaml > ratios`) :
+
+- **SIA 416** : SN/SP, SC/SP, SU/SP, SUP/SP, SUP/SU, SD/SP, SI/SP, SEP/SP ;
+- **USPI 2014** : SNH/SP, SH/SNH, SBH/SH, SVN/SP, SVB/SP (hors sous-sol), SNH par lot.
+
+Chaque code prend sa valeur niveau par niveau (le détail fait foi, règles personnalisées comprises), puis les niveaux sont sommés. Les codes USPI ne somment que les lots. SC absente vaut SP − SN.
+
+Les repères sont **indicatifs, pas normatifs** : un ratio hors repère n'est pas une erreur du contrôle et ne change pas le code de sortie. C'est une question, que la revue IA doit relier à un sujet ou déclarer inexpliquée.
 
 ## SIA Check Viewer (application WPF)
 
@@ -36,7 +47,12 @@ Visionneuse 3D des surfaces SIA d'un projet Treegram, avec la liste des points d
 powershell -ExecutionPolicy Bypass -File app/build.ps1
 ```
 
-La commande produit `app/dist/SiaCheckViewer/`. Ce dossier se copie tel quel : il ne demande ni Python ni runtime .NET.
+La commande produit :
+
+- `app/dist/SiaCheckViewer-<version>-setup.exe`, l'installeur (Inno Setup 6, s'il est installé). Il installe pour l'utilisateur, sans droits administrateur, dans `%LOCALAPPDATA%\Programs\SIA Check Viewer`, avec un raccourci dans le menu Démarrer et, en option, sur le bureau. On le désinstalle par Paramètres > Applications. Les statuts, commentaires et la clé API sont conservés.
+- `app/dist/SiaCheckViewer/`, le dossier prêt à copier. On lance `SiaCheck.Viewer.exe` ; il ne demande ni Python ni runtime .NET.
+
+La version vient de `<Version>` dans `SiaCheck.Viewer.csproj` et de `pyproject.toml`, qui doivent rester alignées. Une analyse en cache produite par une autre version du moteur est refaite à l'ouverture. Le logo est généré par `scripts/make_logo.py`.
 
 - **Ouvrir** : le dossier du projet Treegram, celui qui contient `Nom.tgm` et `VWR\`. Le moteur `engine\sia-check.exe` analyse le `.tgm` et lit la géométrie dans le cache du viewer.
 - **Calques par catégorie SIA**, filtres par bâtiment et par niveau, éclatement des niveaux.
@@ -48,11 +64,12 @@ La commande produit `app/dist/SiaCheckViewer/`. Ce dossier se copie tel quel : i
 
   Statuts et commentaires sont conservés d'une analyse à l'autre, dans `%APPDATA%\SiaCheckViewer\reviews\`. Un point suivi qui disparaît passe en « résolu ».
 - **Bilan par niveau** : barres de sommation SP → SUP/SUS/SD/SI pour un bâtiment. Un clic sur une barre isole le niveau.
+- **Ratios** (second onglet du bilan) : pour chaque ratio, la valeur du projet (cercle) et celle du bâtiment choisi (point, orange hors repère) sur une jauge du repère indicatif. L'infobulle donne les m², le repère et la note.
 - **Revue IA** (sur-vérification, procédure `.claude/skills/revue-ia/SKILL.md`) :
   - les verdicts de la dernière revue du projet s'affichent dans la liste et la carte Détail (`vrai sujet`, `à confirmer`, `faux positif`, `agrégat`, sujet `S1`…, raison) ; filtre « Verdict IA » ; « Appliquer les faux positifs » passe en « Faux positif » les points encore « À traiter » ;
-  - le bouton **Revue IA** enchaîne analyse, preuves géométriques (`sia-check --preuves`), estimation du coût, puis, après accord, l'appel à Claude Opus 5.5 par l'API Anthropic. Le rapport s'ouvre dans un volet sur la 3D ;
-  - la clé API est saisie dans l'app et chiffrée avec DPAPI pour le compte Windows (`%LOCALAPPDATA%\SiaCheckViewernthropic-key.bin`), jamais en clair ;
-  - revues lancées depuis l'app : `%APPDATA%\SiaCheckViewerevue-ia\<projet>\` ; revues faites dans Claude Code : `docs/revue-ia/` (lu quand l'app tourne depuis le dépôt).
+  - le bouton **Revue IA** enchaîne analyse, preuves géométriques (`sia-check --preuves`, ratios compris), estimation du coût, puis, après accord, l'appel à Claude Opus 5.5 par l'API Anthropic. Le rapport s'ouvre dans un volet sur la 3D. Le bouton **Rapport IA** (ou Ctrl+I) le rouvre à tout moment sans relancer la revue ;
+  - la clé API est saisie dans l'app et chiffrée avec DPAPI pour le compte Windows (`%LOCALAPPDATA%\SiaCheckViewer\anthropic-key.bin`), jamais en clair ;
+  - revues lancées depuis l'app : `%APPDATA%\SiaCheckViewer\revue-ia\<projet>\` ; revues faites dans Claude Code : `docs/revue-ia/` (lu quand l'app tourne depuis le dépôt).
 - **Limite** : si le projet a été modifié après la dernière ouverture dans le viewer Treegram, le cache 3D est périmé. La visionneuse l'indique.
 
 Développement : `dotnet test app/SiaCheckViewer.sln`.
@@ -82,6 +99,7 @@ src/sia_check/
   tgm.py      décodeur du format binaire Treegram (non documenté, voir docs/ifc-schema.md §2.2)
   reader.py   .tgm / .ifc -> DataFrame normalisé (seul module à lire les fichiers)
   rules.py    règles, fonctions pures sur le DataFrame
+  ratios.py   ratios informatifs SIA 416 / USPI
   viewer.py   fichier pour SIA Check Viewer (--viewer-json)
   preuves.py  preuves géométriques de la revue IA (--preuves, shapely)
   cli.py      ligne de commande

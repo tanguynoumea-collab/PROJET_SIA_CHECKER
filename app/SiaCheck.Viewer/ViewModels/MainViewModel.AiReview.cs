@@ -261,12 +261,14 @@ public sealed partial class MainViewModel
                 if (p.Step < p.StepCount) AiStepAnalysis = $"étape {p.Step}/{p.StepCount - 1} : {p.Label}";
                 else { AiStepAnalysis = "terminée"; AiStepEvidence = "calcul…"; }
             });
-            var run = await _engine!.AnalyseWithEvidenceAsync(dir, tmp, evidencePath, progress, ct);
+            var inputs = CurrentEngineInputs(dir);
+            var run = await _engine!.AnalyseWithEvidenceAsync(dir, tmp, evidencePath, inputs, progress, ct);
             LastLogFile = _paths.LogFile(dir);
             await File.WriteAllTextAsync(LastLogFile, run.Log, ct);
             if (!run.Succeeded || !File.Exists(tmp) || !File.Exists(evidencePath))
                 throw new AiReviewException(run.ErrorMessage ?? $"Le moteur s'est arrêté avec le code {run.ExitCode}.");
             File.Move(tmp, json, overwrite: true);
+            MarkCorrectionsAnalysed(inputs);
             Load(ViewerDocument.Load(json));
             var doc = Document!;
             AiStepAnalysis = $"{doc.Surfaces.Count:N0} surfaces · {doc.Issues.Count} points";
@@ -329,6 +331,8 @@ public sealed partial class MainViewModel
             AiStage = AiStage.Done;
             ApplyAiReview(review);
             IsAiPanelOpen = false;
+            // Les décisions de la revue sur les corrections réorientent les sujets : le moteur les fusionne.
+            if (output.Subjects is not null) await AnalyseAsync();
             ShowAiReport();
             var missing = output.MissingKeys.Count > 0 ? $" · {output.MissingKeys.Count} points sans verdict du modèle (« à confirmer »)" : "";
             _shell.Notify($"Revue IA terminée · coût réel {response.CostUsd:0.00} USD ({response.InputTokens:N0} + {response.OutputTokens:N0} jetons){missing}.");

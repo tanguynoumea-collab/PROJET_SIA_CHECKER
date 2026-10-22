@@ -17,6 +17,21 @@ public sealed record EngineRun(int ExitCode, string Log)
         .LastOrDefault(l => l.StartsWith("ERROR ", StringComparison.Ordinal))?[6..];
 }
 
+/// <summary>
+/// Ce que l'app ajoute au .tgm à chaque exécution : dernière revue IA (<c>--revue</c>, réoriente les sujets)
+/// et journal des décisions (<c>--corrections</c>, appliqué avant les contrôles et les exports).
+/// </summary>
+public sealed record EngineInputs(string? Review = null, string? Journal = null)
+{
+    public static EngineInputs None { get; } = new();
+
+    public IEnumerable<string> Args()
+    {
+        if (Review is not null) { yield return "--revue"; yield return Review; }
+        if (Journal is not null) { yield return "--corrections"; yield return Journal; }
+    }
+}
+
 /// <summary>Pilote le moteur Python sia-check (exécutable livré avec l'application).</summary>
 public sealed partial class AnalysisService(string enginePath)
 {
@@ -25,17 +40,30 @@ public sealed partial class AnalysisService(string enginePath)
 
     public string EnginePath { get; } = enginePath;
 
-    public Task<EngineRun> AnalyseAsync(string projectDir, string viewerJson, IProgress<AnalysisProgress>? progress,
-                                         CancellationToken ct) =>
-        RunAsync(["-q", projectDir, "--viewer-json", viewerJson], progress, ct);
+    public Task<EngineRun> AnalyseAsync(string projectDir, string viewerJson, EngineInputs inputs,
+                                         IProgress<AnalysisProgress>? progress, CancellationToken ct) =>
+        RunAsync(["-q", projectDir, "--viewer-json", viewerJson, .. inputs.Args()], progress, ct);
 
     /// <summary>Analyse + preuves géométriques de la revue IA (sia_check.preuves), en une seule exécution (4 étapes).</summary>
-    public Task<EngineRun> AnalyseWithEvidenceAsync(string projectDir, string viewerJson, string evidenceJson,
+    public Task<EngineRun> AnalyseWithEvidenceAsync(string projectDir, string viewerJson, string evidenceJson, EngineInputs inputs,
                                                     IProgress<AnalysisProgress>? progress, CancellationToken ct) =>
-        RunAsync(["-q", projectDir, "--viewer-json", viewerJson, "--preuves", evidenceJson], progress, ct);
+        RunAsync(["-q", projectDir, "--viewer-json", viewerJson, "--preuves", evidenceJson, .. inputs.Args()], progress, ct);
 
-    public Task<EngineRun> ExportAsync(string projectDir, string outDir, CancellationToken ct) =>
-        RunAsync(["-q", projectDir, "--out", outDir], null, ct);
+    /// <summary>Rapports d'analyse xlsx / html / json (et bilan des corrections) dans un dossier.</summary>
+    public Task<EngineRun> ExportAsync(string projectDir, string outDir, EngineInputs inputs, CancellationToken ct) =>
+        RunAsync(["-q", projectDir, "--out", outDir, .. inputs.Args()], null, ct);
+
+    /// <summary>Tableau MDP HRS (sia_check.mdp) ; gabarit vierge livré si <paramref name="template"/> est null.</summary>
+    public Task<EngineRun> ExportMdpAsync(string projectDir, string mdpPath, string? template, string? projectId,
+                                          EngineInputs inputs, CancellationToken ct) =>
+        RunAsync(["-q", projectDir, "--mdp", mdpPath,
+                  .. template is null ? Array.Empty<string>() : ["--mdp-template", template],
+                  .. string.IsNullOrWhiteSpace(projectId) ? Array.Empty<string>() : ["--project-id", projectId.Trim()],
+                  .. inputs.Args()], null, ct);
+
+    /// <summary>Exports au gabarit Excel Treegram (sia_check.treegram) dans un dossier.</summary>
+    public Task<EngineRun> ExportTreegramAsync(string projectDir, string outDir, EngineInputs inputs, CancellationToken ct) =>
+        RunAsync(["-q", projectDir, "--treegram", outDir, .. inputs.Args()], null, ct);
 
     private async Task<EngineRun> RunAsync(IEnumerable<string> args, IProgress<AnalysisProgress>? progress,
                                            CancellationToken ct)

@@ -111,7 +111,9 @@ def read_tgm(path: Path, cfg: Config) -> pd.DataFrame:
     for g in bags:
         code = str(g.props.get(cat_p, g.name)).strip()
         m = name_re.match(g.name)
-        row = {"category": code, "area": g.props.get(area_p), "room_type": g.props.get(type_p),
+        # Totaux sans catégorie (façade SFN) : pas d'« Area », leur aire est la surface brute.
+        area = g.props.get(area_p) if cat_p in g.props else g.props.get(area_p, g.props.get("GrossArea"))
+        row = {"category": code, "area": area, "room_type": g.props.get(type_p),
                "element_id": g.element_id, "tgm_id": g.tgm_id} | {c: g.props.get(p) for c, p in extra.items()}
         if m is None:
             if block < 0 or code in block_codes:

@@ -167,3 +167,20 @@ def test_affectation_reaches_mdp(cfg, tmp_path):
         ws = openpyxl.load_workbook(out)["SurfacesNettesSIA416"]
     rows = {r[7]: r[3] for r in ws.iter_rows(min_row=2, values_only=True)}
     assert rows["Escalier"] == "Inconnu" and rows["Chambre"] is None
+
+
+def test_viewer_json_carries_before_excluded_and_log(tmp_path):
+    tgm = tmp_path / "mini.tgm"
+    tgm.write_bytes(b"".join([
+        node("SP", 100.0), leaf("A_N01_ShellByTgm-1_SpaceByTgm-1_SUP", "SUP", 85.0), node("SEP", 30.0),
+    ]))
+    j = tmp_path / "journal.json"
+    corrections.write(journal({"id": "c1", "op": "exclure", "cible": {"selection": {"category": "SEP"}}}), j)
+    out = tmp_path / "v.json"
+    assert cli.main([str(tgm), "--corrections", str(j), "--viewer-json", str(out), "-q",
+                     "--config", str(cli._default_config())]) in (0, 1)
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    lv = next(lv for lv in doc["levels"] if lv["level"] == "N01")
+    assert lv["before"]["values"]["SEP"] == 30 and "SEP" not in lv["values"]
+    assert [s["status"] for s in doc["surfaces"] if s["category"] == "SEP"] == ["excluded"]
+    assert doc["corrections_log"][0]["application"] == "appliquée"

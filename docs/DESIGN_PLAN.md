@@ -1,6 +1,7 @@
 # DESIGN_PLAN — SIA Check Viewer
 
 > Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (21.10.2026)
+> Évolutions : 1.1 Revue IA (validée 22.10.2026) · 2.0 Sujets et corrections (validée et implémentée 22.10.2026), en fin de document.
 > Phase 2 (revue visuelle) : captures de référence dans `docs/ui-baseline/` (accueil, revue, isolement sombre, isolement clair).
 > Version : 1.0 — 21.10.2026 · Mode CRÉATION
 
@@ -328,3 +329,229 @@ Boîte « Revue IA » — superposition centrée, 520 px, même gabarit que « A
 | Onglet « Rapport » à la place de la 3D | Perd le lien rapport → point ; le volet laisse la liste active |
 | Clé API dans les paramètres JSON | En clair sur disque ; DPAPI par utilisateur à la place |
 | Appliquer les faux positifs sans condition | Écraserait un « Vu » posé à la main ; on ne touche que « À traiter » |
+
+---
+
+## Évolution 2.0 — Sujets et corrections (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (22.10.2026) ☑ Implémenté, revue visuelle faite
+> Captures de référence : `docs/ui-baseline/subjects-dark.png`, `subjects-light.png`, `points-light.png` (L'Orée, revue v2, 31 corrections appliquées).
+> Version : 2.0 — 22.10.2026 · référence : `docs/V2_PLAN.md` §5.1 (phase 5). Capture de l'état actuel analysée avant conception : panneau droit déjà dense (liste, 2 lignes de filtres, carte Détail avec bloc IA).
+> Hors périmètre : le module de tracé (phase 6) et l'Excel de correction (phase 7). Rien de ces phases n'apparaît à l'écran, pas même désactivé.
+
+### Ancrage
+
+- **Ce qui change dans le métier** : on ne fait plus seulement *constater* des écarts, on les *traite*. L'unité de travail n'est plus le point (155 sur L'Orée), c'est le **sujet** (5 à 8) et ses **corrections** (31).
+- **Job du nouvel écran** : *statuer sujet par sujet sur les corrections proposées, puis voir dans le bilan que le bâtiment boucle.*
+- Le geste dominant devient « accepter un sujet entier ». Le réglage correction par correction reste possible, mais il est minoritaire.
+
+### Emplacement — décision
+
+| Option | Verdict |
+|---|---|
+| **Onglets en tête du panneau droit : `Sujets` · `Points`** | ✅ **Retenue.** Même largeur, même logique liste + carte. Une seule liste visible à la fois : la densité baisse au lieu de monter. `Sujets` est l'onglet par défaut dès qu'il y a des sujets. |
+| Sujets dans le panneau gauche | ❌ Le panneau gauche porte des outils de vue (calques, filtres) ; les sujets sont du contenu à traiter. |
+| Fenêtre ou dialogue « Corrections » | ❌ Coupe le lien correction → 3D → bilan, qui est tout l'intérêt. |
+| Remplacer le bilan par un tableau avant/après | ❌ Le bilan est l'élément signature ; on l'enrichit (voir plus bas), on ne le remplace pas. |
+
+### Action primaire — une seule, toujours « Analyser »
+
+On garde la règle V1 : un seul bouton accentué. **Analyser = relire le `.tgm` + appliquer les corrections acceptées + relancer les contrôles.** Il n'y a pas de bouton « Appliquer » séparé, donc pas de deuxième accent, et pas d'état « accepté mais pas appliqué » oublié.
+
+- Quand des décisions n'ont pas encore été appliquées, le bouton porte un compteur : `[▶ Analyser · 22]`. Son infobulle dit : « Réanalyser le projet et appliquer 22 corrections acceptées ».
+- Barre de commande : `analysé le 22.10 14:02 · 31 corrections appliquées` (le compteur est un lien vers l'onglet Sujets, filtre « Appliquées »).
+
+### Tokens
+
+**Aucun nouveau token d'interface.** Tout reprend §2 et l'évolution 1.1, avec une seule addition de contenu, déjà prévue par la règle V1 « vert réservé aux abords » :
+
+| Token | Dark | Light | Usage |
+|---|---|---|---|
+| `SiaSA` (couleur de contenu, légende SIA 416 §1.2) | `#5BA845` | `#3F8A2C` | pastille « SA » dans les corrections « découper vers SA », plus tard (phase 6) les surfaces SA en 3D |
+
+États de correction, **en glyphe et trait seulement** (règle V1 : le trait dit le verdict) :
+
+| État | Glyphe | Trait | Raccourci |
+|---|---|---|---|
+| Proposée | cercle vide ○ | TextSecondary | `1` |
+| Acceptée | coche ✓ | StatusSeen | `2` |
+| Rejetée | croix ✕, texte barré | TextSecondary | `3` |
+| Appliquée (après analyse) | coche pleine dans un cercle | StatusSeen | — |
+| Inapplicable (cible absente, refusée par le moteur) | triangle | VerdictWarning | — |
+
+`1 / 2 / 3` reprennent les raccourcis des statuts de points (« à traiter / vu / faux positif ») : même place sous les doigts, même sens (à décider / oui / non).
+
+### Wireframes des zones touchées
+
+**Panneau droit, onglet Sujets** (380 px, redimensionnable comme aujourd'hui)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ [ Sujets 6 ]  Points 155                                 │  onglets (Ctrl+1 / Ctrl+2)
+│ △ Revue IA : 2 décisions écartées · Voir                 │  bandeau, seulement s'il y en a
+│ [Tous ▾]                       31 corrections · 18 acc.  │  filtre : à décider / acceptées / appliquées / tous
+├──────────────────────────────────────────────────────────┤
+│ S2  Toitures comptées en SEP                 7 280 m²    │  id mono · titre · surface en jeu
+│     ╭corriger╮ ╭IA╮  31 points · 22 corrections           │  étiquettes contourées
+│     ✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓○○   20 / 22                     │  frise : un glyphe par correction
+├──────────────────────────────────────────────────────────┤
+│ S1  SEP du rez = dalle sur sous-sol → SA     7 561 m²    │
+│     ╭corriger╮ ╭IA╮  18 points · 9 corrections            │
+│     ○○○○○○○○○   0 / 9                                    │
+├──────────────────────────────────────────────────────────┤
+│ S4  Petits écarts de SEP aux étages      ╭à vérifier╮    │  sans correction : pas de frise
+│ S5  SEP en sous-sol, I17 S01             ╭à vérifier╮    │
+│ S6  Surface de construction implicite    ╭aucune╮        │  en bas, texte secondaire
+│     Agrégats                             ╭aucune╮        │
+└──────────────────────────────────────────────────────────┘
+  Tri : « corriger » (surface en jeu décroissante), puis « à vérifier », puis « aucune ».
+```
+
+**Carte Sujet** (sous la liste, même gabarit que la carte Détail)
+
+```
+┌ S2 · Toitures comptées en SEP ─────────────── ╭IA · vrai sujet╮ ┐
+│ Une toiture non accessible n'est ni SP ni SEP (SIA 416 §3) ; Treegram │
+│ la classe déjà en SPT. Terrasses d'attique classées SEU gardées.      │  explication (IA si revue, sinon règle)
+│                                                                       │
+│ [✓ Accepter les 22]  [✕ Rejeter les 22]            Voir le rapport ↗  │  secondaires ; « Rejeter » à droite, loin
+│                                                                       │
+│ CORRECTIONS                                                           │
+│ ✓ exclure  A01·Toiture  SEP entière                        249,13 m²  │
+│ ✓ exclure  A01·N07      part sous SPT                      453,03 m²  │
+│▶○ exclure  E09·N04      part sous SPT                      200,55 m²  │  ligne sélectionnée (SurfaceRaised)
+│ ✕ exclure  H16·Toiture  toiture-jardin accessible (IA)     ̶3̶2̶6̶,̶8̶8̶     │
+│ …défilement (virtualisé)…                                             │
+│ ─────────────────────────────────────────────────────────────────────│
+│ E09·N04 · SEP → exclue en partie                     origine : IA      │
+│ Seuls les 200,55 m² sous SPT sortent ; les 166,33 m² de SEU restent.   │
+│ ( Proposée | Acceptée | Rejetée )                       [Modifier]    │  segmenté, comme les statuts de points
+│   Modifier : Aire [ 200,55 ] m²   Explication [.................]     │  inline, Entrée valide, Échap annule
+│              origine passe à « manuel », l'ancienne valeur est gardée   │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+Pour une découpe vers SA, la ligne porte la pastille `SA` (token SiaSA) : `○ découper A01·N00  SEP → ● SA  281,75 m²`.
+
+**Lien avec la 3D** (gestes existants, même sens)
+- Sélectionner un sujet : les surfaces de tous ses points sont mises en évidence, comme le simple clic sur un point. Double-clic ou Entrée : isolement et cadrage, comme pour un point.
+- Sélectionner une correction : isolement de sa surface cible. Si la correction a un tracé, il est dessiné par-dessus, en contour Accent et remplissage Accent à 20 % : c'est la part qui va bouger. L'Accent sert déjà à la sélection 3D.
+
+**Onglet Points (inchangé, deux ajouts)**
+- L'étiquette `S1 · vrai sujet` devient un lien vers le sujet, dans l'onglet Sujets.
+- Sans revue IA, l'étiquette montre le sujet du moteur (`toitures`, en mono, trait TextSecondary).
+
+**Bilan par niveau — l'avant / après dans l'élément signature**
+
+```
+Toiture  ▨▨▨▨▨▨▨▨┄┄┄┄┄┄┄┄┄┄┄                                ̶2̶1̶6̶,̶4̶7̶  ✓ 0,00
+N04      ████████████▓▓░░ ▨▨▨▨┄┄┄┄┄┄                       ̶1̶0̶3̶,̶7̶6̶  ✓ 3,28
+N00      ██████████▓▓▓▒░░░  ▨▨┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  ̶1̶ ̶8̶1̶2̶,̶5̶7̶  ✓ 0,08
+          barre pleine = état corrigé ; ┄ contour pointillé TextSecondary = ce que les corrections ont retiré
+          colonne résidu : ancien résidu barré, puis le nouveau avec son glyphe de verdict
+```
+
+Le bilan montre toujours l'état corrigé. L'« avant » est une trace : la longueur retirée en pointillé et l'ancien résidu barré. Il n'y a pas de bascule Avant / Après : on lit les deux en même temps, ce qui est le but.
+
+**Exporter** (le bouton existant devient un menu, chaque entrée appelle le moteur)
+
+```
+[↥ Exporter ▾]
+   Rapports d'analyse…        xlsx / html / json (existant)
+   Tableau MDP…               choix du gabarit (défaut : vierge livré), ID projet ; surfaces corrigées
+   Exports Treegram…          SurfacesNettes / SurfacesBrutes ; surfaces corrigées
+```
+
+### Carte de navigation (delta)
+
+```
+Espace de revue ──onglet Sujets (défaut si sujets)──▶ liste des sujets ──sélection──▶ carte Sujet (+ 3D en évidence)
+carte Sujet ──Accepter les n / 1·2·3 sur une correction──▶ journal enregistré (immédiat, sans bouton)
+carte Sujet ──Modifier──▶ édition inline ──Entrée──▶ correction « manuel »
+Analyser · n ──▶ Analyse (superposition, étape « corrections » en plus) ──▶ bilan avant/après, corrections « appliquées »
+étiquette sujet (onglet Points) ──▶ sujet dans l'onglet Sujets
+Exporter ▾ ──▶ dialogue d'enregistrement (MDP, Treegram, rapports)
+```
+
+### Mapping fonctionnalités → emplacements
+
+| Fonctionnalité (V2_PLAN) | Emplacement |
+|---|---|
+| Voir les sujets (moteur et revue IA) | onglet Sujets, liste |
+| Correction proposée par sujet, origine règle / IA / manuel | carte Sujet, liste des corrections, étiquette d'origine |
+| Statuer par sujet | carte Sujet : « Accepter les n », « Rejeter les n » |
+| Statuer par correction | carte Sujet : contrôle segmenté, raccourcis 1 / 2 / 3 |
+| Modifier une correction (aire, explication) | carte Sujet : « Modifier », édition inline |
+| Décisions IA écartées | bandeau en tête de l'onglet Sujets → liste des raisons |
+| Appliquer les corrections | Analyser (avec compteur) |
+| Avant / après | bilan par niveau (traces), compteur de la barre de commande |
+| Corrections inapplicables après analyse | glyphe triangle sur la ligne + raison du moteur |
+| Journal persistant | invisible : `%APPDATA%\SiaCheckViewer\corrections\<projet>.json` ; décisions conservées par `id` d'une analyse à l'autre |
+| Export MDP et Treegram corrigés | menu Exporter |
+
+### États non-nominaux
+
+| Zone | Vide | Chargement | Erreur | Aucun résultat |
+|---|---|---|---|---|
+| Onglet Sujets | Aucun point : l'onglet n'est pas affiché, on reste sur Points (« Aucun écart au-delà de la tolérance. ») | Pendant l'analyse : la liste reste visible, grisée (règle V1) | Revue IA illisible : sujets du moteur seuls, et bandeau « Revue IA ignorée : fichier illisible (nom) » | Filtre sans résultat : « Aucune correction acceptée pour l'instant. » + « Tout afficher » |
+| Carte Sujet | Sujet sans correction : l'explication, puis « Pas de correction automatique : à vérifier dans Treegram. » ; pas de boutons d'acceptation | — | Modifier : aire hors bornes (négative, ou plus grande que la surface) refusée sous le champ (« L'aire découpée dépasse la SEP du niveau (1 961,75 m²). ») ; la saisie est gardée | — |
+| Après Analyser | — | Superposition existante, nouvelle étape « Corrections : 22 acceptées » | Correction inapplicable : glyphe triangle + raison du moteur ; les autres sont appliquées (jamais à moitié) | — |
+| Nouvelle livraison | Correction dont la cible a disparu : état « à revoir », triangle, en tête du sujet | — | — | — |
+| Pas de géométrie | Découpe sans tracé : ligne « aire estimée, sans tracé » ; rien n'est dessiné en 3D | — | — | — |
+
+### Contrat de données requis (moteur → app)
+
+Pour cette interface, la phase 5 étend le moteur :
+- `sia-check --viewer-json … --revue <verdicts les plus récents> --corrections <journal>` à chaque analyse lancée par l'app ;
+- dans le fichier visionneuse :
+  - `levels[].values_before` (bilan sans corrections) ;
+  - `corrections_log` (application de chaque correction, avec sa raison) ;
+  - `review` (décisions appliquées et écartées) ;
+- le journal de l'app est la source des décisions. Il fusionne par `id` les propositions de chaque nouvelle analyse :
+  - une décision de l'utilisateur prime toujours sur la proposition ;
+  - une correction modifiée devient « manuel ».
+
+### Passe B — auto-critique
+
+- **« Produirais-je ce plan pour une autre app ? »**
+  - Premier jet : un écran « Corrections » en tableau (cible, opération, aire, statut) avec un bouton « Appliquer » accentué. C'était générique : un CRUD de lignes. Il cassait la règle d'un seul accent et séparait les corrections de la 3D et du bilan. Révisé : le sujet comme unité, l'acceptation en bloc comme geste dominant, Analyser comme unique action, l'avant/après dans le bilan.
+  - Premier jet de l'avant/après : une bascule « Brut / Corrigé » sur le bilan. Rejetée : il faudrait alterner pour comparer. Les traces (pointillé, ancien résidu barré) montrent les deux en même temps.
+- **Checklist heuristiques**
+  - ✅ Hiérarchie : 1er la liste des sujets (quoi traiter), 2e la carte Sujet (décider), 3e la 3D et le bilan (vérifier).
+  - ✅ Une seule action accentuée par écran.
+  - ✅ Fitts : « Accepter les n » est proche de la liste, en cible de 32 px ; « Rejeter » est à droite, éloigné. Les deux sont réversibles (repasser à « Proposée »), donc sans confirmation.
+  - ✅ Raccourcis : 1/2/3 réutilisés avec le même sens. Échap ferme l'édition ; Entrée valide.
+  - ⚠️ Charge : 22 corrections dans une carte de 380 px. La liste est virtualisée et la frise résume l'état d'un coup d'œil, mais l'édition inline réduit la place. **Point faible assumé** : en dessous de 1 080 px de hauteur, la carte Sujet prend la hauteur et la liste des sujets se replie sur une ligne (sujet courant ▾).
+  - ⚠️ Deux vocabulaires d'identifiants : `S1` (IA) et `toitures` (moteur). Après une revue, seuls les `S…` apparaissent (les sujets du moteur repris par l'IA disparaissent). Sans revue, les identifiants du moteur s'affichent en mono, avec leur titre en clair.
+  - ⚠️ La frise de glyphes devient illisible au-delà d'environ 40 corrections par sujet. Au-delà, elle est remplacée par une barre de progression segmentée (acceptées / rejetées / à décider), avec les compteurs écrits.
+  - ✅ La couleur n'est jamais seule : glyphe + libellé, texte barré pour les rejets, pastille SA doublée du code `SA`.
+- **Accessoire retiré (Chanel)** :
+  - un « score de confiance » IA en jauge sur chaque sujet : la certitude est déjà dite par l'étiquette (`vrai sujet` / `à confirmer`) ;
+  - un historique des décisions (qui, quand) affiché dans la carte : il reste dans le journal, sans écran.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Écran tableau « Corrections » + bouton « Appliquer » accentué | Deux accents ; correction coupée de la 3D et du bilan ; unité de travail fausse (ligne au lieu de sujet) | 22.10.2026 |
+| Bascule « Brut / Corrigé » sur le bilan | Empêche la comparaison simultanée ; les traces la remplacent | 22.10.2026 |
+| Sujets dans le panneau gauche | Le panneau gauche porte les outils de vue, pas le contenu à traiter | 22.10.2026 |
+| Bouton « Tracer » désactivé en attendant la phase 6 | Pas de fonctionnalité fantôme à l'écran | 22.10.2026 |
+| Jauge de confiance IA par sujet | Redit l'étiquette de certitude | 22.10.2026 |
+| Confirmation avant « Rejeter les n » | Action réversible (repasser à « Proposée ») : la confirmation ralentirait sans protéger | 22.10.2026 |
+
+### Revue visuelle (Phase 2, 22.10.2026)
+
+Captures L'Orée, en sombre et en clair : sujet S2 avec une correction d'attique sélectionnée et son tracé, S1 avec la découpe de B03 N00, onglet Points avec le point A1 de B03 N00.
+
+| Constat | Classe | Suite |
+|---|---|---|
+| Identifiants du moteur (« toitures ») tronqués dans la colonne du repère court | Bloquant | Corrigé : le repère n'est affiché que s'il est court (`S1`), sinon le titre prend la colonne |
+| « Rejeter les n » coupé par « Voir le rapport » sur la même ligne | Bloquant | Corrigé : le lien passe sous l'explication |
+| Résumé de correction tronqué (« part de SEP e… ») et pastille SA rognée | Bloquant | Corrigé : libellé court (« part de SEP », « SEP → » + pastille), colonnes resserrées |
+| Étiquette « S1 · vrai sujet » coupée par deux liens dans la carte Détail | Bloquant | Corrigé : « Voir le sujet et ses corrections » sous la raison de l'IA |
+| Compteur « Analyser · 31 » resté après l'analyse | Bloquant (fonctionnel) | Corrigé : la signature des décisions compare la cible normalisée |
+| Calque SFN à 0,00 m² ; bandeau « 9 surfaces sans géométrie » pour les découpes SA | Bloquant | Corrigé dans le moteur : aire brute des façades ; les surfaces créées par une correction ne comptent pas comme sans maillage |
+| Calque SA gris | Mineur | Corrigé : couleur des abords (`SiaSA`) |
+| « Tout afficher » recouvert par la barre de défilement du panneau gauche (défaut V1, révélé par le calque SA) | Mineur | Corrigé : marge droite, grille des calques resserrée |
+| Écarts au plan, assumés : la frise au-delà de 40 corrections n'a pas de barre segmentée (compteur seul) ; la liste des sujets ne se replie pas sous 1 080 px ; l'export MDP ne demande pas l'ID projet (celui du gabarit fait foi) | Mineur | Roadmap |

@@ -232,11 +232,14 @@ internal sealed class FakeShell : IShell
 {
     public List<string> Notes { get; } = [];
     public string? PickFolder(string title, string? initial) => null;
+    public string? PickSaveFile(string title, string fileName, string filter) => null;
+    public string? PickOpenFile(string title, string filter) => null;
     public void Notify(string message, bool isError = false) => Notes.Add(message);
     public void OpenFile(string path) { }
     public void Frame(Rect3D? bounds) { }
     public void ApplyTheme(string theme) { }
     public Color GhostColor => Colors.Gray;
+    public Color AccentColor => Colors.SlateBlue;
 }
 
 public class InteractionTests

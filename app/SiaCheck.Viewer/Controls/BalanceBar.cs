@@ -16,6 +16,9 @@ namespace SiaCheck.Viewer.Controls;
 ///
 /// Au survol, une infobulle décrit le segment sous la souris : catégorie SIA (nom, chiffre,
 /// définition), aire et part de la SP — ou le résidu non classé.
+///
+/// Avant / après (plan, Évolution 2.0) : la barre montre toujours l'état corrigé ; ce que les corrections
+/// ont retiré (SP ou SEP plus courtes qu'avant) prolonge la barre en contour pointillé.
 /// </summary>
 public sealed class BalanceBar : FrameworkElement
 {
@@ -41,7 +44,7 @@ public sealed class BalanceBar : FrameworkElement
     private const double FloorShare = 0.62;   // part de la hauteur pour la barre SP
     private const double Gap = 2;
 
-    private enum Kind { Part, Residual, Excess, External, ExternalResidual }
+    private enum Kind { Part, Residual, Excess, External, ExternalResidual, Removed }
     private sealed record Segment(Rect Rect, Kind Kind, string Code, double Area);
 
     private readonly ToolTip _tip = new() { Placement = System.Windows.Controls.Primitives.PlacementMode.Mouse };
@@ -63,7 +66,7 @@ public sealed class BalanceBar : FrameworkElement
         var h = ActualHeight;
         double X(double m2) => Math.Max(0, m2 / row.Scale * w);
 
-        var floorH = row.Sep > 0 && row.HasFloor ? h * FloorShare : h;
+        var floorH = (row.Sep > 0 || row.SepBefore > 0) && row.HasFloor ? h * FloorShare : h;
         if (row.HasFloor)
         {
             double x = 0, covered = 0;
@@ -79,8 +82,10 @@ public sealed class BalanceBar : FrameworkElement
             var sp = X(row.Sp);
             if (x < sp - 0.5) segs.Add(new Segment(new Rect(x, 0, sp - x, floorH), Kind.Residual, "SP", row.Sp - covered));
             else if (x > sp + 0.5) segs.Add(new Segment(new Rect(sp, 0, x - sp, floorH), Kind.Excess, "SP", covered - row.Sp));
+            if (X(row.SpBefore) > sp + 0.5)
+                segs.Add(new Segment(new Rect(sp, 0, X(row.SpBefore) - sp, floorH), Kind.Removed, "SP", row.SpBefore - row.Sp));
         }
-        if (row.Sep > 0)
+        if (row.Sep > 0 || row.SepBefore > 0)
         {
             var y = row.HasFloor ? floorH + Gap : 0;
             var sepH = h - y;
@@ -96,6 +101,8 @@ public sealed class BalanceBar : FrameworkElement
             }
             var sep = X(row.Sep);
             if (x < sep - 0.5) segs.Add(new Segment(new Rect(x, y, sep - x, sepH), Kind.ExternalResidual, "SEP", row.Sep - covered));
+            if (X(row.SepBefore) > sep + 0.5)
+                segs.Add(new Segment(new Rect(sep, y, X(row.SepBefore) - sep, sepH), Kind.Removed, "SEP", row.SepBefore - row.Sep));
         }
         return segs;
     }
@@ -125,11 +132,16 @@ public sealed class BalanceBar : FrameworkElement
                 case Kind.ExternalResidual:
                     dc.DrawRectangle(pal.BrushOf("SEP"), null, s.Rect);
                     break;
+                case Kind.Removed:
+                    var dash = new Pen(Outline, 1) { DashStyle = new DashStyle([2, 2], 0) };
+                    dash.Freeze();
+                    dc.DrawRectangle(null, dash, Inset(s.Rect, 0.5));
+                    break;
             }
         if (row.HasFloor)   // repère de fin de SP, toujours visible : la longueur de référence du niveau
         {
             var sp = Math.Max(0, row.Sp / row.Scale * ActualWidth);
-            var floorH = row.Sep > 0 ? ActualHeight * FloorShare : ActualHeight;
+            var floorH = row.Sep > 0 || row.SepBefore > 0 ? ActualHeight * FloorShare : ActualHeight;
             dc.DrawLine(pen, new Point(sp - 0.5, 0), new Point(sp - 0.5, floorH));
         }
     }
@@ -168,13 +180,15 @@ public sealed class BalanceBar : FrameworkElement
                             "Les sous-catégories dépassent la SP (règle R4) : surface comptée deux fois ou SP incomplète."),
             Kind.ExternalResidual => ($"SEP non classée · {row.Building}·{row.Level}",
                                       "SEP sans SEU/SED (règle R3) : balcons ou terrasses non créés, abords (A1) ou toiture (A2)."),
+            Kind.Removed => ($"Retiré par les corrections · {s.Code} {row.Building}·{row.Level}",
+                             "Ce que les corrections appliquées ont exclu ou découpé (onglet Sujets). La barre pleine est l'état corrigé."),
             _ => Palette!.Describe(s.Code),
         };
         var panel = new StackPanel { MaxWidth = 340 };
         panel.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(new TextBlock
         {
-            Text = $"{s.Area:#,##0.00} m²" + (s.Kind is Kind.External or Kind.ExternalResidual
+            Text = $"{s.Area:#,##0.00} m²" + (s.Kind is Kind.External or Kind.ExternalResidual or Kind.Removed
                                                    || BalanceRow.ExternalParts.Contains(s.Code) ? "" : share),
             Margin = new Thickness(0, 2, 0, 0),
         });

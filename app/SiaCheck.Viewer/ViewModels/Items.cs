@@ -118,13 +118,20 @@ public sealed partial class IssueItem : ObservableObject
 
     /// <summary>Verdict de la dernière revue IA du projet (null : pas de revue, ou point absent de la revue).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasAi), nameof(AiKind), nameof(AiTag), nameof(AiReason))]
+    [NotifyPropertyChangedFor(nameof(HasAi), nameof(AiKind), nameof(AiTag), nameof(AiReason), nameof(HasSubjectLink))]
     private AiVerdict? _ai;
+
+    /// <summary>Sujet du moteur ou de la revue qui contient ce point (onglet Sujets).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AiTag), nameof(HasSubjectLink))]
+    private string? _subjectId;
 
     public bool HasAi => Ai is not null;
     public AiVerdictKind AiKind => Ai?.Kind ?? AiVerdictKind.Unknown;
-    /// <summary>« S1 · vrai sujet », « faux positif ».</summary>
-    public string AiTag => Ai is null ? "" : Ai.Subject is { } s ? $"{s} · {AiVerdict.Label(AiKind)}" : AiVerdict.Label(AiKind);
+    /// <summary>« S1 · vrai sujet », « faux positif » ; sans revue IA, le sujet du moteur (« toitures »).</summary>
+    public string AiTag => Ai is null ? SubjectId ?? "" : Ai.Subject is { } s ? $"{s} · {AiVerdict.Label(AiKind)}" : AiVerdict.Label(AiKind);
+    /// <summary>L'étiquette mène à un sujet de l'onglet Sujets.</summary>
+    public bool HasSubjectLink => (Ai?.Subject ?? SubjectId) is not null;
     public string AiReason => Ai?.Reason ?? "";
 }
 
@@ -144,6 +151,26 @@ public sealed class BalanceRow(LevelBalance level, double scale)
     public double R1Diff => Source.R1?.Diff ?? 0;
     public string? R1Verdict => Source.R1?.Verdict;
     public string Alerts => string.Join(" ", Source.Alerts);
+
+    // Avant / après (plan, Évolution 2.0) : la barre montre l'état corrigé, le reste est une trace.
+    public LevelBefore? Before => Source.Before;
+    public double SpBefore => Before?.Value("SP") ?? Sp;
+    public double SepBefore => Before?.Value("SEP") ?? Sep;
+    /// <summary>Résidu qui a changé avec les corrections : la SEP (R3) d'abord, sinon le plancher (R1).</summary>
+    private (string Code, double Before, double After)? Change =>
+        Before is null ? null
+        : Math.Abs((Before.R3?.Diff ?? 0) - (Source.R3?.Diff ?? 0)) > 0.005 ? ("SEP", Before.R3?.Diff ?? 0, Source.R3?.Diff ?? 0)
+        : Math.Abs((Before.R1?.Diff ?? 0) - (Source.R1?.Diff ?? 0)) > 0.005 ? ("SP", Before.R1?.Diff ?? 0, Source.R1?.Diff ?? 0)
+        : null;
+    public bool HasChange => Change is not null;
+    public string ChangeBefore => Change is { } c ? Format(c.Before) : "";
+    public string ChangeAfter => Change is { } c ? Format(c.After) : "";
+    /// <summary>Verdict du nouveau résidu ; un contrôle disparu (SEP entièrement exclue) vaut OK.</summary>
+    public string? ChangeVerdict => (Change?.Code == "SEP" ? Source.R3?.Verdict : Source.R1?.Verdict) ?? (HasChange ? "OK" : null);
+    public string ChangeTooltip => Change is { } c
+        ? $"{c.Code} non classée : {Format(c.Before)} m² avant corrections, {Format(c.After)} m² après." : "";
+    private static string Format(double v) =>
+        v.ToString("#,##0.00", new System.Globalization.NumberFormatInfo { NumberGroupSeparator = " ", NumberDecimalSeparator = "," });
     public bool HasFloor => Sp > 0;
     public string LevelTooltip => $"{Building}·{Level} — cliquer pour isoler le niveau dans la 3D";
 }

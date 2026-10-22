@@ -80,6 +80,8 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsBusy))] private bool _isAnalysing;
     [ObservableProperty] private int _analysisStep;
     [ObservableProperty] private string _analysisLabel = "";
+    /// <summary>Ligne de la superposition d'analyse quand le journal des corrections est joint.</summary>
+    [ObservableProperty] private string _analysisCorrections = "";
     public bool IsBusy => IsAnalysing;
     public string[] AnalysisSteps { get; } = ["Lecture du .tgm", "Contrôles SIA 416", "Géométrie (cache VWR)"];
 
@@ -139,7 +141,9 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Directory.CreateDirectory(Path.GetDirectoryName(json)!);
             var progress = new Progress<AnalysisProgress>(p => { AnalysisStep = p.Step; AnalysisLabel = p.Label; });
-            var run = await _engine.AnalyseAsync(ProjectDir, tmp, progress, _cts.Token);
+            var inputs = CurrentEngineInputs(ProjectDir);
+            AnalysisCorrections = inputs.Journal is null ? "" : $"Corrections : {PendingCorrections} décision(s) à appliquer, journal joint";
+            var run = await _engine.AnalyseAsync(ProjectDir, tmp, inputs, progress, _cts.Token);
             LastLogFile = _paths.LogFile(ProjectDir);
             await File.WriteAllTextAsync(LastLogFile, run.Log);
             if (!run.Succeeded || !File.Exists(tmp))
@@ -148,6 +152,7 @@ public sealed partial class MainViewModel : ObservableObject
                 return;
             }
             File.Move(tmp, json, overwrite: true);
+            MarkCorrectionsAnalysed(inputs);
             Load(ViewerDocument.Load(json));
         }
         catch (OperationCanceledException)
@@ -182,17 +187,56 @@ public sealed partial class MainViewModel : ObservableObject
         if (LastLogFile is not null && File.Exists(LastLogFile)) _shell.OpenFile(LastLogFile);
     }
 
+    /// <summary>Rapports d'analyse xlsx / html / json, sur les surfaces corrigées (bilan des corrections joint).</summary>
     [RelayCommand]
-    private async Task ExportAsync()
+    private Task ExportAsync()
     {
-        if (ProjectDir is null || _engine is null) return;
+        if (ProjectDir is null || _engine is null) return Task.CompletedTask;
         var dir = _shell.PickFolder("Dossier des rapports xlsx, html et json", null);
-        if (dir is null) return;
+        return dir is null ? Task.CompletedTask
+            : RunExportAsync(() => _engine.ExportAsync(ProjectDir, dir, CurrentEngineInputs(ProjectDir), CancellationToken.None),
+                             $"Rapports enregistrés dans {dir}.");
+    }
+
+    /// <summary>Tableau MDP HRS rempli depuis le .tgm, surfaces corrigées ; « template » : choisir d'abord un gabarit.</summary>
+    [RelayCommand]
+    private Task ExportMdpAsync(string? mode)
+    {
+        if (ProjectDir is null || _engine is null || Document is null) return Task.CompletedTask;
+        string? template = null;
+        if (mode == "template")
+        {
+            template = _shell.PickOpenFile("Gabarit MDP (un MDP vierge ou déjà rempli : ses tableaux seront remplacés)", "Classeur Excel|*.xlsx");
+            if (template is null) return Task.CompletedTask;
+        }
+        var path = _shell.PickSaveFile("Enregistrer le tableau MDP", $"MDP-{AiReviewFiles.Prefix(Document.Project)}.xlsx", "Classeur Excel|*.xlsx");
+        return path is null ? Task.CompletedTask
+            : RunExportAsync(() => _engine.ExportMdpAsync(ProjectDir, path, template, null, CurrentEngineInputs(ProjectDir), CancellationToken.None),
+                             $"Tableau MDP enregistré : {path}.", path);
+    }
+
+    /// <summary>Exports au gabarit Excel Treegram (SurfacesNettes, SurfacesBrutes), surfaces corrigées.</summary>
+    [RelayCommand]
+    private Task ExportTreegramAsync()
+    {
+        if (ProjectDir is null || _engine is null) return Task.CompletedTask;
+        var dir = _shell.PickFolder("Dossier des exports au gabarit Treegram", null);
+        return dir is null ? Task.CompletedTask
+            : RunExportAsync(() => _engine.ExportTreegramAsync(ProjectDir, dir, CurrentEngineInputs(ProjectDir), CancellationToken.None),
+                             $"Exports Treegram enregistrés dans {dir}.");
+    }
+
+    private async Task RunExportAsync(Func<Task<EngineRun>> run, string done, string? open = null)
+    {
         try
         {
-            var run = await _engine.ExportAsync(ProjectDir, dir, CancellationToken.None);
-            if (run.Succeeded) _shell.Notify($"Rapports enregistrés dans {dir}.");
-            else _shell.Notify(run.ErrorMessage ?? "Export impossible.", isError: true);
+            var r = await run();
+            if (r.Succeeded)
+            {
+                _shell.Notify(done);
+                if (open is not null && File.Exists(open)) _shell.OpenFile(open);
+            }
+            else _shell.Notify(r.ErrorMessage ?? "Export impossible.", isError: true);
         }
         catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception)
         {
@@ -229,10 +273,12 @@ public sealed partial class MainViewModel : ObservableObject
         var withGeometry = Scene.Codes.ToHashSet();
         foreach (var cat in doc.Categories)
         {
-            var surfaces = doc.Surfaces.Where(s => s.DisplayCode == cat.Code).ToList();
+            var surfaces = doc.Surfaces.Where(s => s.DisplayCode == cat.Code && !s.IsExcluded).ToList();
             if (surfaces.Count == 0) continue;   // ex. SHA, normalisé en SH par le moteur
             // Même règle que le moteur : le détail fait foi, le total de niveau sert quand il n'y a pas de détail.
             var counted = surfaces.Any(s => !s.IsLevelTotal) ? surfaces.Where(s => !s.IsLevelTotal).ToList() : surfaces;
+            // Totaux sans aire ni géométrie (façades SFN : données d'enveloppe pour le MDP) : rien à montrer en calque.
+            if (!withGeometry.Contains(cat.Code) && counted.All(s => (s.Area ?? 0) == 0)) continue;
             var group = cat.Status == "unknown" ? "Codes inconnus"
                 : cat.Status == "ignored" || cat.Family == "custom" ? "USPI · Maison"
                 : cat.Family == "uspi" ? "USPI · Maison"
@@ -256,6 +302,7 @@ public sealed partial class MainViewModel : ObservableObject
         LoadIssues(doc);
         LoadAiReview(doc);
         Document = doc;
+        LoadSubjects(doc);
         _suspendSceneUpdates = false;
         OnBuildingsChanged();
         UpdateLayers();
@@ -561,7 +608,9 @@ public sealed partial class MainViewModel : ObservableObject
         FillRatios();
         if (Document is null || BalanceBuilding is null) return;
         var levels = Document.Levels.Where(l => l.Building == BalanceBuilding).ToList();
-        var scale = levels.Select(l => Math.Max(l.Value("SP"), l.Value("SEP"))).DefaultIfEmpty(1).Max();
+        var scale = levels.Select(l => Math.Max(Math.Max(l.Value("SP"), l.Value("SEP")),
+                                                Math.Max(l.Before?.Value("SP") ?? 0, l.Before?.Value("SEP") ?? 0)))
+                          .DefaultIfEmpty(1).Max();
         foreach (var l in levels.OrderByDescending(l => l.Rank ?? 0))
             BalanceRows.Add(new BalanceRow(l, scale <= 0 ? 1 : scale));
     }

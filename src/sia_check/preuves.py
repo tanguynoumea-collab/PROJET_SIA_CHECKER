@@ -188,7 +188,8 @@ def build(doc: dict, subjects: list[dict] | None = None) -> dict:
         "interior_outside_SP": outside, "interior_overlaps": overlaps,
         "level_total_vs_detail": uspi_totals,
         "propositions": [{**{k: v for k, v in s.items() if k != "corrections"},
-                          "corrections": [{k: v for k, v in c.items() if k != "polygone"} for c in s["corrections"]]}
+                          "corrections": [{k: v for k, v in c.items() if k not in ("polygone", "trace")}
+                                          for c in s["corrections"]]}
                          for s in (subjects if subjects is not None else doc.get("subjects", []))],
         "issues": [{k: i[k] for k in ("key", "rule", "verdict", "building", "level", "lot", "category",
                                      "expected", "obtained", "diff_m2", "diff_pct", "title", "message")}

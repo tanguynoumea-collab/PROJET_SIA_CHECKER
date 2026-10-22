@@ -61,6 +61,18 @@ public partial class MainWindow : FluentWindow, IShell
         return dlg.ShowDialog(this) == true ? dlg.FolderName : null;
     }
 
+    public string? PickSaveFile(string title, string fileName, string filter)
+    {
+        var dlg = new SaveFileDialog { Title = title, FileName = fileName, Filter = filter, AddExtension = true };
+        return dlg.ShowDialog(this) == true ? dlg.FileName : null;
+    }
+
+    public string? PickOpenFile(string title, string filter)
+    {
+        var dlg = new OpenFileDialog { Title = title, Filter = filter };
+        return dlg.ShowDialog(this) == true ? dlg.FileName : null;
+    }
+
     public void Notify(string message, bool isError = false) =>
         _snackbars.Show(isError ? "Erreur" : "Information", message,
                         isError ? ControlAppearance.Danger : ControlAppearance.Secondary,
@@ -83,6 +95,8 @@ public partial class MainWindow : FluentWindow, IShell
     public void ApplyTheme(string theme) => App.ApplyTheme(theme);
 
     public Color GhostColor => (Color)FindResource("ColorGhost");
+
+    public Color AccentColor => (Color)FindResource("ColorAccent");
 
     // ------------------------------------------------------------------ 3D
 
@@ -166,6 +180,35 @@ public partial class MainWindow : FluentWindow, IShell
         };
         if (status is not null) { ViewModel.SetStatusCommand.Execute(status); e.Handled = true; }
         else if (e.Key == Key.Enter) { ViewModel.ToggleFocusCommand.Execute(ViewModel.SelectedIssue); e.Handled = true; }
+    }
+
+    /// <summary>1 / 2 / 3 sur la correction sélectionnée : proposée / acceptée / rejetée (comme les statuts de points).</summary>
+    private void CorrectionsList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var decision = e.Key switch
+        {
+            Key.D1 or Key.NumPad1 => "proposed",
+            Key.D2 or Key.NumPad2 => "accepted",
+            Key.D3 or Key.NumPad3 => "rejected",
+            _ => null,
+        };
+        if (decision is not null) { ViewModel.SetCorrectionDecisionCommand.Execute(decision); e.Handled = true; }
+        else if (e.Key == Key.F2) { ViewModel.EditCorrectionCommand.Execute(null); e.Handled = true; }
+    }
+
+    /// <summary>Édition d'une correction : Entrée enregistre, Échap annule (sans quitter l'isolement).</summary>
+    private void CorrectionEdit_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None && Keyboard.FocusedElement is not System.Windows.Controls.TextBox { AcceptsReturn: true })
+        {
+            ViewModel.CommitCorrectionEditCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            ViewModel.CancelCorrectionEditCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)

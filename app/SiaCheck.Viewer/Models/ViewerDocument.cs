@@ -27,6 +27,12 @@ public sealed class ViewerDocument
     [JsonPropertyName("issues")] public List<Issue> Issues { get; init; } = [];
     /// <summary>Ratios informatifs (absents des fichiers antérieurs : liste vide).</summary>
     [JsonPropertyName("ratios")] public List<Ratio> Ratios { get; init; } = [];
+    /// <summary>Sujets et corrections proposées (V2 ; absents des fichiers antérieurs : liste vide).</summary>
+    [JsonPropertyName("subjects")] public List<Subject> Subjects { get; init; } = [];
+    /// <summary>Application des corrections du journal (analyse lancée avec <c>--corrections</c>).</summary>
+    [JsonPropertyName("corrections_log")] public List<CorrectionLogEntry> CorrectionsLog { get; init; } = [];
+    /// <summary>Fusion de la revue IA (analyse lancée avec <c>--revue</c>).</summary>
+    [JsonPropertyName("review")] public ReviewInfo? Review { get; init; }
 
     public static ViewerDocument Load(string path)
     {
@@ -90,6 +96,8 @@ public sealed class Surface
     /// <summary>Code affiché : code normalisé, sinon code brut (inconnus).</summary>
     [JsonIgnore] public string DisplayCode => Code ?? Category;
     [JsonIgnore] public bool IsLevelTotal => Kind == "node";
+    /// <summary>Retirée par une correction : hors calques et hors sommes, montrée seulement à la demande.</summary>
+    [JsonIgnore] public bool IsExcluded => Status == "excluded";
 }
 
 public sealed class MeshData
@@ -131,6 +139,8 @@ public sealed class LevelBalance
     [JsonPropertyName("r1")] public CheckResult? R1 { get; init; }
     [JsonPropertyName("r3")] public CheckResult? R3 { get; init; }
     [JsonPropertyName("alerts")] public List<string> Alerts { get; init; } = [];
+    /// <summary>Le même niveau sans les corrections ; null sans corrections appliquées.</summary>
+    [JsonPropertyName("before")] public LevelBefore? Before { get; init; }
 
     public double Value(string code) => Values.TryGetValue(code, out var v) ? v : 0;
 }

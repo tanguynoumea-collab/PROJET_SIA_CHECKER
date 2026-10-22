@@ -31,7 +31,10 @@ public partial class App : Application
             a.Handled = true;
         };
         TaskScheduler.UnobservedTaskException += (_, a) => { LogCrash(a.Exception); a.SetObserved(); };
-        var paths = AppPaths.Default;
+        // --profile dossier : profil isolé (statuts, journal, revues, analyses) pour les captures de revue visuelle.
+        var paths = ArgAfter(e.Args, "--profile") is { } profile
+            ? new AppPaths(System.IO.Path.Combine(profile, "roaming"), System.IO.Path.Combine(profile, "local"))
+            : AppPaths.Default;
         var settings = AppSettings.Load(paths);
         ApplyTheme(settings.Theme);
         var engine = AnalysisService.Locate(AppContext.BaseDirectory);
@@ -39,7 +42,8 @@ public partial class App : Application
         MainWindow = window;
         window.Show();
         // SiaCheck.Viewer.exe "C:\…\Projects\L OREE" : ouvre directement un projet.
-        // --capture fichier.png [--focus clé] [--report | --ai-panel] : capture de la fenêtre puis fermeture
+        // --capture fichier.png [--focus clé] [--subject id [--correction id]] [--points] [--report | --ai-panel] :
+        // capture de la fenêtre puis fermeture
         // (revue visuelle, plan Phase 2 ; rapport et boîte de la revue IA, Évolution 1.1).
         var project = e.Args.FirstOrDefault(a => !a.StartsWith("--") && Directory.Exists(a));
         var capture = ArgAfter(e.Args, "--capture");
@@ -79,6 +83,17 @@ public partial class App : Application
             window.ClickAtRelative(double.Parse(cx, System.Globalization.CultureInfo.InvariantCulture),
                                    double.Parse(cy, System.Globalization.CultureInfo.InvariantCulture));
         }
+        // --subject S2 [--correction id] : onglet Sujets, sujet (et correction) sélectionnés.
+        if (ArgAfter(Environment.GetCommandLineArgs(), "--subject") is { } sid &&
+            window.ViewModel.Subjects.FirstOrDefault(x => x.Id == sid) is { } subject)
+        {
+            window.ViewModel.ShowSubjects = true;
+            window.ViewModel.SelectedSubject = subject;
+            if (ArgAfter(Environment.GetCommandLineArgs(), "--correction") is { } cid &&
+                subject.Corrections.FirstOrDefault(c => c.Id == cid) is { } correction)
+                window.ViewModel.SelectedCorrection = correction;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--points")) window.ViewModel.ShowPointsTabCommand.Execute(null);
         if (Environment.GetCommandLineArgs().Contains("--report")) window.ViewModel.ShowAiReportCommand.Execute(null);
         if (Environment.GetCommandLineArgs().Contains("--ai-panel")) window.ViewModel.OpenAiPanelCommand.Execute(null);
         if (capture is not null) await CaptureAsync(window, capture);

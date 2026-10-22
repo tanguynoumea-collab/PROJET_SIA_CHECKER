@@ -16,6 +16,9 @@ public sealed class AppPaths(string roamingRoot, string localRoot)
     /// <summary>Statuts et commentaires : suivent l'utilisateur (profil itinérant).</summary>
     public string ReviewFile(string projectDir) => Path.Combine(roamingRoot, "reviews", $"{Slug(projectDir)}.review.json");
 
+    /// <summary>Décisions sur les corrections (journal lu par <c>sia-check --corrections</c>) : suivent l'utilisateur.</summary>
+    public string CorrectionsFile(string projectDir) => Path.Combine(roamingRoot, "corrections", $"{Slug(projectDir)}.json");
+
     /// <summary>Dernier résultat d'analyse : régénérable, reste local.</summary>
     public string AnalysisFile(string projectDir) => Path.Combine(localRoot, "analyses", $"{Slug(projectDir)}.viewer.json");
 

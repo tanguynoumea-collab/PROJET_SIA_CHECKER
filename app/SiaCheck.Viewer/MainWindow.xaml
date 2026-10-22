@@ -21,6 +21,8 @@
         <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenProjectCommand}" />
         <KeyBinding Key="I" Modifiers="Control" Command="{Binding ToggleAiReportCommand}" />
         <KeyBinding Key="Escape" Command="{Binding ClearFocusCommand}" />
+        <KeyBinding Key="D1" Modifiers="Control" Command="{Binding ShowSubjectsTabCommand}" />
+        <KeyBinding Key="D2" Modifiers="Control" Command="{Binding ShowPointsTabCommand}" />
     </Window.InputBindings>
 
     <!-- Fond explicite : le gabarit FluentWindow applique sinon le fond du thème WPF UI, pas le token Background -->
@@ -93,8 +95,9 @@
             <Border Grid.Row="0" Background="{DynamicResource BrushSurface}" Padding="16,8">
                 <DockPanel LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                        <ui:Button Appearance="Primary" Icon="{ui:SymbolIcon Play20}" Content="Analyser"
-                                   Command="{Binding AnalyseCommand}" ToolTip="Relancer l'analyse du projet (Ctrl+R)" MinHeight="{StaticResource TargetSize}" />
+                        <ui:Button Appearance="Primary" Icon="{ui:SymbolIcon Play20}" Content="{Binding AnalyseLabel}"
+                                   Command="{Binding AnalyseCommand}" ToolTip="{Binding AnalyseTooltip}" MinHeight="{StaticResource TargetSize}"
+                                   AutomationProperties.Name="Analyser" />
                         <ui:Button Margin="8,0,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon Sparkle20}" Content="Revue IA"
                                    Command="{Binding OpenAiPanelCommand}" MinHeight="{StaticResource TargetSize}"
                                    ToolTip="Sur-vérification par IA : regroupe les points par cause et donne un verdict à chacun" />
@@ -103,8 +106,22 @@
                                    Command="{Binding ShowAiReportCommand}" MinHeight="{StaticResource TargetSize}"
                                    ToolTip="Rouvrir le rapport de la dernière revue IA, sans la relancer (Ctrl+I)"
                                    Visibility="{Binding HasAiReport, Converter={StaticResource BoolToVisibility}}" />
-                        <ui:Button Margin="8,0,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon ArrowExportUp20}" Content="Exporter les rapports…"
-                                   Command="{Binding ExportCommand}" MinHeight="{StaticResource TargetSize}" />
+                        <!-- Exports sur les surfaces corrigées (journal joint) -->
+                        <ui:DropDownButton Margin="8,0,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon ArrowExportUp20}" Content="Exporter"
+                                           MinHeight="{StaticResource TargetSize}" AutomationProperties.Name="Exporter">
+                            <ui:DropDownButton.Flyout>
+                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="Rapports d'analyse…" Command="{Binding ExportCommand}"
+                                              ToolTip="xlsx, html et json, avec le bilan des corrections appliquées" />
+                                    <MenuItem Header="Tableau MDP…" Command="{Binding ExportMdpCommand}"
+                                              ToolTip="Tableau MDP HRS rempli depuis le .tgm, gabarit vierge livré, surfaces corrigées" />
+                                    <MenuItem Header="Tableau MDP à partir d'un gabarit…" Command="{Binding ExportMdpCommand}" CommandParameter="template"
+                                              ToolTip="Choisir d'abord un MDP vierge ou déjà rempli : ses tableaux de surfaces sont remplacés" />
+                                    <MenuItem Header="Exports Treegram…" Command="{Binding ExportTreegramCommand}"
+                                              ToolTip="SurfacesNettes et SurfacesBrutes au gabarit Excel Treegram, surfaces corrigées" />
+                                </ContextMenu>
+                            </ui:DropDownButton.Flyout>
+                        </ui:DropDownButton>
                         <ui:Button Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon DarkTheme20}"
                                    Command="{Binding ToggleThemeCommand}" ToolTip="Basculer thème sombre / clair"
                                    AutomationProperties.Name="Basculer le thème" MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
@@ -117,6 +134,14 @@
                         <TextBlock Style="{StaticResource TextCaption}" Margin="16,0,0,0" VerticalAlignment="Center" MaxWidth="420"
                                    Text="{Binding ProjectDir}" ToolTip="{Binding ProjectDir}" />
                         <TextBlock Style="{StaticResource TextCaption}" Margin="16,0,0,0" VerticalAlignment="Center" Text="{Binding AnalysedAt}" />
+                        <!-- Corrections appliquées par la dernière analyse : lien vers l'onglet Sujets -->
+                        <Button Style="{StaticResource RowButton}" Padding="6,2" Margin="4,0,0,0" VerticalAlignment="Center"
+                                Command="{Binding ShowAppliedCorrectionsCommand}" ToolTip="Voir les corrections appliquées (onglet Sujets)"
+                                Visibility="{Binding HasAppliedCorrections, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}">
+                                <Run Text="· " /><Run Text="{Binding AppliedText, Mode=OneWay}" />
+                            </TextBlock>
+                        </Button>
                         <!-- Dernière revue IA : lien vers son rapport -->
                         <Button Style="{StaticResource RowButton}" Padding="6,2" Margin="12,0,0,0" VerticalAlignment="Center"
                                 Command="{Binding ShowAiReportCommand}" ToolTip="{Binding AiReportTitle}"
@@ -155,7 +180,8 @@
                 <!-- ============ Panneau gauche : calques et filtres -->
                 <Border Grid.Column="0" Style="{StaticResource Panel}">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
+                        <!-- Marge droite : la barre de défilement ne recouvre pas les liens « Tout afficher » / « Tous » -->
+                        <StackPanel Margin="0,0,10,0">
                             <DockPanel>
                                 <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" Margin="{StaticResource SectionGap}"
                                         Command="{Binding ShowAllLayersCommand}">
@@ -188,7 +214,7 @@
                                                                Visibility="{Binding HasDefinition, Converter={StaticResource BoolToVisibility}}" />
                                                 </StackPanel>
                                             </CheckBox.ToolTip>
-                                            <Grid Width="200">
+                                            <Grid Width="190">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="44" />
@@ -396,6 +422,7 @@
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="20" />
                                                         <ColumnDefinition Width="72" />
+                                                        <ColumnDefinition Width="Auto" />
                                                         <ColumnDefinition Width="56" />
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock Style="{StaticResource TextMono}" Text="{Binding Level}" VerticalAlignment="Center"
@@ -408,7 +435,17 @@
                                                     <TextBlock Grid.Column="3" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
                                                                Visibility="{Binding HasFloor, Converter={StaticResource BoolToVisibility}}"
                                                                Text="{Binding R1Diff, Converter={StaticResource Area}}" />
-                                                    <TextBlock Grid.Column="4" Margin="8,0,0,0" Style="{StaticResource TextMono}" VerticalAlignment="Center"
+                                                    <!-- Avant / après : ancien résidu barré, nouveau avec son verdict -->
+                                                    <StackPanel Grid.Column="4" Margin="12,0,0,0" Orientation="Horizontal" VerticalAlignment="Center"
+                                                                ToolTip="{Binding ChangeTooltip}"
+                                                                Visibility="{Binding HasChange, Converter={StaticResource BoolToVisibility}}">
+                                                        <TextBlock Style="{StaticResource TextNumber}" Foreground="{DynamicResource BrushTextSecondary}"
+                                                                   TextDecorations="Strikethrough" Text="{Binding ChangeBefore}" />
+                                                        <TextBlock Style="{StaticResource TextCaption}" Margin="6,0" Text="→" />
+                                                        <c:VerdictGlyph Verdict="{Binding ChangeVerdict}" />
+                                                        <TextBlock Style="{StaticResource TextNumber}" Margin="4,0,0,0" Text="{Binding ChangeAfter}" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="5" Margin="8,0,0,0" Style="{StaticResource TextMono}" VerticalAlignment="Center"
                                                                Foreground="{DynamicResource BrushVerdictWarning}" Text="{Binding Alerts}" />
                                                 </Grid>
                                             </Button>
@@ -495,13 +532,247 @@
                 <GridSplitter Grid.Column="2" Width="4" Background="{DynamicResource BrushDivider}" ResizeDirection="Columns"
                               HorizontalAlignment="Stretch" ShowsPreview="False" DragCompleted="Splitter_DragCompleted" />
 
-                <!-- ============ Panneau droit : points d'attention -->
+                <!-- ============ Panneau droit : onglets Sujets (Évolution 2.0) et Points d'attention -->
                 <Border Grid.Column="3" Style="{StaticResource Panel}">
                     <DockPanel>
-                        <StackPanel DockPanel.Dock="Top">
-                            <TextBlock Style="{StaticResource TextSection}" Margin="0,0,0,8">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                        <RadioButton Style="{StaticResource Chip}" Margin="0,0,4,0" GroupName="RightTab" IsChecked="{Binding ShowSubjects}"
+                                     ToolTip="Sujets et corrections proposées (Ctrl+1)" AutomationProperties.Name="Onglet Sujets"
+                                     Visibility="{Binding HasSubjects, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Style="{StaticResource TextSection}" Margin="0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}">
+                                <Run Text="Sujets" /><Run Text="  " /><Run Text="{Binding Subjects.Count, Mode=OneWay}" />
+                            </TextBlock>
+                        </RadioButton>
+                        <RadioButton Style="{StaticResource Chip}" Margin="0" GroupName="RightTab" IsChecked="{Binding ShowPoints, Mode=OneWay}"
+                                     Command="{Binding ShowPointsTabCommand}"
+                                     ToolTip="Points d'attention de l'analyse (Ctrl+2)" AutomationProperties.Name="Onglet Points d'attention">
+                            <TextBlock Style="{StaticResource TextSection}" Margin="0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}">
                                 <Run Text="Points d'attention" /><Run Text="  " /><Run Text="{Binding Issues.Count, Mode=OneWay}" />
                             </TextBlock>
+                        </RadioButton>
+                    </StackPanel>
+                    <Grid>
+                    <!-- ===== Onglet Sujets -->
+                    <DockPanel Visibility="{Binding ShowSubjects, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel DockPanel.Dock="Top">
+                            <Border Style="{StaticResource Banner}" Margin="0,0,0,8" Padding="8,4" ToolTip="{Binding ReviewProblemsDetail}"
+                                    Visibility="{Binding HasReviewProblems, Converter={StaticResource BoolToVisibility}}">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" Command="{Binding ShowReviewProblemsCommand}">
+                                        <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Voir" />
+                                    </Button>
+                                    <c:VerdictGlyph Verdict="ALERTE" />
+                                    <TextBlock Margin="6,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center" Text="{Binding ReviewProblemsText}" />
+                                </DockPanel>
+                            </Border>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock DockPanel.Dock="Right" Style="{StaticResource TextCaption}" VerticalAlignment="Center" Margin="8,0,0,0"
+                                           Text="{Binding CorrectionsSummary}" />
+                                <ComboBox ItemsSource="{Binding SubjectChoices}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                          SelectedValue="{Binding SubjectFilter}" AutomationProperties.Name="Filtrer les sujets" />
+                            </DockPanel>
+                        </StackPanel>
+
+                        <!-- Carte Sujet -->
+                        <Border DockPanel.Dock="Bottom" Style="{StaticResource Card}" Margin="0,8,0,0"
+                                Visibility="{Binding HasSelectedSubject, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel>
+                                <DockPanel DataContext="{Binding SelectedSubject}">
+                                    <c:AiVerdictTag DockPanel.Dock="Right" Margin="8,0,0,0" Kind="{Binding ActionKind}" Text="{Binding OriginTag}" />
+                                    <TextBlock Style="{StaticResource TextSubtitle}" TextWrapping="Wrap">
+                                        <Run Text="{Binding Id, Mode=OneWay}" FontFamily="{StaticResource FontMono}" /><Run Text=" · " /><Run Text="{Binding Title, Mode=OneWay}" />
+                                    </TextBlock>
+                                </DockPanel>
+                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding SelectedSubject.Explanation}"
+                                           Visibility="{Binding SelectedSubject.HasExplanation, Converter={StaticResource BoolToVisibility}}" />
+                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                                           Text="Pas de correction automatique : à vérifier dans Treegram."
+                                           Visibility="{Binding SelectedSubject.HasCorrections, Converter={StaticResource HiddenWhen}}" />
+                                <Button Margin="0,2,0,0" HorizontalAlignment="Right" Style="{StaticResource RowButton}" Padding="4,0"
+                                        Command="{Binding ShowAiReportCommand}"
+                                        Visibility="{Binding SelectedSubject.IsAi, Converter={StaticResource BoolToVisibility}}">
+                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Voir le rapport ↗" />
+                                </Button>
+                                <DockPanel Margin="0,6,0,0" Visibility="{Binding SelectedSubject.CanDecide, Converter={StaticResource BoolToVisibility}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ui:Button Appearance="Secondary" Icon="{ui:SymbolIcon Checkmark20}" MinHeight="{StaticResource TargetSize}"
+                                                   Content="{Binding SelectedSubject.AcceptAllLabel}" Command="{Binding AcceptAllCorrectionsCommand}"
+                                                   ToolTip="Accepte toutes les corrections du sujet ; elles s'appliquent à la prochaine analyse" />
+                                        <ui:Button Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss20}" MinHeight="{StaticResource TargetSize}"
+                                                   Content="{Binding SelectedSubject.RejectAllLabel}" Command="{Binding RejectAllCorrectionsCommand}"
+                                                   ToolTip="Rejette toutes les corrections du sujet (réversible : 1 repasse une correction en « proposée »)" />
+                                    </StackPanel>
+                                </DockPanel>
+
+                                <StackPanel Visibility="{Binding SelectedSubject.HasCorrections, Converter={StaticResource BoolToVisibility}}">
+                                    <TextBlock Style="{StaticResource TextSection}" Margin="0,12,0,4" Text="Corrections" />
+                                    <ListBox x:Name="CorrectionsList" ItemsSource="{Binding SelectedSubject.Corrections}" SelectedItem="{Binding SelectedCorrection}"
+                                             ItemContainerStyle="{StaticResource IssueItem}" Background="Transparent" BorderThickness="0" MaxHeight="232"
+                                             VirtualizingPanel.IsVirtualizing="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             PreviewKeyDown="CorrectionsList_PreviewKeyDown" AutomationProperties.Name="Corrections du sujet">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate DataType="vm:CorrectionItem">
+                                                <Grid ToolTip="{Binding Tooltip}" ToolTipService.InitialShowDelay="600">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="22" />
+                                                        <ColumnDefinition Width="62" />
+                                                        <ColumnDefinition Width="86" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <c:CorrectionGlyph State="{Binding State}" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding Model.Op}" />
+                                                    <TextBlock Grid.Column="2" Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding Location}" />
+                                                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <TextBlock x:Name="Sum" Style="{StaticResource TextCaption}" TextTrimming="CharacterEllipsis" Text="{Binding Summary}" />
+                                                        <Border Margin="6,0,0,0" Padding="4,0" CornerRadius="{StaticResource RadiusControl}" Background="{DynamicResource BrushSiaSA}"
+                                                                Visibility="{Binding IsToAbords, Converter={StaticResource BoolToVisibility}}" ToolTip="Abords SA (SIA 416 §1.2)">
+                                                            <TextBlock Style="{StaticResource TextMono}" Foreground="{DynamicResource BrushOnAccent}" Text="SA" />
+                                                        </Border>
+                                                    </StackPanel>
+                                                    <TextBlock x:Name="Area" Grid.Column="4" Margin="8,0,0,0" Style="{StaticResource TextNumber}" VerticalAlignment="Center" Text="{Binding AreaText}" />
+                                                </Grid>
+                                                <DataTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding IsRejected}" Value="True">
+                                                        <Setter TargetName="Sum" Property="TextDecorations" Value="Strikethrough" />
+                                                        <Setter TargetName="Area" Property="TextDecorations" Value="Strikethrough" />
+                                                        <Setter TargetName="Area" Property="Foreground" Value="{DynamicResource BrushTextSecondary}" />
+                                                    </DataTrigger>
+                                                </DataTemplate.Triggers>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </StackPanel>
+
+                                <!-- Correction sélectionnée -->
+                                <StackPanel Margin="0,8,0,0" DataContext="{Binding SelectedCorrection}"
+                                            Visibility="{Binding DataContext.HasSelectedCorrection, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibility}}">
+                                    <Border Height="1" Background="{DynamicResource BrushDivider}" Margin="0,0,0,8" />
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right" Style="{StaticResource TextCaption}" VerticalAlignment="Center">
+                                            <Run Text="origine : " /><Run Text="{Binding OriginLabel, Mode=OneWay}" />
+                                        </TextBlock>
+                                        <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center">
+                                            <Run Text="{Binding Location, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Summary, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </DockPanel>
+                                    <TextBlock Margin="0,4,0,0" Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding Explanation}" />
+                                    <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                                        <c:CorrectionGlyph State="{Binding State}" Size="14" />
+                                        <TextBlock Margin="6,0,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap" Text="{Binding StateLabel}" />
+                                    </StackPanel>
+                                    <TextBlock Margin="0,2,0,0" Style="{StaticResource TextCaption}" Text="Aire estimée, sans tracé."
+                                               Visibility="{Binding HasNoTrace, Converter={StaticResource BoolToVisibility}}" />
+                                    <DockPanel Margin="0,8,0,0" Visibility="{Binding IsEditing, Converter={StaticResource HiddenWhen}}">
+                                        <ui:Button DockPanel.Dock="Right" Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Edit20}" Content="Modifier"
+                                                   Command="{Binding DataContext.EditCorrectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   MinHeight="{StaticResource TargetSize}" ToolTip="Modifier l'aire ou l'explication (la correction devient « manuel »)" />
+                                        <Border Background="{DynamicResource BrushBackground}" CornerRadius="{StaticResource RadiusControl}" Padding="2">
+                                            <UniformGrid Rows="1">
+                                                <RadioButton Style="{StaticResource Segment}" GroupName="Decision" Content="Proposée" ToolTip="1"
+                                                             IsChecked="{Binding Decision, Converter={StaticResource EqualsTo}, ConverterParameter=Proposed}" />
+                                                <RadioButton Style="{StaticResource Segment}" GroupName="Decision" Content="Acceptée" ToolTip="2"
+                                                             IsChecked="{Binding Decision, Converter={StaticResource EqualsTo}, ConverterParameter=Accepted}" />
+                                                <RadioButton Style="{StaticResource Segment}" GroupName="Decision" Content="Rejetée" ToolTip="3"
+                                                             IsChecked="{Binding Decision, Converter={StaticResource EqualsTo}, ConverterParameter=Rejected}" />
+                                            </UniformGrid>
+                                        </Border>
+                                    </DockPanel>
+                                    <!-- Édition en place : Entrée valide, Échap annule -->
+                                    <StackPanel Margin="0,8,0,0" Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}"
+                                                PreviewKeyDown="CorrectionEdit_PreviewKeyDown">
+                                        <DockPanel Visibility="{Binding CanEditArea, Converter={StaticResource BoolToVisibility}}">
+                                            <TextBlock DockPanel.Dock="Right" Margin="6,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center" Text="m²" />
+                                            <TextBlock DockPanel.Dock="Left" Width="80" Style="{StaticResource TextCaption}" VerticalAlignment="Center" Text="Aire" />
+                                            <ui:TextBox x:Name="EditAreaBox" Text="{Binding EditArea, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Aire de la correction" />
+                                        </DockPanel>
+                                        <TextBlock Margin="80,2,0,0" Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushVerdictError}" TextWrapping="Wrap"
+                                                   Text="{Binding EditError}" Visibility="{Binding HasEditError, Converter={StaticResource BoolToVisibility}}" />
+                                        <DockPanel Margin="0,6,0,0">
+                                            <TextBlock DockPanel.Dock="Left" Width="80" Style="{StaticResource TextCaption}" VerticalAlignment="Top" Margin="0,6,0,0" Text="Explication" />
+                                            <ui:TextBox Text="{Binding EditExplanation, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MinHeight="48" MaxHeight="96"
+                                                        AutomationProperties.Name="Explication de la correction" />
+                                        </DockPanel>
+                                        <TextBlock Margin="80,4,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                                                   Text="L'origine passe à « manuel » ; la proposition d'origine est gardée dans le journal." />
+                                        <StackPanel Margin="0,8,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <ui:Button Appearance="Transparent" Content="Annuler" MinHeight="{StaticResource TargetSize}"
+                                                       Command="{Binding DataContext.CancelCorrectionEditCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                            <ui:Button Margin="8,0,0,0" Appearance="Secondary" Content="Enregistrer" MinHeight="{StaticResource TargetSize}"
+                                                       Command="{Binding DataContext.CommitCorrectionEditCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Grid>
+                            <ListBox x:Name="SubjectsList" ItemsSource="{Binding SubjectsView}" SelectedItem="{Binding SelectedSubject}"
+                                     ItemContainerStyle="{StaticResource IssueItem}" Background="Transparent" BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Sujets">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="vm:SubjectItem">
+                                        <Grid ToolTip="{Binding Explanation}" ToolTipService.InitialShowDelay="800">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="40" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition /><RowDefinition /><RowDefinition />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding ShortId}" />
+                                            <TextBlock x:Name="Title" Grid.Column="1" Style="{StaticResource TextBody}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding Title}" />
+                                            <TextBlock Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource TextNumber}" VerticalAlignment="Center" Text="{Binding M2Text}" />
+                                            <StackPanel x:Name="Tags" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,3,0,0">
+                                                <c:AiVerdictTag Kind="{Binding ActionKind}" Text="{Binding Action}" />
+                                                <c:AiVerdictTag Margin="4,0,0,0" Kind="Unknown" Text="{Binding OriginLabel}" />
+                                                <TextBlock Margin="8,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center" Text="{Binding Counts}" />
+                                            </StackPanel>
+                                            <DockPanel x:Name="Frise" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,3,0,0"
+                                                       Visibility="{Binding HasCorrections, Converter={StaticResource BoolToVisibility}}">
+                                                <TextBlock DockPanel.Dock="Right" Margin="8,0,0,0" Style="{StaticResource TextNumber}" VerticalAlignment="Center" Text="{Binding Progress}" />
+                                                <ItemsControl ItemsSource="{Binding Corrections}" Focusable="False"
+                                                              Visibility="{Binding ShowGlyphs, Converter={StaticResource BoolToVisibility}}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate DataType="vm:CorrectionItem">
+                                                            <c:CorrectionGlyph State="{Binding State}" Size="12" Margin="0,0,1,0" />
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </DockPanel>
+                                        </Grid>
+                                        <DataTemplate.Triggers>
+                                            <!-- Sujet du moteur, sans repère court : le titre prend la colonne du repère -->
+                                            <DataTrigger Binding="{Binding HasShortId}" Value="False">
+                                                <Setter TargetName="Title" Property="Grid.Column" Value="0" />
+                                                <Setter TargetName="Title" Property="Grid.ColumnSpan" Value="2" />
+                                                <Setter TargetName="Tags" Property="Grid.Column" Value="0" />
+                                                <Setter TargetName="Tags" Property="Grid.ColumnSpan" Value="3" />
+                                                <Setter TargetName="Frise" Property="Grid.Column" Value="0" />
+                                                <Setter TargetName="Frise" Property="Grid.ColumnSpan" Value="3" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Visibility="{Binding SubjectsEmptyMessage, Converter={StaticResource VisibleWhen}}">
+                                <TextBlock Style="{StaticResource TextBody}" HorizontalAlignment="Center" Text="{Binding SubjectsEmptyMessage}" />
+                                <Button Style="{StaticResource RowButton}" Padding="4,2" HorizontalAlignment="Center" Margin="0,6,0,0"
+                                        Command="{Binding ResetSubjectFilterCommand}">
+                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Tout afficher" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </DockPanel>
+
+                    <!-- ===== Onglet Points d'attention -->
+                    <DockPanel Visibility="{Binding ShowPoints, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel DockPanel.Dock="Top">
                             <WrapPanel>
                                 <ToggleButton Style="{StaticResource VerdictToggle}" IsChecked="{Binding ShowErrors}" AutomationProperties.Name="Erreurs">
                                     <StackPanel Orientation="Horizontal"><c:VerdictGlyph Verdict="ERREUR" /><TextBlock Margin="6,0,0,0" Text="{Binding ErrorCount}" /></StackPanel>
@@ -575,6 +846,11 @@
                                             <c:AiVerdictTag Kind="{Binding AiKind}" Text="{Binding AiTag}" HorizontalAlignment="Left" />
                                         </DockPanel>
                                         <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding AiReason}" />
+                                        <Button Margin="0,4,0,0" HorizontalAlignment="Right" Style="{StaticResource RowButton}" Padding="4,0"
+                                                Command="{Binding DataContext.ShowSubjectOfCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                                Visibility="{Binding HasSubjectLink, Converter={StaticResource BoolToVisibility}}">
+                                            <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Voir le sujet et ses corrections" />
+                                        </Button>
                                     </StackPanel>
                                 </Border>
                                 <Grid Margin="0,8,0,0" Visibility="{Binding IsResolved, Converter={StaticResource HiddenWhen}}">
@@ -657,8 +933,11 @@
                                             <TextBlock Grid.Column="4" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
                                                        Text="{Binding DiffM2, Converter={StaticResource Area}}" />
                                             <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Style="{StaticResource TextBody}" Text="{Binding Title}" />
-                                            <c:AiVerdictTag Grid.Row="1" Grid.Column="4" Margin="8,1,0,1" HorizontalAlignment="Right"
-                                                            Kind="{Binding AiKind}" Text="{Binding AiTag}" ToolTip="{Binding AiReason}" />
+                                            <Button Grid.Row="1" Grid.Column="4" Margin="8,1,0,1" HorizontalAlignment="Right" Style="{StaticResource RowButton}" Padding="0"
+                                                    Command="{Binding DataContext.ShowSubjectOfCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding HasSubjectLink}" ToolTip="{Binding AiReason}">
+                                                <c:AiVerdictTag Kind="{Binding AiKind}" Text="{Binding AiTag}" />
+                                            </Button>
                                             <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="4" Style="{StaticResource TextCaption}" Text="{Binding Message}" />
                                         </Grid>
                                     </DataTemplate>
@@ -673,6 +952,8 @@
                                 </Button>
                             </StackPanel>
                         </Grid>
+                    </DockPanel>
+                    </Grid>
                     </DockPanel>
                 </Border>
             </Grid>
@@ -694,6 +975,8 @@
                     </TextBlock>
                     <TextBlock Margin="0,12,0,4" Style="{StaticResource TextBody}" Text="{Binding AnalysisLabel}" />
                     <ProgressBar Minimum="0" Maximum="3" Value="{Binding AnalysisStep}" Height="4" />
+                    <TextBlock Margin="0,6,0,0" Style="{StaticResource TextCaption}" Text="{Binding AnalysisCorrections}"
+                               Visibility="{Binding AnalysisCorrections, Converter={StaticResource VisibleWhen}}" />
                     <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}">
                         <Run Text="Étape " /><Run Text="{Binding AnalysisStep, Mode=OneWay}" /><Run Text=" sur 3 : lecture du .tgm, contrôles SIA 416, géométrie" />
                     </TextBlock>

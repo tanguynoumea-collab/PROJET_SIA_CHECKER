@@ -9,14 +9,18 @@ Contrat (version 1) :
   "ratios": [{"building", "id", "family", "label", "value", "unit", "ref_min", "ref_max", "status",
               "num_m2", "den_m2", "note"}],
   "categories": [{"code", "family", "status", "color", "hatched", "name", "ref", "definition", "custom_rule"}],
-  "surfaces":   [{"id", "building", "level", "category", "code", "kind", "status", "area",
+  "surfaces":   [{"id", "building", "level", "category", "code", "kind", "status" (checked | ignored | unknown |
+                  excluded : retirée par une correction), "area",
                   "room_type", "lot", "mesh": {"v": [x, y, z, …], "i": [a, b, c, …]} | null}],
   "levels":     [{"building", "level", "rank", "values": {code: m²}, "r1": {"diff", "verdict"} | null,
-                  "r3": {…} | null, "alerts": [règles]}],
+                  "r3": {…} | null, "alerts": [règles],
+                  "before": {"values", "r1", "r3"} | null}],   (avec corrections : bilan sans elles)
   "issues":     [{"key", "rule", "verdict", "building", "level", "lot", "category", "expected",
                   "obtained", "diff_m2", "diff_pct", "message", "title", "hint", "surface_ids": [...]}],
   "subjects":   [{"id", "titre", "cause", "action", "explication", "points": [key], "m2",
-                  "corrections": [entrées de journal]}]   (ajoutés par la CLI, sujets.py)
+                  "corrections": [entrées de journal]}]   (ajoutés par la CLI, sujets.py),
+  "corrections_log": [{"id", "op", "sujet", "origine", "statut", "application", "surfaces", "m2", "raison"}]
+                  (avec --corrections, corrections.py), "review": {…} | null (avec --revue, sujets.apply_review)
 }
 `key` est stable d'une analyse à l'autre : la visionneuse y accroche statut et commentaire.
 """
@@ -103,15 +107,39 @@ def _mesh(meshes) -> dict | None:
     return {"v": v, "i": idx}
 
 
+def _levels(rep: report.Report, cfg: Config) -> list[dict]:
+    out = []
+    for r in rep.levels.to_dict("records"):
+        def check(prefix):
+            v = r.get(f"{prefix} verdict")
+            return None if not isinstance(v, str) else {"diff": _num(r[f"{prefix} écart"]), "verdict": v}
+        out.append({
+            "building": r["building"], "level": r["level"], "rank": _num(rules.level_rank(r["level"], cfg)),
+            "values": {c: _num(r[c]) for c in report.LEVEL_COLUMNS if _num(r[c]) is not None},
+            "r1": check("R1"), "r3": check("R3"),
+            "alerts": [a for a in r["Alertes"].split(", ") if a],
+        })
+    return out
+
+
 def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources: list[str],
-          source_modified: dt.datetime | None = None, date: str | None = None) -> dict:
+          source_modified: dt.datetime | None = None, date: str | None = None,
+          before: rules.Result | None = None, excluded: pd.DataFrame | None = None) -> dict:
+    """`before` : contrôles sans les corrections (corrections.run) ; chaque niveau reçoit alors `before`.
+    `excluded` : surfaces retirées par une correction, listées avec le statut « excluded » (hors calques,
+    hors sommes) pour que la visionneuse puisse encore les montrer."""
     rep = report.build(result, cfg, project, sources, date)
     surf = result.surfaces
-    all_surf = pd.concat([surf.assign(status=surf.ignored.map({True: "ignored", False: "checked"})),
-                          result.unknown.assign(code=None, status="unknown")], ignore_index=True)
+    parts = [surf.assign(status=surf.ignored.map({True: "ignored", False: "checked"})),
+             result.unknown.assign(code=None, status="unknown")]
+    if excluded is not None and len(excluded):
+        parts.append(excluded.assign(code=excluded.category.map(lambda c: cfg.canonical(c) if c in cfg.categories else None),
+                                     status="excluded"))
+    all_surf = pd.concat(parts, ignore_index=True)
 
     categories = []
-    for code in report._category_order(cfg, set(all_surf.code.dropna()) | set(all_surf.category)):
+    listed = all_surf[all_surf.status != "excluded"]
+    for code in report._category_order(cfg, set(listed.code.dropna()) | set(listed.category)):
         spec = cfg.categories.get(code)
         categories.append({
             "code": code,
@@ -126,7 +154,10 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
         })
 
     surfaces = []
+    created = set()
     for r in all_surf.itertuples(index=False):
+        if pd.isna(getattr(r, "element_id", None)) and "#" in str(r.id) and not str(r.id).endswith("#total"):
+            created.add(str(r.id))
         eid = None if pd.isna(getattr(r, "element_id", None)) else int(r.element_id)
         surfaces.append({
             "id": str(r.id), "building": _text(r.building), "level": _text(r.level),
@@ -135,17 +166,12 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
             "mesh": _mesh(cache.meshes.get(eid)) if eid is not None else None,
         })
 
-    levels = []
-    for r in rep.levels.to_dict("records"):
-        def check(prefix):
-            v = r.get(f"{prefix} verdict")
-            return None if not isinstance(v, str) else {"diff": _num(r[f"{prefix} écart"]), "verdict": v}
-        levels.append({
-            "building": r["building"], "level": r["level"], "rank": _num(rules.level_rank(r["level"], cfg)),
-            "values": {c: _num(r[c]) for c in report.LEVEL_COLUMNS if _num(r[c]) is not None},
-            "r1": check("R1"), "r3": check("R3"),
-            "alerts": [a for a in r["Alertes"].split(", ") if a],
-        })
+    levels = _levels(rep, cfg)
+    if before is not None:
+        old = {(lv["building"], lv["level"]): lv for lv in _levels(report.build(before, cfg, project, sources, date), cfg)}
+        for lv in levels:
+            b = old.get((lv["building"], lv["level"]))
+            lv["before"] = None if b is None else {k: b[k] for k in ("values", "r1", "r3")}
 
     issues = []
     for _, r in rep.residuals.iterrows():
@@ -172,7 +198,9 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
             "source_modified": source_modified.isoformat(timespec="seconds") if source_modified else None,
             "stale": stale,
             "errors": cache.errors,
-            "surfaces_without_mesh": sum(1 for s in surfaces if s["mesh"] is None and (s["area"] or 0) > 0),
+            # Les surfaces créées par une correction (découpe vers SA) n'ont pas de maillage par nature.
+            "surfaces_without_mesh": sum(1 for s in surfaces if s["mesh"] is None and (s["area"] or 0) > 0
+                                         and s["id"] not in created),
         },
         "categories": categories, "surfaces": surfaces, "levels": levels, "issues": issues,
         "ratios": ratios_records(result),

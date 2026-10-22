@@ -18,6 +18,10 @@ namespace SiaCheck.Viewer.Scene;
 ///
 /// Isolement d'un point d'attention : les lots passent en matériau fantôme, les surfaces concernées
 /// sont rajoutées par-dessus avec leurs couleurs, et les niveaux au-dessus du point sont coupés.
+///
+/// Corrections (V2) : une surface exclue par une correction n'est dans aucun lot, mais reste isolable
+/// (sélection de sa correction). Le tracé d'une correction se dessine en surimpression, à l'accent :
+/// aplat translucide et liseré, posés sur la surface visée.
 /// </summary>
 public sealed class SceneController
 {
@@ -29,6 +33,9 @@ public sealed class SceneController
     private const double ExternalTint = 0.45;   // surfaces externes : part de la couleur conservée (reste = blanc)
     private const double FocusLift = 0.01;      // m : évite le scintillement avec le fantôme coplanaire
     private const double CutTolerance = 0.5;    // m
+    private const double OverlayLift = 0.05;    // m : tracé au-dessus de la surface visée
+    private const double OverlayEdge = 0.35;    // m : hauteur du liseré du tracé
+    private const byte OverlayAlpha = 0x55;     // aplat du tracé : accent à ~33 %
 
     public Model3DGroup Root { get; } = new();
 
@@ -38,6 +45,8 @@ public sealed class SceneController
     private readonly Dictionary<GeometryModel3D, Batch> _byModel = [];
     private readonly Dictionary<(string Code, bool Edge), Material> _materials = [];
     private readonly Material _ghost;
+    /// <summary>Surfaces exclues par une correction : géométrie connue, absentes des lots.</summary>
+    private readonly HashSet<string> _hidden = new(StringComparer.Ordinal);
 
     private HashSet<string> _visibleCodes = [];
     private HashSet<string>? _buildings;          // null = tous
@@ -54,8 +63,9 @@ public sealed class SceneController
         Build(doc);
     }
 
-    public int SurfacesWithGeometry => _surfaces.Count;
-    public IEnumerable<string> Codes => _surfaces.Values.Select(s => s.Code).Distinct();
+    public int SurfacesWithGeometry => _surfaces.Count - _hidden.Count;
+    public IEnumerable<string> Codes => Shown.Select(s => s.Code).Distinct();
+    private IEnumerable<SurfaceGeometry> Shown => _surfaces.Values.Where(s => !_hidden.Contains(s.Id));
     public bool IsFocused => _focus is not null;
 
     // ------------------------------------------------------------------ construction
@@ -80,6 +90,7 @@ public sealed class SceneController
         public TranslateTransform3D Translate { get; } = new();
         public List<Batch> Batches { get; } = [];
         public List<Batch> FocusBatches { get; } = [];
+        public List<Model3D> Overlay { get; } = [];
         public int Ordinal { get; set; }
         /// <summary>Altitude la plus basse du niveau, hors éclatement.</summary>
         public double MinZ { get; set; }
@@ -94,6 +105,7 @@ public sealed class SceneController
             for (var k = 0; k < pts.Length; k++)
                 pts[k] = new Point3D(m.Vertices[3 * k], m.Vertices[3 * k + 1], m.Vertices[3 * k + 2]);
             _surfaces[s.Id] = new SurfaceGeometry(s.Id, s.Building, s.Level, s.DisplayCode, pts, m.Indices);
+            if (s.IsExcluded) _hidden.Add(s.Id);
         }
 
         // Rang des niveaux par bâtiment : sert à l'éclatement (écart proportionnel à l'ordre réel des niveaux).
@@ -102,7 +114,7 @@ public sealed class SceneController
         {
             var node = new LevelNode(grp.Key.Building, grp.Key.Level) { MinZ = grp.Min(s => s.Points.Min(p => p.Z)) };
             node.Group.Transform = node.Translate;
-            foreach (var byCode in grp.GroupBy(s => s.Code).OrderBy(g => g.Key))
+            foreach (var byCode in grp.Where(s => !_hidden.Contains(s.Id)).GroupBy(s => s.Code).OrderBy(g => g.Key))
                 node.Batches.Add(MakeBatch(byCode.Key, byCode, lift: 0));
             _levels[grp.Key] = node;
         }
@@ -112,7 +124,7 @@ public sealed class SceneController
             foreach (var n in bld.OrderBy(n => ranks.GetValueOrDefault((n.Building, n.Level))))
                 n.Ordinal = ordinal++;
         }
-        _visibleCodes = _surfaces.Values.Select(s => s.Code).ToHashSet();
+        _visibleCodes = Shown.Select(s => s.Code).ToHashSet();
         Refresh();
     }
 
@@ -248,6 +260,7 @@ public sealed class SceneController
             n.Group.Children.Clear();
             // Opaques d'abord (surfaces isolées), fantôme translucide ensuite : ordre de rendu WPF.
             foreach (var f in n.FocusBatches) { n.Group.Children.Add(f.Top); n.Group.Children.Add(f.Edges); }
+            foreach (var o in n.Overlay) n.Group.Children.Add(o);
             if (FilterShows(n))
                 foreach (var b in n.Batches.Where(b => _visibleCodes.Contains(b.Code)))
                 {
@@ -296,7 +309,44 @@ public sealed class SceneController
         {
             foreach (var b in n.FocusBatches) _byModel.Remove(b.Top);
             n.FocusBatches.Clear();
+            n.Overlay.Clear();
         }
+    }
+
+    /// <summary>
+    /// Tracé d'une correction (part de surface qui va bouger) posé sur son niveau, à l'accent : aplat
+    /// translucide et liseré. Effacé par le prochain isolement ou par <see cref="ClearFocus"/>.
+    /// </summary>
+    public void SetOverlay(TraceMesh trace, string building, string level, Color accent)
+    {
+        if (!_levels.TryGetValue((building, level), out var node) || trace.Indices.Length < 3) return;
+        node.Overlay.Clear();
+        var z = trace.Z + OverlayLift;
+        var pts = new Point3D[trace.Vertices.Length / 2];
+        for (var k = 0; k < pts.Length; k++) pts[k] = new Point3D(trace.Vertices[2 * k], trace.Vertices[2 * k + 1], z);
+
+        var fill = new MeshGeometry3D { Positions = new Point3DCollection(pts), TriangleIndices = new Int32Collection(trace.Indices) };
+        fill.Freeze();
+        var fillMat = Frozen(new DiffuseMaterial(new SolidColorBrush(Color.FromArgb(OverlayAlpha, accent.R, accent.G, accent.B))));
+        var edges = new MeshGeometry3D();
+        var pos = new Point3DCollection();
+        var idx = new Int32Collection();
+        foreach (var (a, b) in BoundaryEdges(trace.Indices))
+        {
+            var k = pos.Count;
+            pos.Add(pts[a]); pos.Add(pts[b]);
+            pos.Add(new Point3D(pts[b].X, pts[b].Y, z + OverlayEdge)); pos.Add(new Point3D(pts[a].X, pts[a].Y, z + OverlayEdge));
+            idx.Add(k); idx.Add(k + 1); idx.Add(k + 2);
+            idx.Add(k); idx.Add(k + 2); idx.Add(k + 3);
+        }
+        edges.Positions = pos;
+        edges.TriangleIndices = idx;
+        edges.Freeze();
+        var edgeMat = Frozen(new EmissiveMaterial(new SolidColorBrush(accent)));
+        // Liseré opaque d'abord, aplat translucide ensuite : ordre de rendu WPF de la transparence.
+        node.Overlay.Add(new GeometryModel3D(edges, edgeMat) { BackMaterial = edgeMat });
+        node.Overlay.Add(new GeometryModel3D(fill, fillMat) { BackMaterial = fillMat });
+        Refresh();
     }
 
     public Rect3D? Bounds(IEnumerable<string> surfaceIds) =>
@@ -318,7 +368,7 @@ public sealed class SceneController
     }
 
     public IEnumerable<string> SurfacesOfLevel(string building, string level) =>
-        _surfaces.Values.Where(s => s.Building == building && s.Level == level).Select(s => s.Id);
+        Shown.Where(s => s.Building == building && s.Level == level).Select(s => s.Id);
 
     // ------------------------------------------------------------------ sélection
 

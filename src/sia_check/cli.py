@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import logging
 import sys
 from pathlib import Path
@@ -151,10 +152,18 @@ def main(argv: list[str] | None = None) -> int:
             log.info("ÉTAPE 3/%d géométrie (cache VWR)", steps)
             cache = geom.read_cache(models[0].parent) if models[0].suffix.lower() == ".tgm" else geom.Cache()
             modified = dt.datetime.fromtimestamp(models[0].stat().st_mtime)
-            doc = viewer.build(result, cfg, cache, project, [str(m) for m in models], modified)
-            base = sujets.build(doc, cfg)
-            sj = sujets.apply_review(base, review, {s["id"] for s in doc["surfaces"]}) if review else base
+            excluded = applied.surfaces[applied.surfaces.excluded] if applied is not None else None
+            doc = viewer.build(result, cfg, cache, project, [str(m) for m in models], modified, before=before,
+                               excluded=excluded)
+            # Sujets et preuves portent sur le projet tel que livré : une correction appliquée ne fait pas
+            # disparaître son sujet, et la revue IA juge Treegram, pas nos corrections.
+            raw = viewer.build(before, cfg, cache, project, [str(m) for m in models], modified) if before is not None else doc
+            if applied is not None:
+                doc["corrections_log"] = json.loads(applied.log.to_json(orient="records", force_ascii=False))
+            base = sujets.build(raw, cfg)
+            sj = sujets.apply_review(base, review, {s["id"] for s in raw["surfaces"]}) if review else base
             doc["subjects"] = sj["subjects"]
+            doc["review"] = sj.get("revue")
             if review:
                 rv = sj["revue"]
                 log.info("revue IA : %d décisions appliquées, %d écartées", rv["decisions"], len(rv["problemes"]))
@@ -172,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
             except ImportError as ex:
                 log.error("preuves impossibles : %s (pip install shapely)", ex)
                 return 2
-            ev = preuves.build(doc, base["subjects"])
+            ev = preuves.build(raw, base["subjects"])
             log.info("preuves écrites : %s (%s)", preuves.write(ev, args.preuves), preuves.summary(ev))
     except mdp.TemplateError as ex:
         log.error("gabarit MDP : %s", ex)

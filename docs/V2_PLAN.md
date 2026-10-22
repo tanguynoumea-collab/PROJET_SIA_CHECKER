@@ -1,7 +1,7 @@
 # V2_PLAN — Corrections et export MDP
 
 > Statut : ☑ Brouillon · ☑ Validé par l'utilisateur (22.10.2026)
-> Version : 0.2 — 22.10.2026 · phases 0 à 4 livrées
+> Version : 0.2 — 22.10.2026 · phases 0 à 5 livrées
 
 ## 1. Objectif
 
@@ -118,7 +118,7 @@ Pour l'Affectation, les typologies et la forme du bâtiment : une valeur propos�
 | 2 | ☑ **Corrections** | `corrections.py` : journal, 5 opérations, `--corrections`, nouveau contrôle, bilan avant/après | ☑ tests de chaque opération ; L'Orée : S2 exclut 2 549 m² de SEP de toiture, R3 et A2 des niveaux Toiture disparaissent ; S1 (découpe 1 800 m²) réduit R3 B03 N00 d'autant |
 | 3 | ☑ **Sujets et recommandations de base** | `sujets.py`, `--sujets`, `subjects` dans le fichier visionneuse ; `exclure` partiel (avec `aire`) | ☑ L'Orée sans IA : toitures 7 280 m² (S2 : 7 279), abords B03 N00 1 812,65 m² (S1), SC implicite (S6) ; propositions appliquées : R3 projet 15 091 → 250 m² |
 | 4 | ☑ **IA → corrections** | verdicts v2 (bloc `sujets` : garder, modifier, rejeter, ajouter, `par_defaut`), propositions dans les preuves, `--revue`, prompt et skill `revue-ia`, analyseur et sauvegarde dans l'app | ☑ revue L'Orée v2 : 31 décisions appliquées, 0 écartée ; journal accepté entièrement applicable (erreurs 56 → 33) |
-| 5 | **UI Sujets** (Daedalus) | panneau Sujets, statuer, avant/après | revue visuelle par captures |
+| 5 | ☑ **UI Sujets** (Daedalus) | onglet Sujets, carte Sujet, décisions (journal), Analyser avec compteur, avant/après dans le bilan, tracé en 3D, menu Exporter | ☑ revue visuelle par captures (`docs/DESIGN_PLAN.md`, Évolution 2.0) ; 67 tests .NET, 133 Python |
 | 6 | **Module de tracé** (Daedalus) | vue plan, tracé, découpe | S1 B03 : tracé pré-calculé ≈ 1 943 m² |
 | 7 | **Exports corrigés** | Excel de correction, MDP corrigé, propositions d'affectation et « Inconnu », infos projet | MDP L'Orée complet, ouvert sans alerte dans Excel |
 

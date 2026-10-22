@@ -12,6 +12,8 @@
     <Color x:Key="ColorVerdictWarning">#9A6700</Color>
     <Color x:Key="ColorVerdictInfo">#4F6380</Color>
     <Color x:Key="ColorStatusSeen">#1E7F52</Color>
+    <!-- Couleur de contenu : abords SA (légende SIA 416 §1.2), découpes vers SA (Évolution 2.0) -->
+    <Color x:Key="ColorSiaSA">#3F8A2C</Color>
     <Color x:Key="ColorDivider">#DADDE3</Color>
     <Color x:Key="ColorGhost">#265D6470</Color>
 
@@ -27,4 +29,5 @@
     <SolidColorBrush x:Key="BrushVerdictInfo" Color="{StaticResource ColorVerdictInfo}" />
     <SolidColorBrush x:Key="BrushStatusSeen" Color="{StaticResource ColorStatusSeen}" />
     <SolidColorBrush x:Key="BrushDivider" Color="{StaticResource ColorDivider}" />
+    <SolidColorBrush x:Key="BrushSiaSA" Color="{StaticResource ColorSiaSA}" />
 </ResourceDictionary>

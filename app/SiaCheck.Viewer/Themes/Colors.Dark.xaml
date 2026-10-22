@@ -12,6 +12,8 @@
     <Color x:Key="ColorVerdictWarning">#E8B04A</Color>
     <Color x:Key="ColorVerdictInfo">#8FA3BF</Color>
     <Color x:Key="ColorStatusSeen">#59C28F</Color>
+    <!-- Couleur de contenu : abords SA (légende SIA 416 §1.2), découpes vers SA (Évolution 2.0) -->
+    <Color x:Key="ColorSiaSA">#5BA845</Color>
     <Color x:Key="ColorDivider">#2E323B</Color>
     <!-- Fantôme 3D : surfaces hors du point d'attention isolé -->
     <Color x:Key="ColorGhost">#1C9BA1AD</Color>
@@ -28,4 +30,5 @@
     <SolidColorBrush x:Key="BrushVerdictInfo" Color="{StaticResource ColorVerdictInfo}" />
     <SolidColorBrush x:Key="BrushStatusSeen" Color="{StaticResource ColorStatusSeen}" />
     <SolidColorBrush x:Key="BrushDivider" Color="{StaticResource ColorDivider}" />
+    <SolidColorBrush x:Key="BrushSiaSA" Color="{StaticResource ColorSiaSA}" />
 </ResourceDictionary>

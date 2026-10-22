@@ -104,6 +104,32 @@ def _geojson(geom) -> dict | None:
     return {"type": m["type"], "coordinates": rnd(m["coordinates"])}
 
 
+def _trace(geom, z: float | None) -> dict | None:
+    """Tracé triangulé pour la 3D de la visionneuse : {"z", "v": [x, y, …], "i": [a, b, c, …]}."""
+    if geom is None or geom.is_empty or z is None:
+        return None
+    from shapely import constrained_delaunay_triangles
+    polys = [g for g in getattr(geom, "geoms", [geom]) if g.geom_type in ("Polygon", "MultiPolygon")]
+    v: list[float] = []
+    idx: list[int] = []
+    index: dict[tuple, int] = {}
+    for poly in polys:
+        for tri in constrained_delaunay_triangles(poly).geoms:
+            for x, y in list(tri.exterior.coords)[:3]:
+                key = (round(x, 3), round(y, 3))
+                if key not in index:
+                    index[key] = len(index)
+                    v.extend(key)
+                idx.append(index[key])
+    return {"z": round(z, 3), "v": v, "i": idx} if idx else None
+
+
+def _top_z(surface: dict | None) -> float | None:
+    """Altitude du dessus d'une surface (maillage du cache VWR)."""
+    m = (surface or {}).get("mesh")
+    return max(m["v"][2::3]) if m and m.get("v") else None
+
+
 # --------------------------------------------------------------------------- regroupement
 
 def _node_id(doc_index: dict, key, code) -> str | None:
@@ -118,6 +144,7 @@ def build(doc: dict, cfg: Config) -> dict:
     node_area = {(s["building"], s["level"], s["code"] or s["category"]): s["area"] or 0
                  for s in doc["surfaces"] if s["kind"] == "node"}
     geo = _Geometry(doc)
+    by_id = {s["id"]: s for s in doc["surfaces"]}
     tol = cfg.abs_m2
 
     def val(key, code) -> float:
@@ -174,7 +201,7 @@ def build(doc: dict, cfg: Config) -> dict:
         c = {"id": f"{TOITURES}-{b}-{lvl}", "op": "exclure", "cible": {"ids": [sep_id]}}
         if key in roof_part:
             part = roof_part[key]
-            c.update(aire=round(part.area, 2), polygone=_geojson(part),
+            c.update(aire=round(part.area, 2), polygone=_geojson(part), trace=_trace(part, _top_z(by_id.get(sep_id))),
                      explication=f"{b} {lvl} : {_m2(part.area)} m² de SEP sous la toiture Treegram (SPT), hors "
                                  f"terrasses classées SEU/SED.")
         elif classified <= tol:
@@ -184,6 +211,7 @@ def build(doc: dict, cfg: Config) -> dict:
             region = geo.minus(geo.union(key, ["SEP"]), key, EXTERNAL_CLASSIFIED) if geo.ok else None
             aire = region.area if region is not None else sep - classified
             c.update(aire=round(max(aire, 0), 2), polygone=_geojson(region),
+                     trace=_trace(region, _top_z(by_id.get(sep_id))),
                      explication=f"{b} {lvl} : SEP hors terrasses classées ({_m2(classified)} m² de SEU/SED gardés).")
         _propose(subjects[TOITURES], c, node_area.get((b, lvl, "SEP"), 0))
 
@@ -202,7 +230,7 @@ def build(doc: dict, cfg: Config) -> dict:
             continue
         _propose(subjects[ABORDS], {
             "id": f"{ABORDS}-{b}-{lvl}", "op": "découper", "cible": {"ids": [sep_id]}, "vers": "SA",
-            "aire": round(aire, 2), "polygone": _geojson(region),
+            "aire": round(aire, 2), "polygone": _geojson(region), "trace": _trace(region, _top_z(by_id.get(sep_id))),
             "explication": f"{b} {lvl} : {_m2(aire)} m² de SEP hors plancher et hors SEU/SED, au contact du terrain.",
         }, aire)
 
@@ -297,6 +325,7 @@ def apply_review(base: dict, review: dict, surface_ids: set[str] | None = None) 
                 changes = {k: v for k, v in d.items() if k in EDITABLE}
                 if "aire" in changes and c.get("polygone"):
                     c.pop("polygone")
+                    c.pop("trace", None)
                     c["a_retracer"] = True
                 c.update(changes)
                 c["base"] = {k: proposals[did][1].get(k) for k in changes}

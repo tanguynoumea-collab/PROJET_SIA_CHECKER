@@ -1,0 +1,300 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.IO;
+using System.Windows.Data;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using SiaCheck.Viewer.Models;
+using SiaCheck.Viewer.Services;
+
+namespace SiaCheck.Viewer.ViewModels;
+
+/// <summary>
+/// Onglet Sujets (plan, Évolution 2.0) : sujets du moteur réorientés par la revue IA, décisions sur leurs
+/// corrections (journal persistant), lien avec la 3D. Les décisions s'appliquent à la prochaine analyse :
+/// « Analyser » reste la seule action primaire.
+/// </summary>
+public sealed partial class MainViewModel
+{
+    private CorrectionJournal? _journal;
+
+    public ObservableCollection<SubjectItem> Subjects { get; } = [];
+    private ICollectionView? _subjectsView;
+    public ICollectionView SubjectsView => _subjectsView ??= CreateSubjectsView();
+
+    private ICollectionView CreateSubjectsView()
+    {
+        var v = CollectionViewSource.GetDefaultView(Subjects);
+        v.Filter = o => o is SubjectItem s && MatchesSubject(s);
+        return v;
+    }
+
+    /// <summary>Onglet du panneau droit : Sujets (défaut quand il y en a) ou Points.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowPoints))] private bool _showSubjects;
+    public bool ShowPoints => !ShowSubjects;
+    public bool HasSubjects => Subjects.Count > 0;
+
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasSelectedSubject))] private SubjectItem? _selectedSubject;
+    public bool HasSelectedSubject => SelectedSubject is not null;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasSelectedCorrection))] private CorrectionItem? _selectedCorrection;
+    public bool HasSelectedCorrection => SelectedCorrection is not null;
+
+    public IReadOnlyList<ChoiceItem> SubjectChoices { get; } =
+    [
+        new("Tous les sujets", ""), new("À décider", "todo"), new("Avec corrections acceptées", "accepted"),
+        new("Avec corrections appliquées", "applied"),
+    ];
+
+    [ObservableProperty] private string _subjectFilter = "";
+    partial void OnSubjectFilterChanged(string value) => RefreshSubjects();
+
+    [RelayCommand]
+    private void ResetSubjectFilter() => SubjectFilter = "";
+
+    private bool MatchesSubject(SubjectItem s) => SubjectFilter switch
+    {
+        "todo" => s.ProposedCount > 0,
+        "accepted" => s.Corrections.Any(c => c.State is CorrectionState.Accepted or CorrectionState.Applied),
+        "applied" => s.Corrections.Any(c => c.State == CorrectionState.Applied),
+        _ => true,
+    };
+
+    public string? SubjectsEmptyMessage => !HasSubjects || !SubjectsView.IsEmpty ? null
+        : SubjectFilter == "applied" ? "Aucune correction appliquée pour l'instant."
+        : SubjectFilter == "accepted" ? "Aucune correction acceptée pour l'instant."
+        : "Aucun sujet pour ce filtre.";
+
+    private void RefreshSubjects()
+    {
+        SubjectsView.Refresh();
+        OnPropertyChanged(nameof(SubjectsEmptyMessage));
+        OnPropertyChanged(nameof(CorrectionsSummary));
+    }
+
+    // ------------------------------------------------------------------ barre de commande
+
+    /// <summary>Décisions pas encore appliquées par une analyse : compteur du bouton Analyser.</summary>
+    public int PendingCorrections => _journal?.PendingCount ?? 0;
+    public bool HasPendingCorrections => PendingCorrections > 0;
+    public string AnalyseLabel => HasPendingCorrections ? $"Analyser · {PendingCorrections}" : "Analyser";
+    public string AnalyseTooltip => HasPendingCorrections
+        ? $"Réanalyser le projet et appliquer {PendingCorrections} décision{(PendingCorrections > 1 ? "s" : "")} sur les corrections (Ctrl+R)"
+        : "Relancer l'analyse du projet (Ctrl+R)";
+
+    public int AppliedCorrections => Document?.CorrectionsLog.Count(l => l.Application == CorrectionLogEntry.Applied) ?? 0;
+    public bool HasAppliedCorrections => AppliedCorrections > 0;
+    public string AppliedText => $"{AppliedCorrections} correction{(AppliedCorrections > 1 ? "s" : "")} appliquée{(AppliedCorrections > 1 ? "s" : "")}";
+
+    public string CorrectionsSummary
+    {
+        get
+        {
+            var all = Subjects.SelectMany(s => s.Corrections).ToList();
+            var accepted = all.Count(c => c.Decision == CorrectionDecision.Accepted);
+            return all.Count == 0 ? "" : $"{all.Count} corrections · {accepted} acc.";
+        }
+    }
+
+    // ------------------------------------------------------------------ revue IA écartée
+
+    public IReadOnlyList<ReviewProblem> ReviewProblems => Document?.Review?.Problems ?? [];
+    public bool HasReviewProblems => ReviewProblems.Count > 0;
+    public string ReviewProblemsText => $"Revue IA : {ReviewProblems.Count} décision{(ReviewProblems.Count > 1 ? "s" : "")} écartée{(ReviewProblems.Count > 1 ? "s" : "")}";
+    public string ReviewProblemsDetail => string.Join("\n", ReviewProblems.Select(p => $"{p.Subject} {p.Id} : {p.Reason}".Trim()));
+
+    [RelayCommand]
+    private void ShowReviewProblems() => _shell.Notify(ReviewProblemsDetail);
+
+    // ------------------------------------------------------------------ chargement
+
+    private void LoadSubjects(ViewerDocument doc)
+    {
+        _journal = CorrectionJournal.Open(_paths.CorrectionsFile(ProjectDir!), doc.Project);
+        var log = doc.CorrectionsLog.GroupBy(l => l.Id).ToDictionary(g => g.Key, g => g.Last());
+        var issues = doc.Issues.ToDictionary(i => i.Key, i => i);
+        Subjects.Clear();
+        foreach (var s in doc.Subjects)
+        {
+            var items = s.Corrections.Select(c => MakeCorrection(_journal.Overlay(c), log)).ToList();
+            var ids = items.SelectMany(c => c.TargetIds)
+                .Concat(s.Points.Where(issues.ContainsKey).SelectMany(k => issues[k].SurfaceIds))
+                .Distinct().ToList();
+            Subjects.Add(Track(new SubjectItem(s, items, ids)));
+        }
+        var orphans = _journal.Orphans(doc.Subjects.SelectMany(s => s.Corrections).Select(c => c.Id));
+        if (orphans.Count > 0)
+        {
+            var revisit = new Subject
+            {
+                Id = "à revoir", Title = "Décisions sans proposition", Action = "à vérifier",
+                Explanation = "Ces corrections ne correspondent plus à aucune proposition : la surface visée a disparu ou a changé " +
+                              "dans cette livraison. Vérifiez-les, puis rejetez-les ou modifiez-les.",
+            };
+            var items = orphans.Select(c => MakeCorrection(c.Clone(), log, orphan: true)).ToList();
+            Subjects.Insert(0, Track(new SubjectItem(revisit, items, items.SelectMany(c => c.TargetIds).ToList())));
+        }
+        foreach (var i in Issues) i.SubjectId = null;
+        var bySubject = doc.Subjects.SelectMany(s => s.Points.Select(k => (k, s.Id))).GroupBy(p => p.k).ToDictionary(g => g.Key, g => g.First().Id);
+        foreach (var i in Issues) if (bySubject.TryGetValue(i.Key, out var sid)) i.SubjectId = sid;
+
+        SelectedSubject = null;
+        SelectedCorrection = null;
+        SubjectFilter = "";
+        ShowSubjects = Subjects.Count > 0;
+        var sorted = Subjects.OrderBy(s => s.SortKey).ToList();
+        Subjects.Clear();
+        foreach (var s in sorted) Subjects.Add(s);
+        RefreshSubjects();
+        OnCorrectionsChanged();
+    }
+
+    private CorrectionItem MakeCorrection(Correction c, Dictionary<string, CorrectionLogEntry> log, bool orphan = false)
+    {
+        var target = c.TargetIds.Select(id => _surfaceById.GetValueOrDefault(id)).FirstOrDefault(s => s is not null);
+        return new CorrectionItem(c, log.GetValueOrDefault(c.Id), target, orphan);
+    }
+
+    private SubjectItem Track(SubjectItem s)
+    {
+        foreach (var c in s.Corrections)
+            c.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName != nameof(CorrectionItem.Decision)) return;
+                _journal?.Decide(c.Model);
+                OnCorrectionsChanged();
+            };
+        return s;
+    }
+
+    private void OnCorrectionsChanged()
+    {
+        OnPropertyChanged(nameof(PendingCorrections));
+        OnPropertyChanged(nameof(HasPendingCorrections));
+        OnPropertyChanged(nameof(AnalyseLabel));
+        OnPropertyChanged(nameof(AnalyseTooltip));
+        OnPropertyChanged(nameof(CorrectionsSummary));
+        OnPropertyChanged(nameof(HasSubjects));
+    }
+
+    /// <summary>Entrées du moteur : dernière revue IA du projet et journal des décisions, s'il y en a.</summary>
+    internal EngineInputs CurrentEngineInputs(string projectDir)
+    {
+        var name = Document?.Project ?? Path.GetFileNameWithoutExtension(Directory.GetFiles(projectDir, "*.tgm").FirstOrDefault() ?? projectDir);
+        var review = AiReviewFiles.FindLatest(name, AiReviewFiles.SearchDirs(_paths.AiReviewDir(projectDir), AiSearchBaseDir));
+        var journal = _paths.CorrectionsFile(projectDir);
+        return new EngineInputs(review?.VerdictsPath, File.Exists(journal) ? journal : null);
+    }
+
+    /// <summary>Analyse réussie avec le journal : ses décisions sont désormais appliquées.</summary>
+    private void MarkCorrectionsAnalysed(EngineInputs inputs)
+    {
+        if (inputs.Journal is null || ProjectDir is null) return;
+        CorrectionJournal.Open(inputs.Journal, null).MarkAnalysed();
+    }
+
+    // ------------------------------------------------------------------ onglets
+
+    [RelayCommand]
+    private void ShowSubjectsTab() { if (HasSubjects) ShowSubjects = true; }
+
+    [RelayCommand]
+    private void ShowPointsTab() => ShowSubjects = false;
+
+    /// <summary>Étiquette de sujet d'un point (onglet Points) : ouvre ce sujet dans l'onglet Sujets.</summary>
+    [RelayCommand]
+    private void ShowSubjectOf(IssueItem? issue)
+    {
+        var id = issue?.Ai?.Subject ?? issue?.SubjectId;
+        if (Subjects.FirstOrDefault(s => s.Id == id) is not { } s) return;
+        SubjectFilter = "";
+        ShowSubjects = true;
+        SelectedSubject = s;
+    }
+
+    [RelayCommand]
+    private void ShowAppliedCorrections()
+    {
+        ShowSubjects = true;
+        SubjectFilter = "applied";
+    }
+
+    // ------------------------------------------------------------------ décisions
+
+    partial void OnSelectedSubjectChanged(SubjectItem? value)
+    {
+        SelectedCorrection = null;
+        if (value is not null) FocusSubject(value);
+    }
+
+    partial void OnSelectedCorrectionChanged(CorrectionItem? oldValue, CorrectionItem? newValue)
+    {
+        if (oldValue?.IsEditing == true) oldValue.CancelEdit();
+        if (newValue is not null) FocusCorrection(newValue);
+    }
+
+    [RelayCommand]
+    private void AcceptAllCorrections() => DecideAll(CorrectionDecision.Accepted);
+
+    [RelayCommand]
+    private void RejectAllCorrections() => DecideAll(CorrectionDecision.Rejected);
+
+    private void DecideAll(CorrectionDecision d)
+    {
+        if (SelectedSubject is not { } s) return;
+        foreach (var c in s.Corrections.Where(c => !c.IsOrphan)) c.Decision = d;
+        RefreshSubjects();
+    }
+
+    /// <summary>1 / 2 / 3 sur la correction sélectionnée : proposée / acceptée / rejetée.</summary>
+    [RelayCommand]
+    private void SetCorrectionDecision(string decision)
+    {
+        if (SelectedCorrection is not { } c) return;
+        c.Decision = decision switch
+        {
+            "accepted" => CorrectionDecision.Accepted,
+            "rejected" => CorrectionDecision.Rejected,
+            _ => CorrectionDecision.Proposed,
+        };
+        RefreshSubjects();
+    }
+
+    [RelayCommand]
+    private void EditCorrection() => SelectedCorrection?.BeginEdit();
+
+    [RelayCommand]
+    private void CommitCorrectionEdit()
+    {
+        if (SelectedCorrection is not { IsEditing: true } c) return;
+        if (c.CommitEdit() is not { } edited) return;
+        _journal?.Decide(edited);
+        OnCorrectionsChanged();
+        RefreshSubjects();
+        FocusCorrection(c);
+    }
+
+    [RelayCommand]
+    private void CancelCorrectionEdit() => SelectedCorrection?.CancelEdit();
+
+    // ------------------------------------------------------------------ 3D
+
+    private void FocusSubject(SubjectItem s)
+    {
+        if (Scene is null || s.SurfaceIds.Count == 0) return;
+        var bounds = Scene.Focus(s.SurfaceIds);
+        SetFocused(null);
+        _shell.Frame(bounds);
+    }
+
+    private void FocusCorrection(CorrectionItem c)
+    {
+        if (Scene is null) return;
+        var bounds = Scene.Focus(c.TargetIds);
+        if (c.Model.Trace is { } t && _surfaceById.GetValueOrDefault(c.TargetIds.FirstOrDefault() ?? "") is { Building: { } b, Level: { } l })
+            Scene.SetOverlay(t, b, l, _shell.AccentColor);
+        SetFocused(null);
+        if (bounds is null) _shell.Notify("La surface visée n'a pas de géométrie dans le cache VWR.");
+        _shell.Frame(bounds);
+        if (_surfaceById.GetValueOrDefault(c.TargetIds.FirstOrDefault() ?? "")?.Building is { } bld) BalanceBuilding = bld;
+    }
+}

@@ -26,7 +26,7 @@ sia-check = "sia_check.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-sia_check = ["templates/*.j2"]
+sia_check = ["templates/*.j2", "templates/*.xlsx"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -4,7 +4,8 @@ Codes de sortie : 0 aucun écart au-delà de la tolérance, 1 écarts, 2 erreur 
 Résultats en console ; avec --out, rapports <projet>_<date>.xlsx / .html / .json ;
 avec --viewer-json, fichier pour SIA Check Viewer (surfaces, maillages du cache VWR, points liés) ;
 avec --preuves, preuves géométriques de la revue IA (sia_check.preuves, shapely requis) ;
-avec --treegram, exports au gabarit Excel Treegram (<projet>-SurfacesNettes.xlsx / -SurfacesBrutes.xlsx).
+avec --treegram, exports au gabarit Excel Treegram (<projet>-SurfacesNettes.xlsx / -SurfacesBrutes.xlsx) ;
+avec --mdp, tableau MDP HRS rempli (sia_check.mdp, gabarit vierge livré ou --mdp-template).
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -19,7 +20,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import config as config_mod
-from . import geom, reader, report, rules, treegram, viewer
+from . import geom, mdp, reader, report, rules, treegram, viewer
 
 log = logging.getLogger("sia_check")
 
@@ -33,6 +34,9 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--viewer-json", type=Path, help="fichier JSON pour SIA Check Viewer (un seul projet)")
     ap.add_argument("--preuves", type=Path, help="preuves géométriques pour la revue IA (avec --viewer-json)")
     ap.add_argument("--treegram", type=Path, help="dossier des exports au gabarit Excel Treegram (depuis le .tgm)")
+    ap.add_argument("--mdp", type=Path, help="tableau MDP HRS à écrire (fichier .xlsx)")
+    ap.add_argument("--mdp-template", type=Path, help="gabarit MDP (défaut : gabarit vierge livré) ; ses tableaux sont remplacés")
+    ap.add_argument("--project-id", help="ID projet HRS écrit dans InfosProjet (défaut : celui du gabarit)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -104,6 +108,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.treegram:
             for p in treegram.write(result, cfg, args.treegram, project):
                 log.info("export Treegram écrit : %s", p)
+        if args.mdp:
+            pid = int(args.project_id) if args.project_id and args.project_id.isdigit() else args.project_id
+            log.info("tableau MDP écrit : %s", mdp.write(result, cfg, args.mdp, args.mdp_template, pid, project))
         if args.viewer_json:
             log.info("ÉTAPE 3/%d géométrie (cache VWR)", steps)
             cache = geom.read_cache(models[0].parent) if models[0].suffix.lower() == ".tgm" else geom.Cache()
@@ -119,6 +126,9 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             ev = preuves.build(doc)
             log.info("preuves écrites : %s (%s)", preuves.write(ev, args.preuves), preuves.summary(ev))
+    except mdp.TemplateError as ex:
+        log.error("gabarit MDP : %s", ex)
+        return 2
     except OSError as ex:  # ex. classeur ouvert dans Excel
         log.error("écriture impossible : %s", ex)
         return 2

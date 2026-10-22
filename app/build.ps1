@@ -25,6 +25,7 @@ if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
     --distpath (Join-Path $work 'dist') --workpath (Join-Path $work 'build') --specpath $work `
     --exclude-module ifcopenshell --exclude-module numpy.tests --exclude-module pytest `
     --hidden-import sia_check.preuves --collect-submodules shapely `
+    --add-data "$(Join-Path $root 'src\sia_check\templates');sia_check\templates" `
     --paths (Join-Path $root 'src') (Join-Path $root 'src\sia_check\__main__.py')
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller a échoué' }
 

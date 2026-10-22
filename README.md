@@ -16,6 +16,7 @@ sia-check model.ifc --config config.yaml --out report/
 sia-check "L OREE.tgm" --config config.yaml --out report/ --project "L'Orée"
 sia-check model.ifc --all --verbose          # console seule, contrôles OK compris, chaque surface lue
 sia-check "L OREE.tgm" --treegram exports/   # exports au gabarit Excel Treegram, depuis le .tgm
+sia-check "L OREE.tgm" --mdp MDP-1778-Loree.xlsx --project-id 1778   # tableau MDP HRS rempli
 ```
 
 - Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet) ou `.ifc` (mapping dans `config.yaml > sources.ifc`).
@@ -34,6 +35,22 @@ sia-check "L OREE.tgm" --treegram exports/   # exports au gabarit Excel Treegram
 `<projet>-SurfacesNettes.xlsx` (une ligne par local) et `<projet>-SurfacesBrutes.xlsx` (SP et SEP par niveau), colonnes et ordre des exports Excel de Treegram, clé `ID TGM` (`H<conteneur>::H<élément>`, lu dans le `.tgm`).
 
 Sur L'Orée, les lignes, les valeurs et l'ordre sont identiques à l'export Treegram du 22.10.2026, à une différence près : celui-ci omet les surfaces SED (26 coursives) et SUT (47 commerces), que `--treegram` garde. Les codes ignorés (SPT…) et USPI n'y figurent pas.
+
+## Tableau MDP (`--mdp`)
+
+Le tableau MDP HRS, rempli depuis le `.tgm` sans copier-coller. Le gabarit par défaut est `src/sia_check/templates/MDP-gabarit.xlsx`, un MDP vierge produit par `scripts/make_mdp_template.py` à partir d'un MDP existant. `--mdp-template` accepte aussi un MDP déjà rempli : ses tableaux de données sont remplacés.
+
+| Feuille | Contenu |
+| --- | --- |
+| SurfacesBrutesVolumeSIA416 | SP et SEP par niveau : découpage (table `HsSs` du gabarit), largeur et longueur (`DeltaX`/`DeltaY`), périmètre, hauteur brute, m², m³ |
+| SurfacesNettesSIA416 | une ligne par local, comme l'export Treegram, SED et SUT compris |
+| SurfacesUSPI | SNH, SH, SBH, SE (= SVN − SH), SVN, SVB par lot |
+| ListeLogements | un lot par ligne, avec son nombre de chambres |
+| SurfacesEnveloppe | façade de chaque niveau (SFN : longueur, hauteur, surfaces brute, nette et vitrée) et toitures (SPT) |
+| InfosBatiment | étages hors-sol et sous-sol, largeur et longueur du plus grand niveau courant |
+| InfosProjet | nombre de bâtiments, d'étages, de logements (par nombre de chambres) et de chambres |
+
+Restent vides, faute de source dans le `.tgm` : l'affectation, les typologies, le nombre de pièces, les cages d'escalier, la forme des bâtiments et les champs administratifs. Le reste du classeur est recopié tel quel : listes déroulantes, feuille « Listes formulaire », documents. Le tableau croisé de la feuille SurfacesEnveloppe n'est pas recalculé. Les filtres actifs sont levés, les formules gardent leur valeur en cache et sont recalculées à l'ouverture.
 
 ## Ratios informatifs
 
@@ -109,6 +126,8 @@ src/sia_check/
   ratios.py   ratios informatifs SIA 416 / USPI
   viewer.py   fichier pour SIA Check Viewer (--viewer-json)
   treegram.py exports au gabarit Excel Treegram (--treegram)
+  mdp.py      tableau MDP HRS (--mdp)
+  xlsx_tables.py  remplissage des tableaux d'un classeur sans perte (validations, tableaux croisés)
   preuves.py  preuves géométriques de la revue IA (--preuves, shapely)
   cli.py      ligne de commande
 tests/        jeu synthétique (tests/data/synth.csv) + intégration L'Orée (ignorée si le projet est absent)

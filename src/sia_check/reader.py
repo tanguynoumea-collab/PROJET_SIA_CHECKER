@@ -13,7 +13,7 @@ Colonnes produites (SURFACE_COLUMNS) :
     source     chemin du fichier lu
     element_id identifiant interne Treegram (.tgm) : clé de la géométrie du cache VWR
     tgm_id     « ID TGM » des exports Excel Treegram (H<conteneur>::H<élément>)
-    perimeter, gross_height, dx, dy, bedrooms
+    perimeter, gross_height, dx, dy, bedrooms, gross_area, net_area, reservations_area
                propriétés Treegram reprises telles quelles (sources.tgm.extra_properties) ;
                vides pour l'IFC
 
@@ -35,7 +35,8 @@ from .config import Config
 log = logging.getLogger(__name__)
 
 EXTRA_COLUMNS = {"perimeter": "Perimeter", "gross_height": "GrossHeight", "dx": "DeltaX", "dy": "DeltaY",
-                 "bedrooms": "Bedrooms"}
+                 "bedrooms": "Bedrooms", "gross_area": "GrossArea", "net_area": "NetArea",
+                 "reservations_area": "ReservationsArea"}
 SURFACE_COLUMNS = ["id", "building", "level", "category", "area", "kind", "room_type", "lot", "elevation", "source",
                    "element_id", "tgm_id", *EXTRA_COLUMNS]
 
@@ -80,6 +81,9 @@ def _frame(rows: list[dict], path: Path) -> pd.DataFrame:
 def read_tgm(path: Path, cfg: Config) -> pd.DataFrame:
     """Surfaces SIA d'un projet Treegram.
 
+    Totaux sans propriété de catégorie : sources.tgm.uncategorized_nodes associe un nom d'élément à une propriété
+    qui l'identifie (SFN : NetArea, pour la façade du niveau, qui ouvre chaque bloc de niveau) ; le nom sert de code.
+
     Deux sortes d'éléments portent la propriété de catégorie (docs/ifc-schema.md §2.2) :
     - surfaces élémentaires : bâtiment et niveau lus dans le préfixe du nom ;
     - totaux de niveau (« nœuds »), nommés par le seul code : aucun lien explicite vers leur niveau.
@@ -97,13 +101,15 @@ def read_tgm(path: Path, cfg: Config) -> pd.DataFrame:
     lot_re = re.compile(src["lot_pattern"]) if src.get("lot_pattern") else None
     extra = EXTRA_COLUMNS | (src.get("extra_properties") or {})
 
-    bags = [g for g in tgm.scan(path.read_bytes()) if cat_p in g.props]
-    if not bags:
+    uncategorized = src.get("uncategorized_nodes") or {}
+    bags = [g for g in tgm.scan(path.read_bytes())
+            if cat_p in g.props or uncategorized.get(g.name) in g.props]
+    if not any(cat_p in g.props for g in bags):
         raise ReadError(f"aucun élément portant la propriété « {cat_p} » : surfaces SIA non créées dans ce projet ?")
 
     rows, block, block_codes, block_loc = [], -1, set(), {}
     for g in bags:
-        code = str(g.props[cat_p]).strip()
+        code = str(g.props.get(cat_p, g.name)).strip()
         m = name_re.match(g.name)
         row = {"category": code, "area": g.props.get(area_p), "room_type": g.props.get(type_p),
                "element_id": g.element_id, "tgm_id": g.tgm_id} | {c: g.props.get(p) for c, p in extra.items()}

@@ -38,7 +38,10 @@ def failing(res, rule):
 def test_counts_match_viewer(loree):
     # Compteurs du viewer Treegram : 80 SP, 80 SEP (un total par niveau).
     df, _ = loree
-    assert len(df) == 6090
+    assert (df.category != "SFN").sum() == 6090
+    sfn = df[df.category == "SFN"]  # façade de chaque niveau, même hauteur brute que la SP du niveau
+    assert len(sfn) == 80 and len(sfn[["building", "level"]].drop_duplicates()) == 80
+    assert sfn.gross_area.sum() == pytest.approx(30138.23, abs=0.01)
     nodes = df[df.kind == "node"].category.value_counts()
     assert nodes["SP"] == 80 and nodes["SEP"] == 80
     assert set(df.building) == BUILDINGS
@@ -112,3 +115,25 @@ def test_treegram_exports_match_treegram(loree):
     assert n["ID TGM"].iloc[0] == "H170::H2527" and n["ID TGM"].is_unique and n["ID TGM"].notna().all()
     assert b.Area.sum() == pytest.approx(74518.54, abs=0.01)
     assert b.Perimeter.sum() == pytest.approx(17233.96, abs=0.01)
+
+
+@needs_tgm
+def test_mdp_from_blank_template(loree, tmp_path):
+    import warnings
+
+    import openpyxl
+
+    from sia_check import config, mdp
+    cfg = config.load(Path(__file__).resolve().parents[1] / "config.yaml")
+    _, res = loree
+    out = mdp.write(res, cfg, tmp_path / "MDP-1778-Loree.xlsx", project_id=1778, project_name="L'Orée")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        wb = openpyxl.load_workbook(out)
+    refs = {t: ws.tables[t].ref for ws in wb.worksheets for t in ws.tables}
+    assert refs["SurfacesSIA4168"] == "A1:L161" and refs["SurfacesSIA41610"] == "A1:I3295"
+    assert refs["Logements"] == "A1:K316"                       # 315 lots
+    env = list(wb["SurfacesEnveloppe"].iter_rows(min_row=2, max_col=9, values_only=True))
+    assert sum(1 for r in env if r[1] == mdp.FACADE) == 80
+    info = {r[1]: r[2] for r in wb["InfosProjet"].iter_rows(min_row=2, values_only=True)}
+    assert info["Nbr de bâtiments (lots)"] == 9 and info["Nbr total de logements"] == 315

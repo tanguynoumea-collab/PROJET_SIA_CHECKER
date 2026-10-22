@@ -1,7 +1,7 @@
 # V2_PLAN — Corrections et export MDP
 
 > Statut : ☑ Brouillon · ☑ Validé par l'utilisateur (22.10.2026)
-> Version : 0.2 — 22.10.2026 · phase 0 livrée
+> Version : 0.2 — 22.10.2026 · phases 0 et 1 livrées
 
 ## 1. Objectif
 
@@ -114,7 +114,7 @@ Pour l'Affectation, les typologies et la forme du bâtiment : une valeur propos�
 | # | Phase | Livrable | Vérification |
 |---|---|---|---|
 | 0 | ☑ **Fondations moteur** | ID TGM, `Perimeter`, `GrossHeight`, `DeltaX/Y`, `Bedrooms` dans le modèle ; `sia-check --treegram` | ☑ exports 1778 régénérés : lignes, valeurs et ordre identiques, plus 26 SED et 47 SUT ; seul écart, les 7 `SEP-Toiture` saisis à la main |
-| 1 | **Export MDP brut** | SFN (enveloppe) dans le modèle ; MDP rempli, sans corrections | validations, tableau croisé et formules intacts ; totaux égaux à ceux du `.tgm` |
+| 1 | ☑ **Export MDP brut** | SFN (enveloppe) dans le modèle ; `sia-check --mdp`, gabarit vierge livré | ☑ L'Orée : ouvert dans Excel sans réparation ; validations, tableau croisé et formules intacts ; Σ m³ = 237 428,90, comme le MDP 1778 |
 | 2 | **Corrections** | schéma, journal, `--corrections`, nouveau contrôle, avant/après | tests unitaires sur chaque opération ; S2 appliqué ⇒ R3 des niveaux Toiture à zéro |
 | 3 | **Sujets et recommandations de base** | regroupement, recommandations par règle, tracés pré-calculés | L'Orée : S1, S2, S6 retrouvés sans IA |
 | 4 | **IA → corrections** | schéma de verdicts v2, prompt et skill `revue-ia` mis à jour, validation | une revue L'Orée produit des corrections valides et applicables |

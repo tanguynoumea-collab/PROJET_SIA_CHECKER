@@ -149,7 +149,10 @@ sources:
     name_pattern: '^(?P<building>[^_]+)_(?P<level>[^_]+)_'
     lot_pattern: '^(?P<lot>[^_]+_[^_]+_Apart-\d+)_'
     # propriétés reprises telles quelles pour les exports (colonne : propriété Treegram)
-    extra_properties: {perimeter: Perimeter, gross_height: GrossHeight, dx: DeltaX, dy: DeltaY, bedrooms: Bedrooms}
+    extra_properties: {perimeter: Perimeter, gross_height: GrossHeight, dx: DeltaX, dy: DeltaY, bedrooms: Bedrooms,
+                       gross_area: GrossArea, net_area: NetArea, reservations_area: ReservationsArea}
+    # totaux de niveau sans « Catégorie SIA » (nom : propriété qui les identifie), lus avec le nom pour code
+    uncategorized_nodes: {SFN: NetArea}   # façade du niveau : surfaces brute, nette, vitrée (ReservationsArea)
   ifc:
     classes: [IfcSlab, IfcSpace, IfcBuildingElementProxy]
     category: {attribute: Name}            # ou {pset: ..., property: ...}

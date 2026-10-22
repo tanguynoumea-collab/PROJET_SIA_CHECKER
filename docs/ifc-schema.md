@@ -125,7 +125,7 @@ Le viewer Treegram met en cache, par niveau, les maillages des surfaces SIA :
 
 ## 4. Incohérences internes déjà visibles
 
-1. **SEU : le nœud dépasse la somme de ses enfants** de 4 à 18 m² sur 11 niveaux (B03 N01–N03, B04 N00–N04, I17 N01–N03). Il s'agit probablement d'un total qui n'a pas été recalculé après la modification des balcons (16 SEU modifiés le 19.06.2026, alors que les surfaces SIA datent du 11.06).
+1. ~~**SEU : le nœud dépasse la somme de ses enfants**~~ — **affirmation retirée le 22.10.2026.** L'écart venait de la première version du décodeur, qui ne lisait pas les 16 balcons modifiés le 19.06 (variante de tag de chaîne). Depuis la correction, le total SEU égale la somme du détail sur tous les niveaux.
 2. **USPI : les totaux SBH, SVN et SVB du niveau dépassent la somme des lots** de 5 à 39 m², sur presque tous les niveaux d'habitation. Pour SHA, l'écart est inférieur à 2 m², dans l'autre sens.
 3. **Le nœud SNH vaut SUP + SUS du niveau**, alors que la somme des lots SNH vaut SUP seule : le SUS commun (caves, etc.) entre dans le total SNH.
 

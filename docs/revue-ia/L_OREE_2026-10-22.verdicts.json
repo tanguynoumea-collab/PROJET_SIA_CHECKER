@@ -1,0 +1,788 @@
+{
+ "projet": "L OREE",
+ "analyse": "2026-10-22",
+ "revue_ia": "2026-10-22",
+ "modele": "Claude (Claude Code)",
+ "points": {
+  "R3|*|*||SEP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R1|*|*||SP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R3|E09|*||SEP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R3|B03|*||SEP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R3|B04|*||SEP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R1|E09|*||SP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "A1|B03|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "1943 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R1|G12|*||SP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "A1|E09|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "1861 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R3|B03|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "1943 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R3|E09|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "1861 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R3|I17|*||SEP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R3|I14|*||SEP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R1|H16|*||SP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "A1|B04|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "1246 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R1|I14|*||SP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R3|A01|*||SEP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R3|B04|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "1246 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R3|G12|*||SEP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R1|E09|N00||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "908 m² de commerces en code SUT ; avec eux le résidu tombe à 11.5 % (surface de construction normale)."
+  },
+  "R3|I18|*||SEP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R1|A01|*||SP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R1|B03|*||SP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R3|E09|N05||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "855 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R1|I17|*||SP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R1|B04|*||SP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "A1|I17|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "708 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "A1|I14|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "756 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R1|I18|*||SP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R3|H16|*||SEP": {
+   "verdict_ia": "agrégat",
+   "sujet": null,
+   "raison": "Somme de points de niveau : voir les sujets de ces niveaux."
+  },
+  "R3|I17|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "708 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R3|I14|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "756 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R1|I14|N00||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "452 m² de commerces en code SUT ; avec eux le résidu tombe à 14.9 % (surface de construction normale)."
+  },
+  "A1|A01|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "539 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "A1|I18|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "492 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R3|I18|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "492 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "A2|I18|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "488 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|I18|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "488 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "A1|G12|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "486 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R3|G12|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "486 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R3|I14|N05||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "473 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|I17|N05||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "468 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|A01|N07||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "453 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|B03|N05||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "443 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R1|G12|N00||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "361 m² de commerces en code SUT ; avec eux le résidu tombe à 12.6 % (surface de construction normale)."
+  },
+  "R3|B04|N05||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "432 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R5|I18|N00||SU": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "284 m² de commerces en code SUT ; avec eux le résidu tombe à 11.2 % (surface de construction normale)."
+  },
+  "R1|G12|S01||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "237 m² de commerces en code SUT ; avec eux le résidu tombe à 10.9 % (surface de construction normale)."
+  },
+  "R3|G12|N04||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "346 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|H16|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "327 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "A2|H16|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "327 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R1|I18|N00||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "284 m² de commerces en code SUT ; avec eux le résidu tombe à 11.2 % (surface de construction normale)."
+  },
+  "A1|H16|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "323 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R3|H16|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "323 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R3|E09|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "305 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "A2|E09|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "305 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|G12|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "303 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "A2|G12|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "303 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R1|G12|N03||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "204 m² de commerces en code SUT ; avec eux le résidu tombe à 14.1 % (surface de construction normale)."
+  },
+  "R1|G12|N02||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "204 m² de commerces en code SUT ; avec eux le résidu tombe à 14.1 % (surface de construction normale)."
+  },
+  "R1|G12|N01||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "204 m² de commerces en code SUT ; avec eux le résidu tombe à 14.1 % (surface de construction normale)."
+  },
+  "R1|H16|N03||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "239 m² de commerces en code SUT ; avec eux le résidu tombe à 14.9 % (surface de construction normale)."
+  },
+  "R1|H16|N01||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "239 m² de commerces en code SUT ; avec eux le résidu tombe à 14.9 % (surface de construction normale)."
+  },
+  "R1|H16|N02||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "239 m² de commerces en code SUT ; avec eux le résidu tombe à 14.9 % (surface de construction normale)."
+  },
+  "R3|A01|N00||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S1",
+   "raison": "539 m² de cette SEP reposent sur l'emprise du sous-sol : dalle sur sous-sol au contact du terrain, donc abords SA (SIA 416 §1.2)."
+  },
+  "R1|H16|N00||SP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S3",
+   "raison": "204 m² de commerces en code SUT ; avec eux le résidu tombe à 16.0 % (surface de construction normale)."
+  },
+  "A2|A01|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "249 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|A01|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "249 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|A01|N06||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "234 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|I17|N04||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "213 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|I14|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "221 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "A2|I14|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "221 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "A2|B04|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "220 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|B04|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "220 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|B04|N04||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "206 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|I17|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "217 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "A2|I17|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "217 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|B03|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "216 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "A2|B03|Toiture||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "216 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|B03|N04||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "200 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|I14|N04||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "207 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R3|E09|N04||SEP": {
+   "verdict_ia": "vrai sujet",
+   "sujet": "S2",
+   "raison": "201 m² de cette SEP sont aussi classés SPT (toiture) par Treegram : toiture comptée en surface externe."
+  },
+  "R1|E09|N03||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.5 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|E09|N02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.5 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|E09|N01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.5 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|E09|S01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 6.1 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|E09|N04||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B03|N00||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 17.3 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B04|N00||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 17.1 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B04|N01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B04|N03||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B04|N02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B03|N01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.3 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B03|N03||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.3 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B03|N02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.3 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I14|S01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 8.5 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|I17|N00||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 16.7 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|A01|N01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.1 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|A01|N04||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.1 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|A01|N02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.1 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|A01|N05||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.1 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|A01|N03||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.1 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I17|N01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.7 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I17|N03||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.7 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I17|N02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.7 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I14|N02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I14|N03||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I14|N01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B04|S01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 5.8 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|I17|S01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 7.9 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|B03|S01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 4.2 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|A01|N00||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.8 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|A01|S01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 8.9 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|I17|S02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 8.8 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|I14|S02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 9.1 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|B03|N04||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 16.3 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I17|N04||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 16.3 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B04|N04||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|A01|N06||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.3 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I14|N04||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.7 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|G12|S02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 11.5 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|B03|S02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.0 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|G12|S03||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 11.0 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|I18|N01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.7 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I18|N03||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I18|N02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I18|N04||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 14.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I18|S01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 7.5 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R3|I17|S01||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S5",
+   "raison": "SEP en sous-sol, au-dessus du niveau inférieur : garage ou rampe ouverts (SEP admise, §3) ou erreur de classement."
+  },
+  "R1|H16|S02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 9.0 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|H16|N04||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 17.8 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|H16|N05||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 17.8 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I18|S02||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 7.1 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|E09|N05||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 17.2 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|H16|S01||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 7.7 % dans la plage habituelle de la surface de construction (4–15 % en sous-sol)."
+  },
+  "R1|G12|N05||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.8 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|G12|N04||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.8 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|A01|N07||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 15.7 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B03|N05||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 18.2 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I17|N05||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 17.6 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|I14|N05||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 17.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R1|B04|N05||SP": {
+   "verdict_ia": "faux positif",
+   "sujet": "S6",
+   "raison": "Résidu 17.4 % dans la plage habituelle de la surface de construction (14–18 % aux étages)."
+  },
+  "R3|B03|N01||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "14 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|I17|N01||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "13 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|I17|N02||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "13 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|I17|N03||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "13 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|B03|N02||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "11 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|B04|N01||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "11 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|B04|N02||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "11 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|B04|N03||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "11 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|H16|N04||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "10 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|E09|N01||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "10 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|B03|N03||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "10 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|A01|N01||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "9 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|I14|N01||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "9 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  },
+  "R3|G12|N01||SEP": {
+   "verdict_ia": "à confirmer",
+   "sujet": "S4",
+   "raison": "5 m² de SEP non classés, répétés à l'identique d'un étage à l'autre : construction externe (garde-corps, piliers, SEC) ou un type de balcon non classé."
+  }
+ }
+}

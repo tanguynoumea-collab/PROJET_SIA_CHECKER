@@ -8,7 +8,8 @@ __pycache__/
 report/
 
 # Outillage local
-.claude/
+.claude/*
+!.claude/skills/
 
 # Normes sous licence nominative (iNorm SIA) et extraits de leurs figures : à garder hors du dépôt
 docs/reference/

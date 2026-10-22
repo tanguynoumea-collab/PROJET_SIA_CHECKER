@@ -49,6 +49,37 @@ categories:
   SFN:  {family: custom, ignore: true}   # façades
   SRV:  {family: custom, ignore: true}   # vitrages
 
+# Libellés affichés (infobulles, rapports) : nom, référence, définition courte en paraphrase de la norme.
+labels:
+  SP:   {name: Surface de plancher, ref: SIA 416 §2, def: "Espaces accessibles fermés de toute part, surface de construction comprise. SP = SN + SC."}
+  SN:   {name: Surface nette, ref: SIA 416 §2.1, def: "Partie de la SP délimitée par l'enveloppe et les éléments intérieurs. SN = SU + SD + SI."}
+  SU:   {name: Surface utile, ref: SIA 416 §2.1.1, def: "Partie de la SN affectée à la destination du bâtiment au sens large. SU = SUP + SUS."}
+  SUP:  {name: Surface utile principale, ref: SIA 416 §2.1.1.1, def: "Fonctions de la destination au sens strict : pièces de vie, chambres, bureaux, commerces…"}
+  SUS:  {name: Surface utile secondaire, ref: SIA 416 §2.1.1.2, def: "Fonctions complétant la SUP : caves, buanderies, débarras, garages, abris PC, locaux poubelles."}
+  SD:   {name: Surface de dégagement, ref: SIA 416 §2.1.2, def: "Accès exclusif aux surfaces utiles : couloirs hors appartements, halls, escaliers, rampes, gaines d'ascenseur."}
+  SI:   {name: Surface d'installations, ref: SIA 416 §2.1.3, def: "Installations du bâtiment : locaux techniques, machineries, gaines techniques, réservoirs."}
+  SC:   {name: Surface de construction, ref: SIA 416 §2.2, def: "Emprise horizontale des murs, cloisons, piliers, allèges dans la SP. Non fournie par Treegram : visible comme résidu R1."}
+  SCP:  {name: Surface de construction porteuse, ref: SIA 416 §2.2.1}
+  SCN:  {name: Surface de construction non porteuse, ref: SIA 416 §2.2.2}
+  SEP:  {name: Surface externe de plancher, ref: SIA 416 §3, def: "Espaces extérieurs non fermés : balcons, terrasses, toitures-jardins, garages ouverts — sauf s'ils communiquent directement avec les abords (alors SA)."}
+  SEN:  {name: Surface externe nette, ref: SIA 416 §3.1, def: "Partie utilisable de la SEP. SEN = SEU + SED + SEI."}
+  SEU:  {name: Surface externe utile, ref: SIA 416 §3.1.1, def: "Balcons, terrasses et loggias utilisables."}
+  SED:  {name: Surface externe de dégagement, ref: SIA 416 §3.1.2, def: "Coursives et circulations extérieures."}
+  SEI:  {name: Surface externe d'installations, ref: SIA 416 §3.1.3}
+  SEC:  {name: Surface externe de construction, ref: SIA 416 §3.2}
+  ST:   {name: Surface de terrain, ref: SIA 416 §1}
+  SB:   {name: Surface bâtie, ref: SIA 416 §1.1}
+  SA:   {name: Surface des abords, ref: SIA 416 §1.2, def: "Partie du terrain non bâtie, y compris les dalles sur sous-sol aménagées en contact direct avec les abords."}
+  SNH:  {name: Surface nette habitable, ref: USPI 2014}
+  SH:   {name: Surface habitable, ref: USPI 2014, def: "SH = SNH + SCI (construction intérieure)."}
+  SBH:  {name: Surface brute habitable, ref: USPI 2014, def: "SBH = SH + MEM (murs extérieurs et mitoyens)."}
+  SVN:  {name: Surface de vente nette, ref: USPI 2014, def: "SVN = SH + SE (surfaces externes pondérées)."}
+  SVB:  {name: Surface de vente brute, ref: USPI 2014, def: "SVB = SBH + SE."}
+  SUT:  {name: Commerces (code Treegram), ref: code maison, def: "Sens déduit du contenu (Type = Commerce). Ignoré dans les sommes : les RDC commerciaux sortent en R1."}
+  SPT:  {name: Toitures (code Treegram), ref: code maison, def: "Sens déduit du contenu (Type = Toiture). Ignoré dans les sommes."}
+  SFN:  {name: Façades (code Treegram), ref: code maison}
+  SRV:  {name: Vitrages (code Treegram), ref: code maison}
+
 tolerance: {abs_m2: 0.5, rel: 0.005}
 
 levels:

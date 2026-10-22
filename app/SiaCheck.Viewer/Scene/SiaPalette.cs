@@ -11,7 +11,7 @@ namespace SiaCheck.Viewer.Scene;
 public sealed class SiaPalette
 {
     public static readonly Color Fallback = Color.FromRgb(0x6B, 0x72, 0x80);
-    private const double HatchPeriod = 0.6;   // m, période des hachures en plan
+    private const double HatchPeriod = 1.0;   // m, période des hachures en plan (plus fine : moiré en vue rasante)
 
     private readonly Dictionary<string, CategoryInfo> _cats;
     private readonly Dictionary<string, Brush> _brushes = [];
@@ -25,25 +25,44 @@ public sealed class SiaPalette
     public bool IsHatched(string code) =>
         _cats.TryGetValue(code, out var c) ? c.Hatched || c.Status != "checked" : true;
 
+    public CategoryInfo? Info(string code) => _cats.GetValueOrDefault(code);
+
+    /// <summary>« SUP · Surface utile principale (SIA 416 §2.1.1.1) » + définition, pour les infobulles.</summary>
+    public (string Title, string? Definition) Describe(string code)
+    {
+        var c = Info(code);
+        var title = c?.Name is { } n ? $"{code} · {n}" : code;
+        if (c?.Ref is { } r) title += $" ({r})";
+        return (title, c?.Definition);
+    }
+
     /// <summary>Pinceau 2D (calques, bilan) : aplat, ou hachures pour les surfaces externes et les codes non contrôlés.</summary>
     public Brush BrushOf(string code)
     {
         if (_brushes.TryGetValue(code, out var b)) return b;
-        b = IsHatched(code) ? Hatch(ColorOf(code), 0.25, BrushMappingMode.Absolute, 6) : new SolidColorBrush(ColorOf(code));
+        b = IsHatched(code) ? Hatch(ColorOf(code), Tint(ColorOf(code), 0.25), BrushMappingMode.Absolute, 6) : new SolidColorBrush(ColorOf(code));
         b.Freeze();
         return _brushes[code] = b;
     }
 
+    /// <summary>Teinte assombrie (facteur &lt; 1) : chants des dalles 3D.</summary>
+    public static Color Shade(Color c, double factor) =>
+        Color.FromRgb((byte)(c.R * factor), (byte)(c.G * factor), (byte)(c.B * factor));
+
+    /// <summary>Teinte éclaircie vers le blanc (part de couleur conservée) : fond opaque des hachures.</summary>
+    public static Color Tint(Color c, double keep) =>
+        Color.FromRgb((byte)(255 - (255 - c.R) * keep), (byte)(255 - (255 - c.G) * keep), (byte)(255 - (255 - c.B) * keep));
+
     /// <summary>
-    /// Hachures diagonales : fond teinté + traits pleins. En 3D, les coordonnées de texture sont
-    /// les coordonnées en plan divisées par la période (SceneController), d'où un motif à l'échelle du bâtiment.
+    /// Hachures diagonales opaques : fond clair + traits de la couleur. En 3D, les coordonnées de texture
+    /// sont les coordonnées en plan divisées par la période (SceneController) : motif à l'échelle du bâtiment,
+    /// et pas de transparence qui mélangerait les niveaux superposés.
     /// </summary>
-    public static DrawingBrush Hatch(Color color, double backgroundAlpha, BrushMappingMode units, double period)
+    public static DrawingBrush Hatch(Color stroke, Color background, BrushMappingMode units, double period)
     {
-        var bg = Color.FromArgb((byte)(255 * backgroundAlpha), color.R, color.G, color.B);
         var group = new DrawingGroup();
-        group.Children.Add(new GeometryDrawing(new SolidColorBrush(bg), null, new RectangleGeometry(new Rect(0, 0, 1, 1))));
-        group.Children.Add(new GeometryDrawing(null, new Pen(new SolidColorBrush(color), 0.22),
+        group.Children.Add(new GeometryDrawing(new SolidColorBrush(background), null, new RectangleGeometry(new Rect(0, 0, 1, 1))));
+        group.Children.Add(new GeometryDrawing(null, new Pen(new SolidColorBrush(stroke), 0.28),
             new PathGeometry(PathFigureCollection.Parse("M -0.5,0.5 L 0.5,-0.5 M 0,1 L 1,0 M 0.5,1.5 L 1.5,0.5"))));
         return new DrawingBrush(group)
         {

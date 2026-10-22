@@ -18,7 +18,30 @@ import pandas as pd
 from .config import Config
 
 RESIDUAL_COLUMNS = ["building", "level", "lot", "rule", "category", "expected", "obtained",
-                    "diff_m2", "diff_pct", "verdict", "message"]
+                    "diff_m2", "diff_pct", "verdict", "message", "hint"]
+
+# Titre court d'un point, affiché en tête dans la visionneuse et les rapports.
+RULE_TITLES = {
+    "R0": "Terrain non sous-classifié",
+    "R1": "Plancher non entièrement classé",
+    "R2": "Surface utile incohérente",
+    "R3": "Surface externe non classée",
+    "R4": "Sous-catégories en excès ou sans parent",
+    "R5": "Niveau sans surface utile",
+    "A1": "Surface externe au niveau du terrain",
+    "A2": "Surface externe sans plancher (toiture ?)",
+    "A3": "Code de surface inconnu",
+    "U1": "Lot USPI : SH < SNH",
+    "U2": "Lot USPI : SBH < SH",
+    "U3": "Lot USPI : SVB < SVN",
+    "U4": "Lot USPI : SVB − SVN ≠ MEM",
+}
+
+
+def title_of(rule: str, verdict: str) -> str:
+    if rule == "R1" and verdict == "INFO":
+        return "Surface de construction implicite"
+    return RULE_TITLES.get(rule, rule)
 VERDICTS = ["OK", "INFO", "ALERTE", "ERREUR"]
 FAILING = {"ALERTE", "ERREUR"}
 ALL = "*"  # niveau ou bâtiment agrégé
@@ -99,11 +122,36 @@ def _pct(diff: float, ref: float) -> float:
     return float("nan") if not ref else 100.0 * diff / ref
 
 
-def _row(building, level, rule, category, expected, obtained, verdict, message, lot=None) -> dict:
+def _row(building, level, rule, category, expected, obtained, verdict, message, lot=None, hint="") -> dict:
+    """message = constat chiffré ; hint = ce qu'il faut vérifier (vide pour les contrôles OK)."""
     diff = expected - obtained
     return {"building": building, "level": level, "lot": lot, "rule": rule, "category": category,
             "expected": expected, "obtained": obtained, "diff_m2": diff, "diff_pct": _pct(diff, expected),
-            "verdict": verdict, "message": message}
+            "verdict": verdict, "message": message, "hint": hint}
+
+
+def _breakdown(parts: dict[str, float]) -> str:
+    """« SUP 457,41 + SUS 44,23 + SD 128,20 » : le détail que l'utilisateur va chercher dans Treegram."""
+    return " + ".join(f"{k} {_m2(v)}" for k, v in parts.items()) or "aucune sous-catégorie"
+
+
+# Ce qu'il faut vérifier, par (règle, catégorie). Les références renvoient à la SIA 416 (2003).
+HINTS = {
+    ("R1", "SP"): "Au-delà de la seule surface de construction (≈ 15 % aux étages courants), des espaces du niveau "
+                  "ne sont pas classés : commerces (code SUT ignoré), locaux sans type, pièces oubliées. "
+                  "Comparer au même niveau des bâtiments voisins.",
+    ("R1", "SN"): "La SN déclarée ne correspond pas à SU + SD + SI (SIA 416 §2.1) : vérifier le classement des pièces.",
+    ("R2", "SU"): "La SU déclarée ne correspond pas à SUP + SUS (SIA 416 §2.1.1) : vérifier le classement des pièces.",
+    ("R3", "SEP"): "Balcons ou terrasses non créés en SEU/SED, ou SEP qui ne devrait pas exister : surface en contact "
+                   "avec le terrain (→ abords SA, SIA 416 §1.2) ou toiture non accessible (→ hors SEP, §3).",
+    ("R3", "SEN"): "La SEN déclarée ne correspond pas à SEU + SED + SEI (SIA 416 §3.1).",
+}
+IMPLICIT_HINT = ("En général rien à faire : la surface de construction (murs, cloisons, piliers) n'est pas fournie par "
+                 "Treegram et apparaît ici. Un écart nettement différent des niveaux comparables signale une pièce manquante.")
+
+
+def _label(code: str, cfg: Config) -> str:
+    return cfg.labels.get(code, {}).get("name", code)
 
 
 # --------------------------------------------------------------------------- sommations (R1–R4)
@@ -117,12 +165,12 @@ def _effective(row: pd.Series, code: str, cfg: Config) -> tuple[float, bool]:
     return sum(v for v, _ in kids), any(p for _, p in kids)
 
 
-def _present(row: pd.Series, code: str, cfg: Config) -> list[str]:
-    """Codes réellement fournis qui composent la valeur de `code` (pour les messages)."""
+def _present(row: pd.Series, code: str, cfg: Config) -> dict[str, float]:
+    """Codes réellement fournis qui composent la valeur de `code`, avec leur aire (pour les messages)."""
     v = row.get(code)
     if v is not None and not pd.isna(v):
-        return [code]
-    return [c for k in cfg.children(code) for c in _present(row, k, cfg)]
+        return {code: float(v)}
+    return {c: a for k in cfg.children(code) for c, a in _present(row, k, cfg).items()}
 
 
 def sum_checks(totals: pd.DataFrame, cfg: Config) -> list[dict]:
@@ -156,7 +204,7 @@ def sum_checks(totals: pd.DataFrame, cfg: Config) -> list[dict]:
                 "building": bld, "level": lvl, "code": code,
                 "own": None if own is None or pd.isna(own) else float(own),
                 "obtained": sum(v for _, v, _ in kids),
-                "labels": [c for k in cfg.children(code) for c in _present(row, k, cfg)],
+                "parts": {c: a for k in cfg.children(code) for c, a in _present(row, k, cfg).items()},
                 "missing_opt": {k for k, _, p in kids if not p and cfg.categories[k].get("optional")},
             })
     out = [_judge(c, cfg) for c in checks]
@@ -167,11 +215,15 @@ def sum_checks(totals: pd.DataFrame, cfg: Config) -> list[dict]:
                 continue
             groups.setdefault((c["building"] if scope else ALL, c["code"]), []).append(c)
         for (bld, code), cs in groups.items():
+            parts: dict[str, float] = {}
+            for c in cs:
+                for k, v in c["parts"].items():
+                    parts[k] = parts.get(k, 0.0) + v
             out.append(_judge({
                 "building": bld, "level": ALL, "code": code,
                 "own": sum(c["own"] for c in cs),
                 "obtained": sum(c["obtained"] for c in cs),
-                "labels": list(dict.fromkeys(lab for c in cs for lab in c["labels"])),
+                "parts": parts,
                 "missing_opt": set.intersection(*(c["missing_opt"] for c in cs)),
             }, cfg))
     return [r for r in out if r]
@@ -181,23 +233,35 @@ def _judge(c: dict, cfg: Config) -> dict | None:
     bld, lvl, code, own, obtained = c["building"], c["level"], c["code"], c["own"], c["obtained"]
     spec = cfg.categories[code]
     rule = spec.get("rule") or f"Σ{code}"
-    labels = "+".join(c["labels"]) or "aucune sous-catégorie"
+    parts = _breakdown(c["parts"])
     if own is None:
         if spec.get("parent") is None and _exceeds(-obtained, 0, cfg):
-            return _row(bld, lvl, "R4", code, 0.0, obtained, "ERREUR", f"{labels} sans {code} au même niveau")
+            return _row(bld, lvl, "R4", code, 0.0, obtained, "ERREUR",
+                        f"{_m2(obtained)} m² classés ({parts}) sans aucune {code} au même niveau.",
+                        hint=f"Créer la {code} du niveau dans Treegram, ou vérifier que ces surfaces ne sont pas "
+                             f"rattachées au mauvais niveau.")
         return None
     diff = own - obtained
     if not _exceeds(diff, own, cfg):
-        return _row(bld, lvl, rule, code, own, obtained, "OK", f"{code} = {labels}")
+        return _row(bld, lvl, rule, code, own, obtained, "OK", f"{code} {_m2(own)} = {parts}.")
     if diff < 0:
-        return _row(bld, lvl, "R4", code, own, obtained, "ERREUR", f"{labels} dépasse {code} de {_m2(-diff)} m²")
+        return _row(bld, lvl, "R4", code, own, obtained, "ERREUR",
+                    f"Les sous-catégories ({parts} = {_m2(obtained)} m²) dépassent la {code} ({_m2(own)} m²) "
+                    f"de {_m2(-diff)} m².",
+                    hint=f"Surface comptée deux fois (pièce classée dans deux catégories, ou rattachée à deux niveaux) "
+                         f"ou {code} incomplète : comparer le contour de la {code} aux pièces du niveau.")
     missing = sorted(c["missing_opt"])
     max_rel = max((cfg.categories[k].get("implicit_max_rel", 0) for k in missing), default=0)
+    pct = _pct1(100 * diff / own) if own else "–"
     if missing and own and diff / own <= max_rel:
         return _row(bld, lvl, rule, code, own, obtained, "INFO",
-                    f"{'+'.join(missing)} implicite : {_m2(diff)} m² ({_pct1(100 * diff / own)} %)")
+                    f"{_m2(diff)} m² de {code} non classés ({pct} %), compatibles avec la surface de construction "
+                    f"({'+'.join(missing)}, non fournie). {code} {_m2(own)} ; classés {parts} = {_m2(obtained)}.",
+                    hint=IMPLICIT_HINT)
     return _row(bld, lvl, rule, code, own, obtained, "ERREUR",
-                f"{code} non sous-classifiée : {_m2(diff)} m² hors {labels}")
+                f"{_m2(diff)} m² de {code} ({pct} %) ne sont rattachés à aucune sous-catégorie. "
+                f"{_label(code, cfg)} {_m2(own)} m² ; classés {parts} = {_m2(obtained)} m².",
+                hint=HINTS.get((rule, code), f"Vérifier le classement des surfaces de la {code}."))
 
 
 # --------------------------------------------------------------------------- niveaux (R5, A1, A2)
@@ -239,14 +303,20 @@ def level_checks(totals: pd.DataFrame, surf: pd.DataFrame, cfg: Config) -> list[
         # R5 — niveau avec plancher mais sans surface utile (SIA 416 §2.1.1).
         if sp > cfg.abs_m2 and su <= cfg.abs_m2 and not _matches(lvl, cfg.technical):
             out.append(_row(bld, lvl, "R5", SU, sp, su, "ALERTE",
-                            f"SP {_m2(sp)} m² sans surface utile (SUP+SUS = {_m2(su)})"))
+                            f"Plancher de {_m2(sp)} m² sans aucune surface utile (SUP + SUS = {_m2(su)} m²).",
+                            hint="Niveau technique ? Le déclarer dans config.yaml (levels.technical). Sinon les pièces "
+                                 "ne sont pas classées en SUP/SUS : vérifier les commerces (code SUT, ignoré) et les "
+                                 "locaux sans type."))
 
         if sep <= cfg.abs_m2:
             continue
         # A1 — SEP au niveau du terrain : candidate surface des abords SA (SIA 416 §3, renvoi §1.2).
         if _matches(lvl, cfg.ground):
             out.append(_row(bld, lvl, "A1", SEP, sep, 0.0, "ALERTE",
-                            f"SEP {_m2(sep)} m² au niveau du terrain : candidate surface des abords SA"))
+                            f"{_m2(sep)} m² de SEP au niveau du terrain.",
+                            hint="Une surface extérieure en contact direct avec le terrain (cours, dalles sur sous-sol, "
+                                 "accès) relève des abords SA (SIA 416 §1.2) et sort de la SEP (§3). Ne garder en SEP "
+                                 "que les terrasses privatives séparées des abords."))
         # A2 — SEP sans plancher adjacent : candidate toiture non accessible, hors SEP (SIA 416 §3).
         r = ranks[(bld, lvl)]
         why = []
@@ -256,7 +326,9 @@ def level_checks(totals: pd.DataFrame, surf: pd.DataFrame, cfg: Config) -> list[
             why.append("au-dessus du dernier niveau avec SP")
         if why:
             out.append(_row(bld, lvl, "A2", SEP, sep, 0.0, "ALERTE",
-                            f"SEP {_m2(sep)} m² ({', '.join(why)}) : candidate toiture non accessible"))
+                            f"{_m2(sep)} m² de SEP ({', '.join(why)}).",
+                            hint="Toiture non accessible : ni SP ni SEP (SIA 416 §3), à exclure. Si c'est une "
+                                 "toiture-jardin ou une terrasse accessible, la classer en SEU."))
     return out
 
 
@@ -270,22 +342,29 @@ def uspi_checks(surf: pd.DataFrame, cfg: Config) -> list[dict]:
         return []
     out = []
     lots = s.groupby(["building", "level", "lot", "code"])["area"].sum().unstack("code")
-    pairs = [("U1", SH, SNH), ("U2", SBH, SH), ("U3", SVB, SVN)]  # (règle, grand, petit)
+    # (règle, grand, petit, relation USPI qui impose l'ordre)
+    pairs = [("U1", SH, SNH, "SH = SNH + SCI"), ("U2", SBH, SH, "SBH = SH + MEM"), ("U3", SVB, SVN, "SVB = SBH + SE ≥ SVN = SH + SE")]
     for (bld, lvl, lot), row in lots.iterrows():
-        for rule, big, small in pairs:
+        for rule, big, small, why in pairs:
             if pd.isna(row.get(big)) or pd.isna(row.get(small)):
                 continue
             b, sm = float(row[big]), float(row[small])
             bad = sm - b > 0 and _exceeds(sm - b, b, cfg)
-            out.append(_row(bld, lvl, rule, big, b, sm, "ALERTE" if bad else "OK",
-                            f"{big} < {small}" if bad else f"{big} ≥ {small}", lot=lot))
+            msg = (f"{big} {_m2(b)} m² inférieure à {small} {_m2(sm)} m² pour ce lot." if bad
+                   else f"{big} {_m2(b)} ≥ {small} {_m2(sm)}.")
+            out.append(_row(bld, lvl, rule, big, b, sm, "ALERTE" if bad else "OK", msg, lot=lot,
+                            hint=f"Impossible par construction ({why}, USPI 2014) : une des deux surfaces du lot "
+                                 f"est mal calculée ou rattachée au mauvais lot." if bad else ""))
         # U4 — SVB − SVN = MEM = SBH − SH (USPI p. 4, renvoi 6).
         if all(not pd.isna(row.get(c)) for c in (SVB, SVN, SBH, SH)):
             mem = float(row[SBH] - row[SH])
             got = float(row[SVB] - row[SVN])
             bad = _exceeds(mem - got, mem, cfg)
             out.append(_row(bld, lvl, "U4", "MEM", mem, got, "ALERTE" if bad else "OK",
-                            f"SVB−SVN ({_m2(got)}) ≠ SBH−SH ({_m2(mem)})" if bad else "SVB−SVN = SBH−SH", lot=lot))
+                            f"SVB − SVN = {_m2(got)} m² alors que SBH − SH = {_m2(mem)} m²." if bad
+                            else "SVB − SVN = SBH − SH.", lot=lot,
+                            hint="Les deux écarts doivent valoir MEM (murs extérieurs et mitoyens, USPI 2014) : "
+                                 "surfaces externes pondérées différemment entre SVB et SVN ?" if bad else ""))
     return out
 
 
@@ -297,7 +376,9 @@ def unknown_checks(unknown: pd.DataFrame) -> list[dict]:
         return out
     for code, g in unknown.groupby(unknown["category"].replace("", "(vide)")):
         out.append(_row(ALL, ALL, "A3", code, 0.0, float(g["area"].sum()), "ALERTE",
-                        f"code inconnu de la config : {len(g)} surfaces exclues des sommes"))
+                        f"Code « {code} » inconnu : {len(g)} surfaces ({_m2(float(g['area'].sum()))} m²) exclues des sommes.",
+                        hint="Ajouter le code dans config.yaml (categories et labels), ou demander sa signification "
+                             "à Treegram."))
     return out
 
 

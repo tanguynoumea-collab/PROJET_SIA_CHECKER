@@ -201,6 +201,13 @@ public sealed partial class MainViewModel : ObservableObject
 
     // ------------------------------------------------------------------ chargement
 
+    /// <summary>Charge un résultat d'analyse déjà produit (tests, ou rouverture).</summary>
+    internal void LoadDocument(string projectDir, ViewerDocument doc)
+    {
+        ProjectDir = projectDir;
+        Load(doc);
+    }
+
     private void Load(ViewerDocument doc)
     {
         _suspendSceneUpdates = true;
@@ -220,9 +227,10 @@ public sealed partial class MainViewModel : ObservableObject
                 : cat.Status == "ignored" || cat.Family == "custom" ? "USPI · Maison"
                 : cat.Family == "uspi" ? "USPI · Maison"
                 : InteriorCodes.Contains(cat.Code) ? "Intérieur" : "Extérieur";
+            var (title, definition) = palette.Describe(cat.Code);
             var layer = new LayerItem(cat.Code, group, palette.BrushOf(cat.Code), counted.Count,
                                       counted.Sum(s => s.Area ?? 0), group is "Intérieur" or "Extérieur",
-                                      withGeometry.Contains(cat.Code));
+                                      withGeometry.Contains(cat.Code), title, definition);
             layer.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(LayerItem.IsVisible)) UpdateLayers(); };
             Layers.Add(layer);
         }
@@ -422,21 +430,41 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
         var bounds = Scene.Focus(item.SurfaceIds);
-        IsFocused = true;
+        SetFocused(item);
         if (bounds is null) _shell.Notify("Les surfaces de ce point n'ont pas de géométrie dans le cache VWR.");
         _shell.Frame(bounds);
         if (item.Building != "*") BalanceBuilding = item.Building;
+    }
+
+    /// <summary>Clic sur un point : l'isole ; clic sur le point déjà isolé : quitte l'isolement (comme un BCF).</summary>
+    [RelayCommand]
+    private void ToggleFocus(IssueItem? item)
+    {
+        item ??= SelectedIssue;
+        if (item is null) return;
+        if (ReferenceEquals(item, FocusedIssue)) ClearFocus();
+        else FocusIssue(item);
     }
 
     [RelayCommand]
     private void ClearFocus()
     {
         Scene?.ClearFocus();
-        IsFocused = false;
-        SelectedSurface = null;
+        SetFocused(null);
+        SelectSurface(null);
     }
 
+    /// <summary>Point actuellement isolé (null = aucun, ou niveau isolé depuis le bilan).</summary>
+    [ObservableProperty] private IssueItem? _focusedIssue;
     [ObservableProperty] private bool _isFocused;
+
+    private void SetFocused(IssueItem? item)
+    {
+        if (FocusedIssue is not null) FocusedIssue.IsFocused = false;
+        FocusedIssue = item;
+        if (item is not null) item.IsFocused = true;
+        IsFocused = Scene?.IsFocused ?? false;
+    }
 
     [RelayCommand]
     private void SetStatus(string status)
@@ -458,12 +486,22 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasSelectedSurface))] private SurfaceInfo? _selectedSurface;
     public bool HasSelectedSurface => SelectedSurface is not null;
 
+    /// <summary>
+    /// Surface cliquée en 3D : fiche + marquage dans la liste des points qui la citent.
+    /// La fenêtre fait défiler la liste jusqu'au premier (événement <see cref="LinkedIssuesChanged"/>).
+    /// </summary>
     public void SelectSurface(string? id)
     {
+        foreach (var i in Issues.Where(i => i.IsLinked)) i.IsLinked = false;
         if (id is null || !_surfaceById.TryGetValue(id, out var s)) { SelectedSurface = null; return; }
         var linked = Issues.Where(i => i.SurfaceIds.Contains(id)).OrderBy(i => i.SortKey).ToList();
+        foreach (var i in linked) i.IsLinked = true;
         SelectedSurface = new SurfaceInfo(s, linked);
+        LinkedIssuesChanged?.Invoke(linked.FirstOrDefault(Matches));
     }
+
+    /// <summary>Premier point visible (selon les filtres) qui cite la surface cliquée, ou null.</summary>
+    public event Action<IssueItem?>? LinkedIssuesChanged;
 
     [RelayCommand]
     private void SelectLinkedIssue(IssueItem item)
@@ -509,7 +547,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (Scene is null) return;
         var bounds = Scene.Focus(Scene.SurfacesOfLevel(row.Building, row.Level));
-        IsFocused = true;
+        SetFocused(null);
         _shell.Frame(bounds);
     }
 

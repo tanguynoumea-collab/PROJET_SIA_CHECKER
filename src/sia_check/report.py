@@ -31,7 +31,7 @@ LEVEL_COLUMNS = ["SP", "SUP", "SUS", "SD", "SI", "SEP", "SEU", "SED"]
 RESIDUAL_LABELS = {
     "building": "Bâtiment", "level": "Niveau", "lot": "Lot", "rule": "Règle", "category": "Catégorie",
     "expected": "Attendu (m²)", "obtained": "Obtenu (m²)", "diff_m2": "Écart (m²)", "diff_pct": "Écart (%)",
-    "verdict": "Verdict", "message": "Message",
+    "verdict": "Verdict", "message": "Constat", "hint": "À vérifier",
 }
 SURFACE_LABELS = {
     "id": "Identifiant (GlobalId / élément)", "building": "Bâtiment", "level": "Niveau", "category": "Catégorie",

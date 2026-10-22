@@ -7,9 +7,13 @@ namespace SiaCheck.Viewer.ViewModels;
 
 /// <summary>Un calque = une catégorie SIA (ou un code ignoré/inconnu).</summary>
 public sealed partial class LayerItem(string code, string group, Brush swatch, int count, double area,
-                                      bool visible, bool hasGeometry) : ObservableObject
+                                      bool visible, bool hasGeometry, string title, string? definition) : ObservableObject
 {
     public string Code { get; } = code;
+    /// <summary>Infobulle : « SUP · Surface utile principale (SIA 416 §2.1.1.1) ».</summary>
+    public string Title { get; } = title;
+    public string? Definition { get; } = definition;
+    public bool HasDefinition => !string.IsNullOrEmpty(Definition);
     public string Group { get; } = group;
     public Brush Swatch { get; } = swatch;
     public int Count { get; } = count;
@@ -38,6 +42,8 @@ public sealed partial class IssueItem : ObservableObject
         Lot = issue.Lot;
         Category = issue.Category;
         Message = issue.Message;
+        Title = issue.Title ?? issue.Rule;
+        Hint = issue.Hint;
         DiffM2 = issue.DiffM2;
         _status = review.Status;
         _comment = review.Comment;
@@ -54,6 +60,7 @@ public sealed partial class IssueItem : ObservableObject
         Lot = s.Lot;
         Category = s.Category;
         Message = s.Message;
+        Title = s.Title ?? s.Rule;
         DiffM2 = s.DiffM2;
         IsResolved = true;
         ResolvedSince = s.AnalysisDate;
@@ -70,6 +77,12 @@ public sealed partial class IssueItem : ObservableObject
     public string? Lot { get; }
     public string Category { get; }
     public string Message { get; }
+    /// <summary>Titre court (« Plancher non entièrement classé »), première lecture dans la liste.</summary>
+    public string Title { get; }
+    /// <summary>Ce qu'il faut vérifier ; null pour un point résolu.</summary>
+    public string? Hint { get; }
+    public bool HasHint => !string.IsNullOrEmpty(Hint);
+    public string Tooltip => HasHint ? $"{Message}\n\nÀ vérifier : {Hint}" : Message;
     public double? DiffM2 { get; }
     public bool IsResolved { get; }
     public bool IsOpen => !IsResolved;
@@ -97,6 +110,10 @@ public sealed partial class IssueItem : ObservableObject
 
     [ObservableProperty] private ReviewStatus _status;
     [ObservableProperty] private string _comment;
+    /// <summary>Point actuellement isolé dans la 3D (recliquer dessus quitte l'isolement).</summary>
+    [ObservableProperty] private bool _isFocused;
+    /// <summary>Point qui cite la surface cliquée dans la 3D.</summary>
+    [ObservableProperty] private bool _isLinked;
 }
 
 /// <summary>Une ligne du bilan par niveau (élément signature, plan §6).</summary>
@@ -116,12 +133,7 @@ public sealed class BalanceRow(LevelBalance level, double scale)
     public string? R1Verdict => Source.R1?.Verdict;
     public string Alerts => string.Join(" ", Source.Alerts);
     public bool HasFloor => Sp > 0;
-
-    public string Tooltip =>
-        $"{Building}·{Level}\nSP {Sp:N2} m²\n" +
-        string.Join("\n", FloorParts.Select(c => $"{c} {Source.Value(c):N2} m²")) +
-        (HasFloor ? $"\nRésidu R1 {R1Diff:N2} m²" : "") +
-        (Sep > 0 ? $"\nSEP {Sep:N2} m² (SEU {Source.Value("SEU"):N2}, SED {Source.Value("SED"):N2})" : "");
+    public string LevelTooltip => $"{Building}·{Level} — cliquer pour isoler le niveau dans la 3D";
 }
 
 /// <summary>Surface cliquée en 3D, avec les points d'attention qui la citent.</summary>
@@ -129,6 +141,7 @@ public sealed class SurfaceInfo(Surface surface, IReadOnlyList<IssueItem> issues
 {
     public Surface Surface { get; } = surface;
     public IReadOnlyList<IssueItem> Issues { get; } = issues;
+    public bool HasNoIssue => Issues.Count == 0;
     public string Title => $"{Surface.DisplayCode} · {Surface.Building}·{Surface.Level}";
     public string Kind => Surface.IsLevelTotal ? "Total de niveau" : "Surface élémentaire";
 }

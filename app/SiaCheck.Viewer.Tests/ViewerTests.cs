@@ -203,6 +203,120 @@ public class SceneTests
     }
 }
 
+public class ExtrusionTests
+{
+    [Fact]
+    public void Boundary_of_two_triangle_square_is_its_four_sides()
+    {
+        // Carré 0-1-2-3 en deux triangles : la diagonale 0-2 est intérieure, elle ne fait pas de chant.
+        var edges = SceneController.BoundaryEdges([0, 1, 2, 0, 2, 3]).ToList();
+        Assert.Equal(4, edges.Count);
+        Assert.DoesNotContain(edges, e => (e.A, e.B) is (0, 2) or (2, 0));
+    }
+
+    [Fact]
+    public void Slabs_have_top_and_edge_models_per_category()
+    {
+        var doc = Fixture.Synth();
+        var scene = new SceneController(doc, new SiaPalette(doc.Categories), Colors.Gray);
+        var err = (Model3DGroup)scene.Root.Children[0];
+        var models = err.Children.OfType<GeometryModel3D>().ToList();
+        Assert.Equal(4, models.Count);   // SEP et SEU : dessus + chants
+        var edge = (MeshGeometry3D)models[1].Geometry;
+        Assert.Equal(16, edge.Positions.Count);   // 4 côtés × 4 sommets
+        Assert.Equal(0.03 - 0.15, edge.Positions.Min(p => p.Z), 3);
+    }
+}
+
+internal sealed class FakeShell : IShell
+{
+    public List<string> Notes { get; } = [];
+    public string? PickFolder(string title, string? initial) => null;
+    public void Notify(string message, bool isError = false) => Notes.Add(message);
+    public void OpenFile(string path) { }
+    public void Frame(Rect3D? bounds) { }
+    public void ApplyTheme(string theme) { }
+    public Color GhostColor => Colors.Gray;
+}
+
+public class InteractionTests
+{
+    private static MainViewModel Loaded(TempDir tmp)
+    {
+        var vm = new MainViewModel(new FakeShell(), new AppPaths(tmp.Path, tmp.Path), new AppSettings(), enginePath: null);
+        vm.LoadDocument(tmp.Path, Fixture.Synth());
+        vm.StatusFilter = "all";
+        return vm;
+    }
+
+    [Fact]
+    public void Clicking_the_focused_issue_again_leaves_isolation()
+    {
+        using var tmp = new TempDir();
+        var vm = Loaded(tmp);
+        var item = vm.Issues.Single(i => i.Key == "R3|ERR|N00||SEP");
+        vm.ToggleFocusCommand.Execute(item);
+        Assert.True(vm.IsFocused);
+        Assert.True(item.IsFocused);
+        vm.ToggleFocusCommand.Execute(item);
+        Assert.False(vm.IsFocused);
+        Assert.False(item.IsFocused);
+        Assert.Null(vm.FocusedIssue);
+    }
+
+    [Fact]
+    public void Clicking_another_issue_moves_isolation()
+    {
+        using var tmp = new TempDir();
+        var vm = Loaded(tmp);
+        var a = vm.Issues.Single(i => i.Key == "R3|ERR|N00||SEP");
+        var b = vm.Issues.Single(i => i.Key == "A1|ERR|N00||SEP");
+        vm.ToggleFocusCommand.Execute(a);
+        vm.ToggleFocusCommand.Execute(b);
+        Assert.True(vm.IsFocused);
+        Assert.False(a.IsFocused);
+        Assert.Same(b, vm.FocusedIssue);
+    }
+
+    [Fact]
+    public void Clicked_surface_marks_and_lists_the_issues_that_cite_it()
+    {
+        using var tmp = new TempDir();
+        var vm = Loaded(tmp);
+        IssueItem? scrolledTo = null;
+        vm.LinkedIssuesChanged += i => scrolledTo = i;
+        vm.SelectSurface("err-n00-seu");
+        var linked = vm.Issues.Where(i => i.IsLinked).Select(i => i.Rule).ToHashSet();
+        Assert.Contains("R3", linked);
+        Assert.Contains("A1", linked);
+        Assert.Equal(vm.SelectedSurface!.Issues.Count, vm.Issues.Count(i => i.IsLinked));
+        Assert.NotNull(scrolledTo);
+        vm.SelectSurface(null);
+        Assert.DoesNotContain(vm.Issues, i => i.IsLinked);
+    }
+
+    [Fact]
+    public void Issues_carry_title_and_hint()
+    {
+        using var tmp = new TempDir();
+        var vm = Loaded(tmp);
+        var item = vm.Issues.Single(i => i.Key == "R3|ERR|N00||SEP");
+        Assert.Equal("Surface externe non classée", item.Title);
+        Assert.True(item.HasHint);
+        Assert.Contains("À vérifier", item.Tooltip);
+    }
+
+    [Fact]
+    public void Layers_carry_sia_label_for_tooltip()
+    {
+        using var tmp = new TempDir();
+        var vm = Loaded(tmp);
+        var sup = vm.Layers.Single(l => l.Code == "SUP");
+        Assert.Equal("SUP · Surface utile principale (SIA 416 §2.1.1.1)", sup.Title);
+        Assert.True(sup.HasDefinition);
+    }
+}
+
 public class BalanceTests
 {
     [Fact]

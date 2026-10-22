@@ -14,7 +14,8 @@ public sealed class ReviewEntry
 }
 
 public sealed record IssueSnapshot(string Rule, string Verdict, string Building, string Level, string? Lot,
-                                   string Category, string Message, double? DiffM2, string AnalysisDate);
+                                   string Category, string Message, double? DiffM2, string AnalysisDate,
+                                   string? Title = null);
 
 public sealed class ReviewData
 {
@@ -71,7 +72,7 @@ public sealed class ReviewStore
     }
 
     private static IssueSnapshot Snapshot(Issue i, string date) =>
-        new(i.Rule, i.Verdict, i.Building, i.Level, i.Lot, i.Category, i.Message, i.DiffM2, date);
+        new(i.Rule, i.Verdict, i.Building, i.Level, i.Lot, i.Category, i.Message, i.DiffM2, date, i.Title);
 
     private void Save() => JsonFile.Write(_path, _data);
 }

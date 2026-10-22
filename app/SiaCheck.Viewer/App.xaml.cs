@@ -42,7 +42,7 @@ public partial class App : Application
         // --capture fichier.png [--focus clé] : capture de la fenêtre puis fermeture (revue visuelle, plan Phase 2).
         var project = e.Args.FirstOrDefault(a => !a.StartsWith("--") && Directory.Exists(a));
         var capture = ArgAfter(e.Args, "--capture");
-        if (project is not null) _ = OpenThenCaptureAsync(window, project, capture, ArgAfter(e.Args, "--focus"));
+        if (project is not null) _ = OpenThenCaptureAsync(window, project, capture, ArgAfter(e.Args, "--focus"), ArgAfter(e.Args, "--click"));
         else if (capture is not null) _ = CaptureAsync(window, capture);
     }
 
@@ -52,9 +52,9 @@ public partial class App : Application
         return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
     }
 
-    private static async Task OpenThenCaptureAsync(MainWindow window, string project, string? capture, string? focus)
+    private static async Task OpenThenCaptureAsync(MainWindow window, string project, string? capture, string? focus, string? click)
     {
-        try { await OpenThenCaptureCoreAsync(window, project, capture, focus); }
+        try { await OpenThenCaptureCoreAsync(window, project, capture, focus, click); }
         catch (Exception ex)
         {
             LogCrash(ex);
@@ -63,13 +63,20 @@ public partial class App : Application
         }
     }
 
-    private static async Task OpenThenCaptureCoreAsync(MainWindow window, string project, string? capture, string? focus)
+    private static async Task OpenThenCaptureCoreAsync(MainWindow window, string project, string? capture, string? focus, string? click)
     {
         await window.ViewModel.OpenAsync(project);
         if (focus is not null && window.ViewModel.Issues.FirstOrDefault(i => i.Key == focus) is { } item)
         {
             window.ViewModel.StatusFilter = "all";
             window.ViewModel.FocusIssueCommand.Execute(item);
+        }
+        // --click 0.5,0.5 : clic simulé en coordonnées relatives de la vue 3D, après le cadrage caméra.
+        if (click?.Split(',') is [var cx, var cy])
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1.5));
+            window.ClickAtRelative(double.Parse(cx, System.Globalization.CultureInfo.InvariantCulture),
+                                   double.Parse(cy, System.Globalization.CultureInfo.InvariantCulture));
         }
         if (capture is not null) await CaptureAsync(window, capture);
     }

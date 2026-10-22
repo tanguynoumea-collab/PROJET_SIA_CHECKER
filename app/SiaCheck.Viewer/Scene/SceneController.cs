@@ -7,17 +7,28 @@ namespace SiaCheck.Viewer.Scene;
 /// <summary>
 /// Scène 3D des surfaces SIA, indépendante de la vue.
 ///
-/// Hiérarchie : Root → un groupe par (bâtiment, niveau) portant la translation d'éclatement →
-/// un GeometryModel3D par catégorie (« lot de rendu »). Regrouper ~5 700 surfaces en ~1 300 lots
-/// garde la vue fluide ; chaque lot conserve la table sommet → surface pour la sélection au clic.
+/// Rendu « dalles » à la Treegram : chaque surface est extrudée vers le bas (épaisseur fixe)
+/// avec des chants plus sombres que le dessus, et la SP est une dalle opaque plus foncée posée
+/// sous les pièces. Les joints entre pièces et les tranches de chaque niveau restent lisibles
+/// en vue plongeante ou quand plusieurs niveaux se superposent à l'écran.
 ///
-/// Isolement d'un point d'attention : tous les lots passent en matériau fantôme et les surfaces
-/// concernées sont rajoutées par-dessus avec leur couleur, dans le groupe de leur niveau.
+/// Hiérarchie : Root → un groupe par (bâtiment, niveau) portant la translation d'éclatement →
+/// par catégorie, un modèle « dessus » et un modèle « chants ». Regrouper ~5 700 surfaces en
+/// ~1 300 lots garde la vue fluide ; chaque lot conserve la table sommet → surface pour la sélection.
+///
+/// Isolement d'un point d'attention : les lots passent en matériau fantôme, les surfaces concernées
+/// sont rajoutées par-dessus avec leurs couleurs, et les niveaux au-dessus du point sont coupés.
 /// </summary>
 public sealed class SceneController
 {
-    private const double FocusLift = 0.01;   // m : évite le scintillement avec le fantôme coplanaire
-    private const double SpOpacity = 0.20;   // SP : plaque translucide sous ses sous-catégories (plan §2)
+    private const double SlabThickness = 0.15;  // m : dalle d'une surface élémentaire
+    private const double SpThickness = 0.30;    // m : dalle SP, plus épaisse, sous les pièces
+    private const double SpDrop = 0.04;         // m : dessus de la SP sous celui des pièces (joints visibles)
+    private const double EdgeShade = 0.58;      // chants : 58 % de la luminosité du dessus
+    private const double SpShade = 0.72;        // SP plus foncée que sa couleur de légende, comme dans Treegram
+    private const double ExternalTint = 0.45;   // surfaces externes : part de la couleur conservée (reste = blanc)
+    private const double FocusLift = 0.01;      // m : évite le scintillement avec le fantôme coplanaire
+    private const double CutTolerance = 0.5;    // m
 
     public Model3DGroup Root { get; } = new();
 
@@ -25,19 +36,15 @@ public sealed class SceneController
     private readonly Dictionary<(string B, string L), LevelNode> _levels = [];
     private readonly Dictionary<string, SurfaceGeometry> _surfaces = new(StringComparer.Ordinal);
     private readonly Dictionary<GeometryModel3D, Batch> _byModel = [];
-    private readonly Dictionary<string, Material> _materials = [];
+    private readonly Dictionary<(string Code, bool Edge), Material> _materials = [];
     private readonly Material _ghost;
 
     private HashSet<string> _visibleCodes = [];
     private HashSet<string>? _buildings;          // null = tous
     private string? _level;                       // null = tous
     private HashSet<string>? _focus;
-    /// <summary>
-    /// Coupe d'isolement : altitude (éclatement compris) du plus haut point isolé. Les niveaux qui
-    /// commencent au-dessus sont masqués, tous bâtiments confondus : un socle commun passe sous les voisins.
-    /// </summary>
+    /// <summary>Coupe d'isolement : altitude du plus haut point isolé ; les niveaux qui commencent au-dessus sont masqués.</summary>
     private double? _cutZ;
-    private const double CutTolerance = 0.5;   // m
     private double _explode;
 
     public SceneController(ViewerDocument doc, SiaPalette palette, Color ghost)
@@ -55,10 +62,12 @@ public sealed class SceneController
 
     private sealed record SurfaceGeometry(string Id, string Building, string Level, string Code, Point3D[] Points, int[] Indices);
 
-    private sealed class Batch(string code, GeometryModel3D model, int[] starts, string[] ids)
+    /// <summary>Un lot de rendu : dessus (sélectionnable) + chants, pour une catégorie d'un niveau.</summary>
+    private sealed class Batch(string code, GeometryModel3D top, GeometryModel3D edges, int[] starts, string[] ids)
     {
         public string Code { get; } = code;
-        public GeometryModel3D Model { get; } = model;
+        public GeometryModel3D Top { get; } = top;
+        public GeometryModel3D Edges { get; } = edges;
         public int[] VertexStarts { get; } = starts;
         public string[] Ids { get; } = ids;
     }
@@ -70,7 +79,7 @@ public sealed class SceneController
         public Model3DGroup Group { get; } = new();
         public TranslateTransform3D Translate { get; } = new();
         public List<Batch> Batches { get; } = [];
-        public List<GeometryModel3D> FocusModels { get; } = [];
+        public List<Batch> FocusBatches { get; } = [];
         public int Ordinal { get; set; }
         /// <summary>Altitude la plus basse du niveau, hors éclatement.</summary>
         public double MinZ { get; set; }
@@ -91,20 +100,10 @@ public sealed class SceneController
         var ranks = doc.Levels.ToDictionary(l => (l.Building, l.Level), l => l.Rank ?? 0);
         foreach (var grp in _surfaces.Values.GroupBy(s => (s.Building, s.Level)))
         {
-            var node = new LevelNode(grp.Key.Building, grp.Key.Level)
-            {
-                MinZ = grp.Min(s => s.Points.Min(p => p.Z)),
-            };
+            var node = new LevelNode(grp.Key.Building, grp.Key.Level) { MinZ = grp.Min(s => s.Points.Min(p => p.Z)) };
             node.Group.Transform = node.Translate;
-            // SP en dernier : translucide, il doit être dessiné après les surfaces opaques.
-            foreach (var byCode in grp.GroupBy(s => s.Code).OrderBy(g => g.Key == "SP" ? 1 : 0).ThenBy(g => g.Key))
-            {
-                var (mesh, starts, ids) = Merge(byCode, _palette.IsHatched(byCode.Key));
-                var model = new GeometryModel3D(mesh, MaterialOf(byCode.Key)) { BackMaterial = MaterialOf(byCode.Key) };
-                var batch = new Batch(byCode.Key, model, starts, ids);
-                node.Batches.Add(batch);
-                _byModel[model] = batch;
-            }
+            foreach (var byCode in grp.GroupBy(s => s.Code).OrderBy(g => g.Key))
+                node.Batches.Add(MakeBatch(byCode.Key, byCode, lift: 0));
             _levels[grp.Key] = node;
         }
         foreach (var bld in _levels.Values.GroupBy(n => n.Building))
@@ -117,43 +116,95 @@ public sealed class SceneController
         Refresh();
     }
 
-    private static (MeshGeometry3D, int[], string[]) Merge(IEnumerable<SurfaceGeometry> surfaces, bool textured)
+    private Batch MakeBatch(string code, IEnumerable<SurfaceGeometry> surfaces, double lift)
     {
-        var mesh = new MeshGeometry3D();
-        var positions = new Point3DCollection();
-        var indices = new Int32Collection();
+        var sp = code == "SP";
+        var (top, edges, starts, ids) = Extrude(surfaces,
+            dz: lift - (sp ? SpDrop : 0), thickness: sp ? SpThickness : SlabThickness, textured: false);
+        var batch = new Batch(code,
+            new GeometryModel3D(top, MaterialOf(code, edge: false)) { BackMaterial = MaterialOf(code, edge: false) },
+            new GeometryModel3D(edges, MaterialOf(code, edge: true)) { BackMaterial = MaterialOf(code, edge: true) },
+            starts, ids);
+        _byModel[batch.Top] = batch;
+        return batch;
+    }
+
+    /// <summary>
+    /// Dessus (triangulation du moteur, décalée de dz) + chants : un quadrilatère vers le bas sur chaque
+    /// arête de contour, c'est-à-dire chaque arête utilisée par un seul triangle de la surface.
+    /// </summary>
+    private static (MeshGeometry3D Top, MeshGeometry3D Edges, int[] Starts, string[] Ids) Extrude(
+        IEnumerable<SurfaceGeometry> surfaces, double dz, double thickness, bool textured)
+    {
+        var top = new MeshGeometry3D();
+        var topPos = new Point3DCollection();
+        var topIdx = new Int32Collection();
         var tex = textured ? new System.Windows.Media.PointCollection() : null;
+        var edgePos = new Point3DCollection();
+        var edgeIdx = new Int32Collection();
         var starts = new List<int>();
         var ids = new List<string>();
         foreach (var s in surfaces)
         {
-            var baseIndex = positions.Count;
+            var baseIndex = topPos.Count;
             starts.Add(baseIndex);
             ids.Add(s.Id);
             foreach (var p in s.Points)
             {
-                positions.Add(p);
+                topPos.Add(new Point3D(p.X, p.Y, p.Z + dz));
                 tex?.Add(new System.Windows.Point(p.X / SiaPalette.HatchTexturePeriod, p.Y / SiaPalette.HatchTexturePeriod));
             }
-            foreach (var i in s.Indices) indices.Add(baseIndex + i);
+            foreach (var i in s.Indices) topIdx.Add(baseIndex + i);
+
+            foreach (var (a, b) in BoundaryEdges(s.Indices))
+            {
+                var pa = s.Points[a];
+                var pb = s.Points[b];
+                var k = edgePos.Count;
+                edgePos.Add(new Point3D(pa.X, pa.Y, pa.Z + dz));
+                edgePos.Add(new Point3D(pb.X, pb.Y, pb.Z + dz));
+                edgePos.Add(new Point3D(pb.X, pb.Y, pb.Z + dz - thickness));
+                edgePos.Add(new Point3D(pa.X, pa.Y, pa.Z + dz - thickness));
+                edgeIdx.Add(k); edgeIdx.Add(k + 2); edgeIdx.Add(k + 1);
+                edgeIdx.Add(k); edgeIdx.Add(k + 3); edgeIdx.Add(k + 2);
+            }
         }
-        mesh.Positions = positions;
-        mesh.TriangleIndices = indices;
-        if (tex is not null) mesh.TextureCoordinates = tex;
-        mesh.Freeze();
-        return (mesh, starts.ToArray(), ids.ToArray());
+        top.Positions = topPos;
+        top.TriangleIndices = topIdx;
+        if (tex is not null) top.TextureCoordinates = tex;
+        top.Freeze();
+        var edges = new MeshGeometry3D { Positions = edgePos, TriangleIndices = edgeIdx };
+        edges.Freeze();
+        return (top, edges, starts.ToArray(), ids.ToArray());
     }
 
-    private Material MaterialOf(string code)
+    /// <summary>Arêtes orientées utilisées par un seul triangle : le contour (extérieur et trous) de la surface.</summary>
+    internal static IEnumerable<(int A, int B)> BoundaryEdges(int[] indices)
     {
-        if (_materials.TryGetValue(code, out var m)) return m;
+        var count = new Dictionary<(int, int), int>();
+        var oriented = new List<(int, int)>(indices.Length);
+        for (var t = 0; t + 2 < indices.Length; t += 3)
+            foreach (var (a, b) in new[] { (indices[t], indices[t + 1]), (indices[t + 1], indices[t + 2]), (indices[t + 2], indices[t]) })
+            {
+                var key = a < b ? (a, b) : (b, a);
+                count[key] = count.GetValueOrDefault(key) + 1;
+                oriented.Add((a, b));
+            }
+        return oriented.Where(e => count[e.Item1 < e.Item2 ? (e.Item1, e.Item2) : (e.Item2, e.Item1)] == 1);
+    }
+
+    private Material MaterialOf(string code, bool edge)
+    {
+        if (_materials.TryGetValue((code, edge), out var m)) return m;
         var c = _palette.ColorOf(code);
-        Brush brush = _palette.IsHatched(code)
-            ? SiaPalette.Hatch(c, 0.35, BrushMappingMode.Absolute, 1.0)
-            : code == "SP" ? new SolidColorBrush(Color.FromArgb((byte)(255 * SpOpacity), c.R, c.G, c.B))
-            : new SolidColorBrush(c);
+        if (code == "SP") c = SiaPalette.Shade(c, SpShade);
+        // Surfaces externes : aplat pâle de leur teinte plutôt que des hachures. En 3D, la distance fait
+        // varier l'échelle des hachures et produit un moiré qui envahit la vue d'ensemble ; les hachures
+        // restent dans la légende et le bilan, où l'échelle est fixe.
+        if (_palette.IsHatched(code)) c = SiaPalette.Tint(c, ExternalTint);
+        Brush brush = new SolidColorBrush(edge ? SiaPalette.Shade(c, EdgeShade) : c);
         brush.Freeze();
-        return _materials[code] = Frozen(new DiffuseMaterial(brush));
+        return _materials[(code, edge)] = Frozen(new DiffuseMaterial(brush));
     }
 
     private static Material Frozen(Material m)
@@ -195,15 +246,18 @@ public sealed class SceneController
         foreach (var n in _levels.Values.OrderBy(n => n.Building).ThenBy(n => n.Ordinal))
         {
             n.Group.Children.Clear();
-            // Les surfaces isolées s'affichent même hors filtre ou calque masqué : on vient de les demander.
-            foreach (var f in n.FocusModels) n.Group.Children.Add(f);
+            // Opaques d'abord (surfaces isolées), fantôme translucide ensuite : ordre de rendu WPF.
+            foreach (var f in n.FocusBatches) { n.Group.Children.Add(f.Top); n.Group.Children.Add(f.Edges); }
             if (FilterShows(n))
                 foreach (var b in n.Batches.Where(b => _visibleCodes.Contains(b.Code)))
                 {
-                    var mat = _focus is null ? MaterialOf(b.Code) : _ghost;
-                    b.Model.Material = mat;
-                    b.Model.BackMaterial = mat;
-                    n.Group.Children.Add(b.Model);
+                    var top = _focus is null ? MaterialOf(b.Code, false) : _ghost;
+                    var edge = _focus is null ? MaterialOf(b.Code, true) : _ghost;
+                    b.Top.Material = b.Top.BackMaterial = top;
+                    b.Edges.Material = b.Edges.BackMaterial = edge;
+                    n.Group.Children.Add(b.Top);
+                    // En fantôme, les chants alourdiraient le voile : on ne garde que les dessus.
+                    if (_focus is null) n.Group.Children.Add(b.Edges);
                 }
             if (n.Group.Children.Count > 0) Root.Children.Add(n.Group);
         }
@@ -214,7 +268,7 @@ public sealed class SceneController
     /// <summary>Isole des surfaces ; renvoie leurs bornes (éclatement compris), ou null si aucune n'a de géométrie.</summary>
     public Rect3D? Focus(IEnumerable<string> surfaceIds)
     {
-        ClearFocusModels();
+        ClearFocusBatches();
         var shown = surfaceIds.Where(_surfaces.ContainsKey).Select(id => _surfaces[id]).ToList();
         _focus = shown.Select(s => s.Id).ToHashSet();
         _cutZ = Bounds(shown) is { } fb ? fb.Z + fb.SizeZ : null;
@@ -222,12 +276,7 @@ public sealed class SceneController
         {
             var node = _levels[grp.Key];
             foreach (var byCode in grp.GroupBy(s => s.Code))
-            {
-                var (mesh, starts, ids) = Merge(byCode.Select(Lift), _palette.IsHatched(byCode.Key));
-                var model = new GeometryModel3D(mesh, MaterialOf(byCode.Key)) { BackMaterial = MaterialOf(byCode.Key) };
-                node.FocusModels.Add(model);
-                _byModel[model] = new Batch(byCode.Key, model, starts, ids);
-            }
+                node.FocusBatches.Add(MakeBatch(byCode.Key, byCode, lift: FocusLift));
         }
         Refresh();
         return Bounds(shown);
@@ -235,23 +284,20 @@ public sealed class SceneController
 
     public void ClearFocus()
     {
-        ClearFocusModels();
+        ClearFocusBatches();
         _focus = null;
         _cutZ = null;
         Refresh();
     }
 
-    private void ClearFocusModels()
+    private void ClearFocusBatches()
     {
         foreach (var n in _levels.Values)
         {
-            foreach (var m in n.FocusModels) _byModel.Remove(m);
-            n.FocusModels.Clear();
+            foreach (var b in n.FocusBatches) _byModel.Remove(b.Top);
+            n.FocusBatches.Clear();
         }
     }
-
-    private static SurfaceGeometry Lift(SurfaceGeometry s) =>
-        s with { Points = s.Points.Select(p => new Point3D(p.X, p.Y, p.Z + FocusLift)).ToArray() };
 
     public Rect3D? Bounds(IEnumerable<string> surfaceIds) =>
         Bounds(surfaceIds.Where(_surfaces.ContainsKey).Select(id => _surfaces[id]));
@@ -276,7 +322,7 @@ public sealed class SceneController
 
     // ------------------------------------------------------------------ sélection
 
-    /// <summary>Surface touchée : modèle et indice de sommet renvoyés par le test d'impact WPF.</summary>
+    /// <summary>Surface touchée : modèle « dessus » et indice de sommet renvoyés par le test d'impact WPF.</summary>
     public string? SurfaceAt(GeometryModel3D model, int vertexIndex)
     {
         if (!_byModel.TryGetValue(model, out var batch)) return null;

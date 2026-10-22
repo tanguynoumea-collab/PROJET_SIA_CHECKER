@@ -21,6 +21,7 @@ class Config:
     technical: list[str] = field(default_factory=list)
     order: list[dict] = field(default_factory=list)
     sources: dict[str, dict] = field(default_factory=dict)
+    labels: dict[str, dict] = field(default_factory=dict)   # code -> {name, ref, def}
 
     def children(self, code: str) -> list[str]:
         return self.categories.get(code, {}).get("children") or []
@@ -56,4 +57,5 @@ def from_dict(raw: dict) -> Config:
         technical=list(lv.get("technical") or []),
         order=list(lv.get("order") or []),
         sources=raw.get("sources") or {},
+        labels=raw.get("labels") or {},
     )

@@ -65,6 +65,9 @@ public sealed class CategoryInfo
     [JsonPropertyName("status")] public string Status { get; init; } = "";
     [JsonPropertyName("color")] public string? Color { get; init; }
     [JsonPropertyName("hatched")] public bool Hatched { get; init; }
+    [JsonPropertyName("name")] public string? Name { get; init; }
+    [JsonPropertyName("ref")] public string? Ref { get; init; }
+    [JsonPropertyName("definition")] public string? Definition { get; init; }
 }
 
 public sealed class Surface
@@ -126,5 +129,7 @@ public sealed class Issue
     [JsonPropertyName("diff_m2")] public double? DiffM2 { get; init; }
     [JsonPropertyName("diff_pct")] public double? DiffPct { get; init; }
     [JsonPropertyName("message")] public string Message { get; init; } = "";
+    [JsonPropertyName("title")] public string? Title { get; init; }
+    [JsonPropertyName("hint")] public string? Hint { get; init; }
     [JsonPropertyName("surface_ids")] public List<string> SurfaceIds { get; init; } = [];
 }

@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using SiaCheck.Viewer.Scene;
 using SiaCheck.Viewer.ViewModels;
@@ -11,6 +13,9 @@ namespace SiaCheck.Viewer.Controls;
 /// reste vide avec un simple contour (le résidu, rendu visible). Dessous, plus fine,
 /// la SEP hachurée avec SEU et SED. Si les sous-catégories dépassent la SP (R4), le surplus
 /// déborde de la barre, contouré dans la couleur d'erreur.
+///
+/// Au survol, une infobulle décrit le segment sous la souris : catégorie SIA (nom, chiffre,
+/// définition), aire et part de la SP — ou le résidu non classé.
 /// </summary>
 public sealed class BalanceBar : FrameworkElement
 {
@@ -36,53 +41,145 @@ public sealed class BalanceBar : FrameworkElement
     private const double FloorShare = 0.62;   // part de la hauteur pour la barre SP
     private const double Gap = 2;
 
-    protected override void OnRender(DrawingContext dc)
+    private enum Kind { Part, Residual, Excess, External, ExternalResidual }
+    private sealed record Segment(Rect Rect, Kind Kind, string Code, double Area);
+
+    private readonly ToolTip _tip = new() { Placement = System.Windows.Controls.Primitives.PlacementMode.Mouse };
+    private Segment? _hovered;
+
+    public BalanceBar()
     {
-        if (Row is not { } row || Palette is not { } pal || ActualWidth <= 0) return;
+        ToolTip = _tip;
+        ToolTipService.SetInitialShowDelay(this, 150);
+        ToolTipService.SetShowDuration(this, 30000);
+        ToolTipOpening += (_, e) => { if (_hovered is null) e.Handled = true; };
+    }
+
+    private List<Segment> Layout()
+    {
+        var segs = new List<Segment>();
+        if (Row is not { } row || ActualWidth <= 0) return segs;
         var w = ActualWidth;
         var h = ActualHeight;
         double X(double m2) => Math.Max(0, m2 / row.Scale * w);
 
-        var floorH = row.Sep > 0 ? h * FloorShare : h;
+        var floorH = row.Sep > 0 && row.HasFloor ? h * FloorShare : h;
         if (row.HasFloor)
         {
-            double x = 0;
+            double x = 0, covered = 0;
             foreach (var code in BalanceRow.FloorParts)
             {
-                var len = X(row.Source.Value(code));
+                var area = row.Source.Value(code);
+                var len = X(area);
                 if (len <= 0) continue;
-                dc.DrawRectangle(pal.BrushOf(code), null, new Rect(x, 0, len, floorH));
+                segs.Add(new Segment(new Rect(x, 0, len, floorH), Kind.Part, code, area));
                 x += len;
+                covered += area;
             }
             var sp = X(row.Sp);
-            var pen = new Pen(Outline, 1);
-            pen.Freeze();
-            if (x < sp - 0.5)
-                dc.DrawRectangle(null, pen, new Rect(x + 0.5, 0.5, sp - x - 1, floorH - 1));
-            else if (x > sp + 0.5)
-            {
-                var err = new Pen(Error, 1.5);
-                err.Freeze();
-                dc.DrawRectangle(null, err, new Rect(sp, 0.75, x - sp, floorH - 1.5));
-            }
-            // Repère de fin de SP, toujours visible : la longueur de référence du niveau.
-            dc.DrawLine(pen, new Point(sp - 0.5, 0), new Point(sp - 0.5, floorH));
+            if (x < sp - 0.5) segs.Add(new Segment(new Rect(x, 0, sp - x, floorH), Kind.Residual, "SP", row.Sp - covered));
+            else if (x > sp + 0.5) segs.Add(new Segment(new Rect(sp, 0, x - sp, floorH), Kind.Excess, "SP", covered - row.Sp));
         }
-
         if (row.Sep > 0)
         {
             var y = row.HasFloor ? floorH + Gap : 0;
             var sepH = h - y;
-            var sep = X(row.Sep);
-            dc.DrawRectangle(pal.BrushOf("SEP"), null, new Rect(0, y, sep, sepH));
-            double x = 0;
+            double x = 0, covered = 0;
             foreach (var code in BalanceRow.ExternalParts)
             {
-                var len = X(row.Source.Value(code));
+                var area = row.Source.Value(code);
+                var len = X(area);
                 if (len <= 0) continue;
-                dc.DrawRectangle(new SolidColorBrush(pal.ColorOf(code)), null, new Rect(x, y, len, sepH));
+                segs.Add(new Segment(new Rect(x, y, len, sepH), Kind.Part, code, area));
                 x += len;
+                covered += area;
             }
+            var sep = X(row.Sep);
+            if (x < sep - 0.5) segs.Add(new Segment(new Rect(x, y, sep - x, sepH), Kind.ExternalResidual, "SEP", row.Sep - covered));
         }
+        return segs;
+    }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        if (Row is not { } row || Palette is not { } pal) return;
+        var pen = new Pen(Outline, 1);
+        pen.Freeze();
+        // Zone de survol : sans fond, une FrameworkElement ne reçoit pas la souris hors des segments.
+        dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
+        foreach (var s in Layout())
+            switch (s.Kind)
+            {
+                case Kind.Part:
+                    dc.DrawRectangle(BalanceRow.ExternalParts.Contains(s.Code) ? new SolidColorBrush(pal.ColorOf(s.Code)) : pal.BrushOf(s.Code),
+                                     null, s.Rect);
+                    break;
+                case Kind.Residual:
+                    dc.DrawRectangle(null, pen, Inset(s.Rect, 0.5));
+                    break;
+                case Kind.Excess:
+                    var err = new Pen(Error, 1.5);
+                    err.Freeze();
+                    dc.DrawRectangle(null, err, Inset(s.Rect, 0.75));
+                    break;
+                case Kind.ExternalResidual:
+                    dc.DrawRectangle(pal.BrushOf("SEP"), null, s.Rect);
+                    break;
+            }
+        if (row.HasFloor)   // repère de fin de SP, toujours visible : la longueur de référence du niveau
+        {
+            var sp = Math.Max(0, row.Sp / row.Scale * ActualWidth);
+            var floorH = row.Sep > 0 ? ActualHeight * FloorShare : ActualHeight;
+            dc.DrawLine(pen, new Point(sp - 0.5, 0), new Point(sp - 0.5, floorH));
+        }
+    }
+
+    private static Rect Inset(Rect r, double d) =>
+        new(r.X + d, r.Y + d, Math.Max(0, r.Width - 2 * d), Math.Max(0, r.Height - 2 * d));
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        var p = e.GetPosition(this);
+        var seg = Layout().FirstOrDefault(s => s.Rect.Contains(p));
+        if (seg == _hovered) return;
+        _hovered = seg;
+        _tip.Content = seg is null ? null : Describe(seg);
+        _tip.IsOpen = seg is not null && IsMouseOver;
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        _hovered = null;
+        _tip.IsOpen = false;
+    }
+
+    private object Describe(Segment s)
+    {
+        var row = Row!;
+        var share = row.Sp > 0 ? $" · {100 * s.Area / row.Sp:0.0} % de la SP" : "";
+        var (title, def) = s.Kind switch
+        {
+            Kind.Residual => ($"Non classé · {row.Building}·{row.Level}",
+                              "Part de la SP rattachée à aucune sous-catégorie (règle R1). Jusqu'à ~20 % : en général la surface "
+                              + "de construction (murs, cloisons), non fournie par Treegram. Au-delà : espaces non classés."),
+            Kind.Excess => ($"Dépassement · {row.Building}·{row.Level}",
+                            "Les sous-catégories dépassent la SP (règle R4) : surface comptée deux fois ou SP incomplète."),
+            Kind.ExternalResidual => ($"SEP non classée · {row.Building}·{row.Level}",
+                                      "SEP sans SEU/SED (règle R3) : balcons ou terrasses non créés, abords (A1) ou toiture (A2)."),
+            _ => Palette!.Describe(s.Code),
+        };
+        var panel = new StackPanel { MaxWidth = 340 };
+        panel.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"{s.Area:#,##0.00} m²" + (s.Kind is Kind.External or Kind.ExternalResidual
+                                                   || BalanceRow.ExternalParts.Contains(s.Code) ? "" : share),
+            Margin = new Thickness(0, 2, 0, 0),
+        });
+        if (def is not null)
+            panel.Children.Add(new TextBlock { Text = def, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), Opacity = 0.8 });
+        return panel;
     }
 }

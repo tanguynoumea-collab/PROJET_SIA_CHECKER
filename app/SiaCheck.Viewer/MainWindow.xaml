@@ -152,7 +152,18 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="vm:LayerItem">
                                         <CheckBox IsChecked="{Binding IsVisible}" IsEnabled="{Binding HasGeometry}" MinHeight="28"
-                                                  AutomationProperties.Name="{Binding Code}" HorizontalContentAlignment="Stretch">
+                                                  AutomationProperties.Name="{Binding Code}" HorizontalContentAlignment="Stretch"
+                                                  ToolTipService.InitialShowDelay="300" ToolTipService.ShowOnDisabled="True">
+                                            <CheckBox.ToolTip>
+                                                <StackPanel MaxWidth="340">
+                                                    <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding Title}" />
+                                                    <TextBlock Margin="0,2,0,0">
+                                                        <Run Text="{Binding Count, Mode=OneWay}" /><Run Text=" surfaces · " /><Run Text="{Binding Area, Converter={StaticResource Area}, Mode=OneWay}" /><Run Text=" m²" />
+                                                    </TextBlock>
+                                                    <TextBlock Margin="0,6,0,0" Opacity="0.8" TextWrapping="Wrap" Text="{Binding Definition}"
+                                                               Visibility="{Binding HasDefinition, Converter={StaticResource BoolToVisibility}}" />
+                                                </StackPanel>
+                                            </CheckBox.ToolTip>
                                             <Grid Width="200">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />
@@ -295,8 +306,11 @@
                                 <TextBlock Grid.Row="3" Style="{StaticResource TextCaption}" Text="Lot" />
                                 <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource TextMono}" Text="{Binding Surface.Lot}" />
                             </Grid>
-                            <TextBlock Style="{StaticResource TextSection}" Text="Points d'attention"
+                            <TextBlock Style="{StaticResource TextSection}" Text="Points d'attention qui citent cette surface"
                                        Visibility="{Binding Issues.Count, Converter={StaticResource VisibleWhen}}" />
+                            <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                                       Text="Aucun point d'attention ne cite cette surface."
+                                       Visibility="{Binding HasNoIssue, Converter={StaticResource BoolToVisibility}}" />
                             <ItemsControl ItemsSource="{Binding Issues}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="vm:IssueItem">
@@ -307,6 +321,7 @@
                                                 <c:VerdictGlyph Verdict="{Binding Verdict}" />
                                                 <TextBlock Margin="6,0,0,0" Style="{StaticResource TextMono}" Text="{Binding Rule}" />
                                                 <TextBlock Margin="8,0,0,0" Style="{StaticResource TextMono}" Text="{Binding Location}" />
+                                                <TextBlock Margin="8,0,0,0" Style="{StaticResource TextCaption}" Text="{Binding Title}" />
                                             </StackPanel>
                                         </Button>
                                     </DataTemplate>
@@ -336,7 +351,7 @@
                                 <ItemsControl ItemsSource="{Binding BalanceRows}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="vm:BalanceRow">
-                                            <Button Style="{StaticResource RowButton}" Padding="4,1" ToolTip="{Binding Tooltip}"
+                                            <Button Style="{StaticResource RowButton}" Padding="4,1"
                                                     Command="{Binding DataContext.IsolateLevelCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}" AutomationProperties.Name="{Binding Level}">
                                                 <Grid Height="{StaticResource BalanceRowHeight}">
@@ -347,7 +362,8 @@
                                                         <ColumnDefinition Width="72" />
                                                         <ColumnDefinition Width="56" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Style="{StaticResource TextMono}" Text="{Binding Level}" VerticalAlignment="Center" />
+                                                    <TextBlock Style="{StaticResource TextMono}" Text="{Binding Level}" VerticalAlignment="Center"
+                                                               ToolTip="{Binding LevelTooltip}" />
                                                     <c:BalanceBar Grid.Column="1" Row="{Binding}"
                                                                   Palette="{Binding DataContext.Palette, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                   Outline="{DynamicResource BrushTextSecondary}" Error="{DynamicResource BrushVerdictError}" />
@@ -412,7 +428,15 @@
                                         <Run Text="{Binding Rule, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Location, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Category, Mode=OneWay}" />
                                     </TextBlock>
                                 </StackPanel>
-                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding Message}" />
+                                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextSubtitle}" TextWrapping="Wrap" Text="{Binding Title}" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding Message}" />
+                                <Border Margin="0,8,0,0" Padding="8,6" CornerRadius="{StaticResource RadiusControl}" Background="{DynamicResource BrushBackground}"
+                                        Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource TextSection}" Margin="0,0,0,2" Text="À vérifier" />
+                                        <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding Hint}" />
+                                    </StackPanel>
+                                </Border>
                                 <Grid Margin="0,8,0,0" Visibility="{Binding IsResolved, Converter={StaticResource HiddenWhen}}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="80" />
@@ -434,7 +458,7 @@
                                 </Grid>
                                 <TextBlock Margin="0,6,0,0" Style="{StaticResource TextCaption}"
                                            Visibility="{Binding IsResolved, Converter={StaticResource HiddenWhen}}">
-                                    <Run Text="{Binding SurfaceIds.Count, Mode=OneWay}" /><Run Text=" surfaces concernées · double-clic ou Entrée pour isoler" />
+                                    <Run Text="{Binding SurfaceIds.Count, Mode=OneWay}" /><Run Text=" surfaces concernées · clic ou Entrée pour isoler, reclic pour quitter" />
                                 </TextBlock>
                                 <TextBlock Margin="0,6,0,0" Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushStatusSeen}"
                                            Visibility="{Binding IsResolved, Converter={StaticResource BoolToVisibility}}">
@@ -463,27 +487,37 @@
                                      ItemContainerStyle="{StaticResource IssueItem}" Background="Transparent" BorderThickness="0"
                                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                     MouseDoubleClick="IssuesList_MouseDoubleClick" PreviewKeyDown="IssuesList_PreviewKeyDown"
+                                     PreviewMouseLeftButtonUp="IssuesList_Click" PreviewKeyDown="IssuesList_PreviewKeyDown"
                                      AutomationProperties.Name="Points d'attention">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate DataType="vm:IssueItem">
-                                        <Grid>
+                                        <Grid ToolTip="{Binding Tooltip}" ToolTipService.InitialShowDelay="600">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="22" />
                                                 <ColumnDefinition Width="36" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <Grid.RowDefinitions>
+                                                <RowDefinition />
                                                 <RowDefinition />
                                                 <RowDefinition />
                                             </Grid.RowDefinitions>
                                             <c:VerdictGlyph Verdict="{Binding Verdict}" VerticalAlignment="Center" />
                                             <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" Text="{Binding Rule}" VerticalAlignment="Center" />
                                             <TextBlock Grid.Column="2" Style="{StaticResource TextMono}" Text="{Binding Location}" VerticalAlignment="Center" />
-                                            <TextBlock Grid.Column="3" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
+                                            <!-- Point isolé dans la 3D / point qui cite la surface cliquée -->
+                                            <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="4,0">
+                                                <ui:SymbolIcon Symbol="Eye16" Foreground="{DynamicResource BrushAccent}" ToolTip="Isolé dans la 3D — recliquer pour quitter"
+                                                               Visibility="{Binding IsFocused, Converter={StaticResource BoolToVisibility}}" />
+                                                <ui:SymbolIcon Symbol="Link16" Foreground="{DynamicResource BrushAccent}" ToolTip="Cite la surface sélectionnée dans la 3D"
+                                                               Visibility="{Binding IsLinked, Converter={StaticResource BoolToVisibility}}" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="4" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
                                                        Text="{Binding DiffM2, Converter={StaticResource Area}}" />
-                                            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Style="{StaticResource TextCaption}" Text="{Binding Message}" />
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" Style="{StaticResource TextBody}" Text="{Binding Title}" />
+                                            <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="4" Style="{StaticResource TextCaption}" Text="{Binding Message}" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>

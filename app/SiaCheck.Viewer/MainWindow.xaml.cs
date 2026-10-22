@@ -40,6 +40,7 @@ public partial class MainWindow : FluentWindow, IShell
         DataContext = ViewModel;
         _snackbars.SetSnackbarPresenter(Snackbars);
         ViewModel.PropertyChanged += OnViewModelChanged;
+        ViewModel.LinkedIssuesChanged += OnLinkedIssues;
         RestorePlacement();
         Viewport.PreviewMouseLeftButtonDown += (_, e) => _mouseDown = e.GetPosition(Viewport);
         Viewport.PreviewMouseLeftButtonUp += Viewport_Click;
@@ -88,7 +89,14 @@ public partial class MainWindow : FluentWindow, IShell
     private void Viewport_Click(object sender, MouseButtonEventArgs e)
     {
         var p = e.GetPosition(Viewport);
-        if ((p - _mouseDown).Length > ClickTolerance || ViewModel.Scene is null) return;
+        if ((p - _mouseDown).Length > ClickTolerance) return;
+        ClickAt(p);
+    }
+
+    /// <summary>Sélectionne la surface sous ce point de la vue 3D (aussi utilisé par --click pour la revue visuelle).</summary>
+    public void ClickAt(Point p)
+    {
+        if (ViewModel.Scene is null) return;
         string? hit = null;
         VisualTreeHelper.HitTest(Viewport.Viewport, null, r =>
         {
@@ -102,6 +110,8 @@ public partial class MainWindow : FluentWindow, IShell
         }, new PointHitTestParameters(p));
         ViewModel.SelectSurface(hit);
     }
+
+    public void ClickAtRelative(double x, double y) => ClickAt(new Point(x * Viewport.ActualWidth, y * Viewport.ActualHeight));
 
     private void TopView_Click(object sender, RoutedEventArgs e) => TopView();
 
@@ -117,10 +127,16 @@ public partial class MainWindow : FluentWindow, IShell
 
     // ------------------------------------------------------------------ clavier et liste
 
-    private void IssuesList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    /// <summary>Clic sur un point : l'isole ; reclic sur le point isolé : quitte l'isolement.</summary>
+    private void IssuesList_Click(object sender, MouseButtonEventArgs e)
     {
         if (ItemsControl.ContainerFromElement(IssuesList, (DependencyObject)e.OriginalSource) is ListBoxItem { DataContext: IssueItem item })
-            ViewModel.FocusIssueCommand.Execute(item);
+            ViewModel.ToggleFocusCommand.Execute(item);
+    }
+
+    private void OnLinkedIssues(IssueItem? first)
+    {
+        if (first is not null) IssuesList.ScrollIntoView(first);
     }
 
     private void IssuesList_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -133,7 +149,7 @@ public partial class MainWindow : FluentWindow, IShell
             _ => null,
         };
         if (status is not null) { ViewModel.SetStatusCommand.Execute(status); e.Handled = true; }
-        else if (e.Key == Key.Enter) { ViewModel.FocusIssueCommand.Execute(ViewModel.SelectedIssue); e.Handled = true; }
+        else if (e.Key == Key.Enter) { ViewModel.ToggleFocusCommand.Execute(ViewModel.SelectedIssue); e.Handled = true; }
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)

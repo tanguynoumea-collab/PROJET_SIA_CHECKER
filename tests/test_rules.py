@@ -15,11 +15,22 @@ def test_r1_loops(result):
 def test_r1_positive_residual_is_error(result):
     r = pick(result, "ERR", "N00", "R1").iloc[0]
     assert r.verdict == "ERREUR" and r.diff_m2 == pytest.approx(35)
+    assert "35,00 m² de SP (35,0 %)" in r.message and "SUP 50,00 + SD 10,00 + SI 5,00 = 65,00" in r.message
+
+
+def test_every_failing_check_says_what_to_verify(result):
+    assert result.failing.hint.str.len().gt(20).all()
+
+
+def test_titles_cover_all_rules(result):
+    assert all(rules.title_of(r, v) != r for r, v in result.residuals[["rule", "verdict"]].itertuples(index=False))
 
 
 def test_r1_small_residual_is_implicit_sc(result):
     r = pick(result, "ERR", "N01", "R1").iloc[0]
-    assert r.verdict == "INFO" and "SC implicite" in r.message and r.diff_m2 == pytest.approx(8)
+    assert r.verdict == "INFO" and "surface de construction" in r.message and r.diff_m2 == pytest.approx(8)
+    assert "SUP 80,00 + SD 10,00 + SI 2,00" in r.message   # détail des sous-catégories dans le constat
+    assert r.hint
 
 
 def test_r1_ignored_code_not_summed(result):

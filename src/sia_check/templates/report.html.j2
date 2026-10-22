@@ -74,7 +74,8 @@
       <tr><td><span class="pill {{ r.verdict }}">{{ r.verdict }}</span></td><td>{{ r.rule }}</td>
         <td>{{ r.building }}</td><td>{{ r.level }}</td><td>{{ r.lot|num }}</td><td>{{ r.category }}</td>
         <td class="n">{{ r.expected|num }}</td><td class="n">{{ r.obtained|num }}</td>
-        <td class="n">{{ r.diff_m2|num }}</td><td class="n">{{ r.diff_pct|num(1) }}</td><td>{{ r.message }}</td></tr>
+        <td class="n">{{ r.diff_m2|num }}</td><td class="n">{{ r.diff_pct|num(1) }}</td>
+        <td>{{ r.message }}{% if r.hint %}<br><span class="muted">À vérifier : {{ r.hint }}</span>{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>

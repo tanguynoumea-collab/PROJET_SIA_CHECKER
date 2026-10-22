@@ -5,13 +5,13 @@ Contrat (version 1) :
   "format": "sia-check-viewer", "version": 1,
   "project", "date", "sources", "exit_code", "counts", "tolerance",
   "cache": {"files", "newest", "oldest", "source_modified", "stale", "errors"},
-  "categories": [{"code", "family", "status", "color", "hatched"}],
+  "categories": [{"code", "family", "status", "color", "hatched", "name", "ref", "definition"}],
   "surfaces":   [{"id", "building", "level", "category", "code", "kind", "status", "area",
                   "room_type", "lot", "mesh": {"v": [x, y, z, …], "i": [a, b, c, …]} | null}],
   "levels":     [{"building", "level", "rank", "values": {code: m²}, "r1": {"diff", "verdict"} | null,
                   "r3": {…} | null, "alerts": [règles]}],
   "issues":     [{"key", "rule", "verdict", "building", "level", "lot", "category", "expected",
-                  "obtained", "diff_m2", "diff_pct", "message", "surface_ids": [...]}]
+                  "obtained", "diff_m2", "diff_pct", "message", "title", "hint", "surface_ids": [...]}]
 }
 `key` est stable d'une analyse à l'autre : la visionneuse y accroche statut et commentaire.
 """
@@ -100,6 +100,9 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
             "status": "unknown" if spec is None else "ignored" if spec.get("ignore") else "checked",
             "color": report.SIA_COLORS.get(code),
             "hatched": code in report.HATCHED,
+            "name": cfg.labels.get(code, {}).get("name"),
+            "ref": cfg.labels.get(code, {}).get("ref"),
+            "definition": cfg.labels.get(code, {}).get("def"),
         })
 
     surfaces = []
@@ -131,6 +134,7 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
             "building": r["building"], "level": r["level"], "lot": _text(r["lot"]), "category": r["category"],
             "expected": _num(r["expected"]), "obtained": _num(r["obtained"]),
             "diff_m2": _num(r["diff_m2"]), "diff_pct": _num(r["diff_pct"]), "message": r["message"],
+            "title": rules.title_of(r["rule"], r["verdict"]), "hint": r["hint"] or None,
             "surface_ids": _concerned(r, surf, result.unknown, cfg),
         })
 

@@ -3,6 +3,7 @@
 Chemin surchargeable par la variable d'environnement SIA_LOREE_DIR.
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -131,7 +132,7 @@ def test_mdp_from_blank_template(loree, tmp_path):
         warnings.simplefilter("ignore")
         wb = openpyxl.load_workbook(out)
     refs = {t: ws.tables[t].ref for ws in wb.worksheets for t in ws.tables}
-    assert refs["SurfacesSIA4168"] == "A1:L161" and refs["SurfacesSIA41610"] == "A1:I3295"
+    assert refs["SurfacesSIA4168"] == "A1:L152" and refs["SurfacesSIA41610"] == "A1:I3295"   # sans les 9 SP Toiture à 0 m²
     assert refs["Logements"] == "A1:K316"                       # 315 lots
     env = list(wb["SurfacesEnveloppe"].iter_rows(min_row=2, max_col=9, values_only=True))
     assert sum(1 for r in env if r[1] == mdp.FACADE) == 80
@@ -214,3 +215,43 @@ def test_mdp_proposals_on_loree(loree):
     assert aff["affectation-Gaine-lot"] == "Gaines" and aff["affectation-Chambre-lot"] == "Logement general"
     assert [c["id"] for c in by["typologies"]["corrections"]] == [f"typologie-{n}ch" for n in range(5)]   # sans le lot à −1
     assert len(by["formes"]["corrections"]) == 9
+
+
+@needs_tgm
+def test_mdp_ready_for_power_bi(loree, tmp_path):
+    # Points relevés en comparant au MDP 1778 fait à la main : étages au code du gabarit, pas de SP à 0 m²,
+    # chambres −1 laissées vides, ID projet sur toutes les lignes.
+    import warnings
+
+    import openpyxl
+
+    from sia_check import config, mdp
+    cfg = config.load(Path(__file__).resolve().parents[1] / "config.yaml")
+    _, res = loree
+    out = mdp.write(res, cfg, tmp_path / "MDP.xlsx", project_id=1778, project_name="L'Orée")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        wb = openpyxl.load_workbook(out, data_only=True)
+    brutes = list(wb["SurfacesBrutesVolumeSIA416"].iter_rows(min_row=2, values_only=True))
+    assert {r[0] for r in brutes} == {1778} and all(r[10] for r in brutes if r[1] == "SP")
+    assert {(r[3], r[4]) for r in brutes if r[3] == "TOI"} == {("TOI", "Hors-sol")}
+    assert "Toiture" not in {r[3] for ws in ("SurfacesEnveloppe", "SurfacesBrutesVolumeSIA416")
+                             for r in wb[ws].iter_rows(min_row=2, values_only=True)}
+    lots = {r[3]: r[10] for r in wb["ListeLogements"].iter_rows(min_row=2, values_only=True)}
+    assert lots["I18_N01_Apart-03"] is None and min(v for v in lots.values() if v is not None) == 0
+    info = {r[1]: r[2] for r in wb["InfosProjet"].iter_rows(min_row=2, values_only=True)}
+    assert info["Nbr de chambres"] == 620 and info["Nom Projet HRS"] == "L'Orée"
+
+
+@needs_tgm
+def test_sec_implicit_after_corrections(loree):
+    # Treegram ne crée pas la SEC : une fois toitures et abords corrigés, le résidu R3 des balcons est implicite.
+    from sia_check import config, corrections
+    cfg = config.load(Path(__file__).resolve().parents[1] / "config.yaml")
+    df, _ = loree
+    journal = json.loads((Path(__file__).resolve().parents[1] / "docs/corrections/L_OREE_exemple.json").read_text(encoding="utf-8"))
+    _, _, after = corrections.run(df, journal, cfg)
+    r3 = after.residuals[(after.residuals.rule == "R3") & (after.residuals.level != "*")]
+    rel = r3.diff_m2 / r3.expected
+    assert (r3.verdict == "INFO").sum() >= 10 and (rel[r3.verdict == "INFO"] <= 0.35).all()   # SEC implicite
+    assert (rel[r3.verdict == "ERREUR"] > 0.35).all()          # abords, attiques, I17 S01 : vrais sujets

@@ -13,6 +13,8 @@ public interface IShell
     void Notify(string message, bool isError = false);
     /// <summary>Question à deux réponses ; true = <paramref name="yes"/>.</summary>
     Task<bool> ConfirmAsync(string title, string message, string yes, string no);
+    /// <summary>Petit formulaire : un champ texte par libellé, prérempli ; null si l'utilisateur annule.</summary>
+    Task<string[]?> AskAsync(string title, string message, IReadOnlyList<(string Label, string Value)> fields, string ok);
     void OpenFile(string path);
     /// <summary>Cadre la caméra sur ces bornes (null = tout le modèle visible).</summary>
     void Frame(Rect3D? bounds);

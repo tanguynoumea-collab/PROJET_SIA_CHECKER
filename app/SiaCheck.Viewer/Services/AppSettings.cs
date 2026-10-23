@@ -8,6 +8,13 @@ public sealed class RecentProject
     public int IssueCount { get; set; }
 }
 
+/// <summary>Identité HRS d'un projet, écrite dans InfosProjet du MDP (clé de jointure du benchmark Power BI).</summary>
+public sealed class MdpProject
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+
 public sealed class WindowPlacement
 {
     /// <summary>null = jamais positionnée (fenêtre centrée). NaN ne se sérialise pas en JSON.</summary>
@@ -29,6 +36,11 @@ public sealed class AppSettings
     public double IssuesPanelWidth { get; set; } = 380;
     public WindowPlacement Window { get; set; } = new();
     public List<RecentProject> Recents { get; set; } = [];
+    /// <summary>ID et nom HRS de chaque projet (clé : dossier normalisé), demandés à l'export MDP.</summary>
+    public Dictionary<string, MdpProject> MdpProjects { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public MdpProject? FindMdpProject(string path) => MdpProjects.GetValueOrDefault(Normalize(path));
+    public void SetMdpProject(string path, MdpProject project) => MdpProjects[Normalize(path)] = project;
 
     public void Touch(string path, string name, DateTime analysis, int issueCount)
     {

@@ -162,6 +162,7 @@ public sealed partial class MainViewModel
         var sorted = Subjects.OrderBy(s => s.SortKey).ToList();
         Subjects.Clear();
         foreach (var s in sorted) Subjects.Add(s);
+        foreach (var s in Subjects) SyncSettledPoints(s);   // sujets réglés avant cette analyse
         RefreshSubjects();
         OnCorrectionsChanged();
     }
@@ -180,8 +181,82 @@ public sealed partial class MainViewModel
                 if (e.PropertyName != nameof(CorrectionItem.Decision)) return;
                 _journal?.Decide(c.Model);
                 OnCorrectionsChanged();
+                SyncSettledPoints(s);
             };
         return s;
+    }
+
+    // ------------------------------------------------------------------ points des sujets
+
+    /// <summary>Commentaire posé sur les points d'un sujet réglé ; sert aussi à les reconnaître pour revenir en arrière.</summary>
+    private static string SettledComment(SubjectItem s) => $"Sujet réglé : {s.Title}";
+
+    private IEnumerable<IssueItem> PointsOf(SubjectItem s)
+    {
+        var keys = s.Subject.Points.ToHashSet();
+        return Issues.Where(i => keys.Contains(i.Key) && !i.IsResolved);
+    }
+
+    /// <summary>
+    /// Sujet réglé (toutes ses corrections décidées) : ses points « À traiter » passent « Vu », avec un commentaire qui le dit.
+    /// Une décision qui repasse en « proposée » les remet « À traiter », s'ils n'ont pas été modifiés à la main depuis.
+    /// </summary>
+    private void SyncSettledPoints(SubjectItem s)
+    {
+        if (s.CanDecide)
+        {
+            var note = SettledComment(s);
+            foreach (var i in PointsOf(s).ToList())
+            {
+                if (s.IsSettled && i.Status == ReviewStatus.ToReview)
+                {
+                    if (string.IsNullOrWhiteSpace(i.Comment)) i.Comment = note;
+                    i.Status = ReviewStatus.Seen;   // enregistré par Track()
+                }
+                else if (!s.IsSettled && i.Status == ReviewStatus.Seen && i.Comment == note)
+                {
+                    i.Comment = "";
+                    i.Status = ReviewStatus.ToReview;
+                }
+            }
+            _commentSave.Stop();
+        }
+        UpdatePointCounts(s);
+    }
+
+    private void UpdatePointCounts(SubjectItem s)
+    {
+        var points = PointsOf(s).ToList();
+        s.OpenPoints = points.Count(i => i.Status == ReviewStatus.ToReview);
+        s.SeenPoints = points.Count(i => i.Status == ReviewStatus.Seen);
+        s.FalsePoints = points.Count(i => i.Status == ReviewStatus.FalsePositive);
+    }
+
+    private void UpdateAllPointCounts()
+    {
+        foreach (var s in Subjects) UpdatePointCounts(s);
+    }
+
+    /// <summary>Sujet sans correction (à vérifier, aucune) : ses points « À traiter » passent « Vu ».</summary>
+    [RelayCommand]
+    private void MarkSubjectPointsSeen() => MarkSubjectPoints(ReviewStatus.Seen, "vus");
+
+    /// <summary>Sujet sans correction : ses points « À traiter » passent « Faux positif ».</summary>
+    [RelayCommand]
+    private void MarkSubjectPointsFalse() => MarkSubjectPoints(ReviewStatus.FalsePositive, "en « Faux positif »");
+
+    private void MarkSubjectPoints(ReviewStatus status, string label)
+    {
+        if (SelectedSubject is not { } s) return;
+        var targets = PointsOf(s).Where(i => i.Status == ReviewStatus.ToReview).ToList();
+        foreach (var i in targets)
+        {
+            if (string.IsNullOrWhiteSpace(i.Comment)) i.Comment = $"Sujet : {s.Title}";
+            i.Status = status;
+        }
+        _commentSave.Stop();
+        UpdatePointCounts(s);
+        _shell.Notify($"{targets.Count} point{(targets.Count > 1 ? "s" : "")} du sujet passé{(targets.Count > 1 ? "s" : "")} {label}.");
     }
 
     private void OnCorrectionsChanged()

@@ -248,6 +248,26 @@ public sealed partial class SubjectItem : ObservableObject
         ? $"{PointCount} point{(PointCount > 1 ? "s" : "")} · {Corrections.Count} correction{(Corrections.Count > 1 ? "s" : "")}"
         : $"{PointCount} point{(PointCount > 1 ? "s" : "")}";
     public string Progress => $"{DecidedCount} / {Corrections.Count}";
+    /// <summary>Toutes les corrections décidées (acceptées, appliquées ou rejetées) : le sujet est réglé.</summary>
+    public bool IsSettled => CanDecide && Corrections.Where(c => !c.IsOrphan).All(c => c.Decision != CorrectionDecision.Proposed);
+
+    /// <summary>Points du sujet encore « À traiter » (tenu à jour par le ViewModel).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOpenPoints), nameof(SeenAllLabel), nameof(FalseAllLabel), nameof(PointsState))]
+    private int _openPoints;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(PointsState))] private int _seenPoints;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(PointsState))] private int _falsePoints;
+    public bool HasOpenPoints => OpenPoints > 0;
+    public string SeenAllLabel => $"Vu pour les {OpenPoints}";
+    public string FalseAllLabel => $"Faux positif pour les {OpenPoints}";
+    /// <summary>« 12 vus · 3 faux positifs · 2 à traiter ».</summary>
+    public string PointsState => string.Join(" · ", new[]
+    {
+        SeenPoints > 0 ? $"{SeenPoints} vu{(SeenPoints > 1 ? "s" : "")}" : null,
+        FalsePoints > 0 ? $"{FalsePoints} faux positif{(FalsePoints > 1 ? "s" : "")}" : null,
+        OpenPoints > 0 ? $"{OpenPoints} à traiter" : null,
+    }.Where(t => t is not null));
+
     public string AcceptAllLabel => $"Accepter les {Corrections.Count(c => !c.IsOrphan)}";
     public string RejectAllLabel => Corrections.All(c => c.IsProposal)
         ? $"« Inconnu » pour les {Corrections.Count}" : $"Rejeter les {Corrections.Count(c => !c.IsOrphan)}";

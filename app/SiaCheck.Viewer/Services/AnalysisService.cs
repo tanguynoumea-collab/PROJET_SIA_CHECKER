@@ -55,10 +55,11 @@ public sealed partial class AnalysisService(string enginePath)
 
     /// <summary>Tableau MDP HRS (sia_check.mdp) ; gabarit vierge livré si <paramref name="template"/> est null.</summary>
     public Task<EngineRun> ExportMdpAsync(string projectDir, string mdpPath, string? template, string? projectId,
-                                          EngineInputs inputs, CancellationToken ct) =>
+                                          string? projectName, EngineInputs inputs, CancellationToken ct) =>
         RunAsync(["-q", projectDir, "--mdp", mdpPath,
                   .. template is null ? Array.Empty<string>() : ["--mdp-template", template],
                   .. string.IsNullOrWhiteSpace(projectId) ? Array.Empty<string>() : ["--project-id", projectId.Trim()],
+                  .. string.IsNullOrWhiteSpace(projectName) ? Array.Empty<string>() : ["--project-name", projectName.Trim()],
                   .. inputs.Args()], null, ct);
 
     /// <summary>Excel de correction (treegram.write_corrections) : demande le journal (<paramref name="inputs"/>).</summary>

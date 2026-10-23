@@ -46,15 +46,20 @@ Le tableau MDP HRS, rempli depuis le `.tgm` sans copier-coller. Le gabarit par d
 
 | Feuille | Contenu |
 | --- | --- |
-| SurfacesBrutesVolumeSIA416 | SP et SEP par niveau : découpage (table `HsSs` du gabarit), largeur et longueur (`DeltaX`/`DeltaY`), périmètre, hauteur brute, m², m³ |
+| SurfacesBrutesVolumeSIA416 | SP, SEP et SA par niveau : découpage (table `HsSs` du gabarit), largeur et longueur (`DeltaX`/`DeltaY`), périmètre, hauteur brute, m², m³ ; les SP à 0 m² (niveaux Toiture) sont omises, les SA n'ont ni hauteur ni volume |
 | SurfacesNettesSIA416 | une ligne par local, comme l'export Treegram, SED et SUT compris |
 | SurfacesUSPI | SNH, SH, SBH, SE (= SVN − SH), SVN, SVB par lot |
-| ListeLogements | un lot par ligne, avec son nombre de chambres |
+| ListeLogements | un lot par ligne, avec son nombre de chambres (vide quand Treegram écrit −1) |
 | SurfacesEnveloppe | façade de chaque niveau (SFN : longueur, hauteur, surfaces brute, nette et vitrée) et toitures (SPT) |
 | InfosBatiment | étages hors-sol et sous-sol, largeur et longueur du plus grand niveau courant |
 | InfosProjet | nombre de bâtiments, d'étages, de logements (par nombre de chambres) et de chambres |
 
 Restent vides, faute de source dans le `.tgm` : l'affectation, les typologies, le nombre de pièces, les cages d'escalier, la forme des bâtiments et les champs administratifs. Le reste du classeur est recopié tel quel : listes déroulantes, feuille « Listes formulaire », documents. Le tableau croisé de la feuille SurfacesEnveloppe n'est pas recalculé. Les filtres actifs sont levés, les formules gardent leur valeur en cache et sont recalculées à l'ouverture.
+
+Le MDP alimente le benchmark Power BI, d'où quelques règles de format :
+- l'ID projet (`--project-id`) relie toutes les tables : la visionneuse le demande à chaque export MDP, avec le nom HRS (`--project-name`), et s'en souvient par projet ;
+- les étages prennent les codes de la liste du gabarit (`config.yaml > mdp.etages` : Toiture → TOI, découpage Hors-sol) ;
+- une valeur inconnue reste vide (nombre de chambres), ou vaut « Inconnu » quand une proposition est refusée.
 
 ## Corrections (`--corrections`)
 
@@ -84,7 +89,7 @@ Les points d'attention sont regroupés par cause. Chaque sujet porte une correct
 | --- | --- | --- |
 | `toitures` | A2, et R3 des niveaux dont la SEP est recouverte par la toiture Treegram (SPT) | `exclure` la SEP d'un niveau Toiture, ou seulement sa part sous SPT (attiques), terrasses SEU/SED gardées |
 | `abords` | A1, et R3 du niveau du terrain | `découper` vers SA la SEP hors plancher et hors SEU/SED, tracé pré-calculé |
-| `sc-implicite` | R1 compatibles avec la surface de construction | aucune |
+| `sc-implicite` | R1 et R3 compatibles avec la surface de construction (SC, SEC), que Treegram ne crée pas | aucune |
 | `agregats` | contrôles sommés par bâtiment et projet | aucune (suivent leurs niveaux) |
 | `<règle>-<catégorie>` | les autres | à vérifier |
 | `affectation` | — | `affecter` par type Treegram (`config.yaml > mdp.affectation`) ; pièces d'appartement (`mdp.logement`) → « Logement general » |
@@ -146,7 +151,7 @@ La version vient de `<Version>` dans `SiaCheck.Viewer.csproj` et de `pyproject.t
 - **Ratios** (second onglet du bilan) : pour chaque ratio, la valeur du projet (cercle) et celle du bâtiment choisi (point, orange hors repère) sur une jauge du repère indicatif. L'infobulle donne les m², le repère et la note.
 - **Sujets et corrections** (onglet `Sujets`, ouvert par défaut quand il y en a ; Ctrl+1 / Ctrl+2 pour passer de Sujets à Points) :
   - les sujets du moteur, réorientés par la dernière revue IA. Pour chacun : action, origine (IA ou règle), surface en jeu, et un symbole d'état par correction (proposée, acceptée, appliquée, rejetée, inapplicable) ;
-  - la carte d'un sujet propose « Accepter les n » et « Rejeter les n ». Sur une correction sélectionnée : `1` / `2` / `3` (proposée, acceptée, rejetée), « Modifier » (aire, explication : la correction devient « manuel ») ;
+  - la carte d'un sujet propose « Accepter les n » et « Rejeter les n ». Un sujet réglé (toutes ses corrections décidées) passe ses points « À traiter » en « Vu », avec le commentaire « Sujet réglé : … » ; un sujet sans correction propose « Vu pour les n » et « Faux positif pour les n ». La carte compte les points vus, faux positifs et à traiter. Sur une correction sélectionnée : `1` / `2` / `3` (proposée, acceptée, rejetée), « Modifier » (aire, explication : la correction devient « manuel ») ;
   - sélectionner un sujet ou une correction isole ses surfaces en 3D. Le tracé d'une découpe ou d'une exclusion partielle est dessiné à l'accent ;
   - les décisions sont gardées par projet, dans `%APPDATA%\SiaCheckViewer\corrections\` (journal lu par `sia-check --corrections`). « Analyser » les applique : son libellé compte les décisions en attente (`Analyser · 22`), et la barre de commande indique les corrections appliquées ;
   - avant/après dans le bilan par niveau : ce que les corrections ont retiré prolonge la barre en pointillé, et l'ancien résidu est barré à côté du nouveau ;

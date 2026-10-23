@@ -91,6 +91,27 @@ public partial class MainWindow : FluentWindow, IShell
         return await box.ShowDialogAsync() == Wpf.Ui.Controls.MessageBoxResult.Primary;
     }
 
+    public async Task<string[]?> AskAsync(string title, string message, IReadOnlyList<(string Label, string Value)> fields, string ok)
+    {
+        var panel = new StackPanel { MinWidth = 360 };
+        panel.Children.Add(new System.Windows.Controls.TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
+        var boxes = new List<System.Windows.Controls.TextBox>();
+        foreach (var (label, value) in fields)
+        {
+            panel.Children.Add(new System.Windows.Controls.TextBlock { Text = label, Margin = new Thickness(0, 8, 0, 4) });
+            var box = new System.Windows.Controls.TextBox { Text = value };
+            boxes.Add(box);
+            panel.Children.Add(box);
+        }
+        var dlg = new Wpf.Ui.Controls.MessageBox
+        {
+            Title = title, Content = panel, PrimaryButtonText = ok, CloseButtonText = "Annuler", Owner = this,
+        };
+        dlg.Loaded += (_, _) => { boxes[0].Focus(); boxes[0].SelectAll(); };
+        return await dlg.ShowDialogAsync() == Wpf.Ui.Controls.MessageBoxResult.Primary
+            ? boxes.Select(b => b.Text.Trim()).ToArray() : null;
+    }
+
     public void OpenFile(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
 
     public void Frame(Rect3D? bounds)

@@ -15,7 +15,8 @@ Causes reconnues (L'Orée, revue IA du 22.10.2026) :
   (SIA 416 §3) -> `exclure` la SEP du niveau, ou la seule part de toiture ;
 - abords : SEP non classée du niveau du terrain (A1), dalle au contact du terrain -> `découper` vers SA
   (SIA 416 §1.2) ; le tracé pré-calculé est la SEP hors plancher du niveau et hors SEU/SED ;
-- sc-implicite : résidu R1 compatible avec la surface de construction non fournie -> aucune action ;
+- sc-implicite : résidu R1 (SC) ou R3 (SEC) compatible avec la surface de construction, que Treegram ne crée
+  pas -> aucune action ;
 - agrégats : contrôles sommés par bâtiment ou sur le projet (niveau « * ») -> suivent leurs niveaux.
 Les autres points sont regroupés par règle et catégorie, à vérifier.
 
@@ -45,7 +46,8 @@ WHY = {
               "SPT. Les toitures-jardins et terrasses accessibles restent en SEU : à vérifier sur les plans.",
     ABORDS: "Une surface externe au contact direct du terrain relève des abords SA, y compris une dalle sur sous-sol "
             "aménagée (SIA 416 §1.2, §3). Les terrasses déjà classées SEU/SED restent en SEP.",
-    SC_IMPLICITE: "Résidu compatible avec la surface de construction (murs, cloisons), que Treegram ne fournit pas.",
+    SC_IMPLICITE: "Résidu compatible avec la surface de construction, intérieure (SC : murs, cloisons) ou externe "
+                  "(SEC : garde-corps, murets des balcons et terrasses), que Treegram ne crée pas : il la considère déduite.",
     AGREGATS: "Sommes des contrôles de niveau : se corrigent avec les sujets de leurs niveaux.",
 }
 EXTERNAL_CLASSIFIED = ["SEU", "SED", "SEI"]
@@ -183,7 +185,7 @@ def build(doc: dict, cfg: Config) -> dict:
             s = subject(TOITURES, TOITURES, "corriger")
         elif i["rule"] == "A1" or (i["rule"] == "R3" and key in grounds):
             s = subject(ABORDS, ABORDS, "corriger")
-        elif i["rule"] == "R1" and i["verdict"] == "INFO":
+        elif i["rule"] in ("R1", "R3") and i["verdict"] == "INFO":
             s = subject(SC_IMPLICITE, SC_IMPLICITE, "aucune")
         else:
             sid = f"{i['rule']}-{i['category']}"

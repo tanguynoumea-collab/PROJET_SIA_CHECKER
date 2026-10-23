@@ -41,6 +41,8 @@ RULE_TITLES = {
 def title_of(rule: str, verdict: str) -> str:
     if rule == "R1" and verdict == "INFO":
         return "Surface de construction implicite"
+    if rule == "R3" and verdict == "INFO":
+        return "Surface de construction externe implicite"
     return RULE_TITLES.get(rule, rule)
 VERDICTS = ["OK", "INFO", "ALERTE", "ERREUR"]
 FAILING = {"ALERTE", "ERREUR"}
@@ -148,8 +150,9 @@ HINTS = {
                    "avec le terrain (→ abords SA, SIA 416 §1.2) ou toiture non accessible (→ hors SEP, §3).",
     ("R3", "SEN"): "La SEN déclarée ne correspond pas à SEU + SED + SEI (SIA 416 §3.1).",
 }
-IMPLICIT_HINT = ("En général rien à faire : la surface de construction (murs, cloisons, piliers) n'est pas fournie par "
-                 "Treegram et apparaît ici. Un écart nettement différent des niveaux comparables signale une pièce manquante.")
+IMPLICIT_HINT = ("En général rien à faire : la surface de construction (murs, cloisons, piliers ; garde-corps et murets "
+                 "pour la SEP) n'est pas créée par Treegram, qui la considère déduite, et apparaît ici. Un écart nettement "
+                 "différent des niveaux comparables signale une surface manquante.")
 
 
 def _label(code: str, cfg: Config) -> str:

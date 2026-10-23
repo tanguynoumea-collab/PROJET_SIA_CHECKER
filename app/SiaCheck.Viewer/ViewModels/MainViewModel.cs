@@ -201,19 +201,43 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Tableau MDP HRS rempli depuis le .tgm, surfaces corrigées ; « template » : choisir d'abord un gabarit.</summary>
     [RelayCommand]
-    private Task ExportMdpAsync(string? mode)
+    private async Task ExportMdpAsync(string? mode)
     {
-        if (ProjectDir is null || _engine is null || Document is null) return Task.CompletedTask;
+        if (ProjectDir is null || _engine is null || Document is null) return;
+        var hrs = await AskMdpProjectAsync(ProjectDir, Document.Project);
+        if (hrs is null) return;
         string? template = null;
         if (mode == "template")
         {
             template = _shell.PickOpenFile("Gabarit MDP (un MDP vierge ou déjà rempli : ses tableaux seront remplacés)", "Classeur Excel|*.xlsx");
-            if (template is null) return Task.CompletedTask;
+            if (template is null) return;
         }
-        var path = _shell.PickSaveFile("Enregistrer le tableau MDP", $"MDP-{AiReviewFiles.Prefix(Document.Project)}.xlsx", "Classeur Excel|*.xlsx");
-        return path is null ? Task.CompletedTask
-            : RunExportAsync(() => _engine.ExportMdpAsync(ProjectDir, path, template, null, CurrentEngineInputs(ProjectDir), CancellationToken.None),
+        var path = _shell.PickSaveFile("Enregistrer le tableau MDP", $"MDP-{hrs.Id}-{AiReviewFiles.Prefix(hrs.Name)}.xlsx", "Classeur Excel|*.xlsx");
+        if (path is null) return;
+        await RunExportAsync(() => _engine.ExportMdpAsync(ProjectDir, path, template, hrs.Id, hrs.Name, CurrentEngineInputs(ProjectDir), CancellationToken.None),
                              $"Tableau MDP enregistré : {path}.", path);
+    }
+
+    /// <summary>
+    /// ID et nom HRS du projet : l'ID relie toutes les tables du MDP dans le benchmark Power BI, il est donc obligatoire.
+    /// Demandés à chaque export, préremplis avec la dernière réponse pour ce dossier ; null si annulé.
+    /// </summary>
+    internal async Task<MdpProject?> AskMdpProjectAsync(string projectDir, string folderName)
+    {
+        var known = _settings.FindMdpProject(projectDir);
+        var answer = await _shell.AskAsync("Projet HRS",
+            "Le MDP alimente le benchmark Power BI : l'ID projet relie toutes ses tables.",
+            [("ID projet HRS (ex. 1778)", known?.Id ?? ""), ("Nom du projet HRS", known?.Name ?? folderName)], "Continuer");
+        if (answer is null) return null;
+        if (answer[0].Length == 0)
+        {
+            _shell.Notify("ID projet HRS manquant : le MDP n'a pas été exporté.", isError: true);
+            return null;
+        }
+        var hrs = new MdpProject { Id = answer[0], Name = answer[1].Length > 0 ? answer[1] : folderName };
+        _settings.SetMdpProject(projectDir, hrs);
+        _settings.Save(_paths);
+        return hrs;
     }
 
     /// <summary>Excel de correction : chaque surface telle que lue, son état corrigé, la correction et son explication.</summary>
@@ -352,7 +376,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         item.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(IssueItem.Status)) { SaveReview(item); IssuesView.Refresh(); UpdateAiCounts(); }
+            if (e.PropertyName == nameof(IssueItem.Status)) { SaveReview(item); IssuesView.Refresh(); UpdateAiCounts(); UpdateAllPointCounts(); }
             else if (e.PropertyName == nameof(IssueItem.Comment)) { _commentSave.Stop(); _commentSave.Start(); }
         };
         return item;

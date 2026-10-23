@@ -685,6 +685,31 @@
                                 <TextBlock Margin="0,6,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
                                            Text="Pas de correction automatique : à vérifier dans Treegram."
                                            Visibility="{Binding SelectedSubject.HasCorrections, Converter={StaticResource HiddenWhen}}" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap">
+                                    <Run Text="Points : " /><Run Text="{Binding SelectedSubject.PointsState, Mode=OneWay}" />
+                                </TextBlock>
+                                <StackPanel Margin="0,6,0,0" Orientation="Horizontal">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding SelectedSubject.HasCorrections}" Value="False" />
+                                                        <Condition Binding="{Binding SelectedSubject.HasOpenPoints}" Value="True" />
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <ui:Button Appearance="Secondary" Icon="{ui:SymbolIcon Eye20}" MinHeight="{StaticResource TargetSize}"
+                                               Content="{Binding SelectedSubject.SeenAllLabel}" Command="{Binding MarkSubjectPointsSeenCommand}"
+                                               ToolTip="Passe en « Vu » les points « À traiter » de ce sujet (un commentaire rappelle le sujet)" />
+                                    <ui:Button Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss20}" MinHeight="{StaticResource TargetSize}"
+                                               Content="{Binding SelectedSubject.FalseAllLabel}" Command="{Binding MarkSubjectPointsFalseCommand}"
+                                               ToolTip="Passe en « Faux positif » les points « À traiter » de ce sujet (réversible point par point : 1 dans l'onglet Points)" />
+                                </StackPanel>
                                 <Button Margin="0,2,0,0" HorizontalAlignment="Right" Style="{StaticResource RowButton}" Padding="4,0"
                                         Command="{Binding ShowAiReportCommand}"
                                         Visibility="{Binding SelectedSubject.IsAi, Converter={StaticResource BoolToVisibility}}">

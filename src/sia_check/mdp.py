@@ -5,7 +5,7 @@ Le gabarit est un MDP existant ou vierge : ses tableaux de données sont vidés 
 
 | Feuille                    | Tableau            | Source                                                   |
 |----------------------------|--------------------|----------------------------------------------------------|
-| SurfacesBrutesVolumeSIA416 | SurfacesSIA4168    | SP / SEP par niveau (treegram.brutes), m³ = m² × h brute |
+| SurfacesBrutesVolumeSIA416 | SurfacesSIA4168    | SP / SEP / SA par niveau, m³ = m² × h brute (hors SA)     |
 | SurfacesNettesSIA416       | SurfacesSIA41610   | surfaces élémentaires SIA (treegram.nettes)              |
 | SurfacesUSPI               | SurfacesSIA41611   | SNH, SH, SBH, SE = SVN − SH, SVN, SVB par lot            |
 | ListeLogements             | Logements          | lots USPI : bâtiment, niveau, nombre de chambres         |
@@ -17,6 +17,9 @@ Affectation, typologies, nombre de pièces et forme des bâtiments : proposition
 visionneuse (propositions.py, corrections « affecter » et « renseigner »), « Inconnu » si elles sont
 refusées, vides sinon. Les champs administratifs restent vides. Le tableau croisé de la feuille
 SurfacesEnveloppe n'est pas recalculé.
+
+Pour Power BI : pas de ligne brute à 0 m², étages aux codes du gabarit (`mdp.etages`, Toiture -> TOI),
+nombre de chambres vide quand Treegram écrit −1.
 """
 
 from __future__ import annotations
@@ -85,6 +88,7 @@ def _lots(result: rules.Result) -> pd.DataFrame:
         return pd.DataFrame(columns=["building", "level", "lot", "bedrooms", *USPI_LABELS])
     areas = s.pivot_table(index=["building", "level", "lot"], columns="code", values="area", aggfunc="sum")
     beds = s[s.code == "SNH"].groupby(["building", "level", "lot"]).bedrooms.max()
+    beds = beds.where(beds >= 0)   # Treegram écrit −1 quand les chambres ne sont pas renseignées : vide
     lots = areas.join(beds).reset_index()
     for c in USPI_LABELS:
         if c not in lots:
@@ -103,19 +107,30 @@ def _dims(result: rules.Result) -> dict[str, list[float]]:
             for r in s.itertuples(index=False)}
 
 
+def _etage(level, cfg: Config):
+    """Niveau Treegram -> code d'étage de la liste du gabarit (`config.yaml > mdp.etages`, ex. Toiture -> TOI)."""
+    return (cfg.mdp.get("etages") or {}).get(level, level) if level is not None else None
+
+
 def brutes_records(result, cfg, kinds, pid) -> list[dict]:
+    """Une ligne par total de niveau non nul. Les abords (SA) n'ont pas de volume : hauteur et m³ vides."""
     dims, out = _dims(result), []
     for r in treegram.brutes(result, cfg).to_dict("records"):
         d = dims.get(r["ID TGM"], [])
         m2, h = _blank(r["Area"]), _blank(r["GrossHeight"])
+        if not m2 and r["Catégorie SIA"] == "SP":   # SP de toiture à 0 m² : pas un étage
+            continue
+        cat, etage = r["Catégorie SIA"], _etage(r["StoreyByTgm"], cfg)
+        if cat == "SA":
+            h = None
         out.append({
-            "ID Projet": Formula(PROJECT_ID, pid), "Categorie SIA416": r["Catégorie SIA"],
-            "Partie d'Ouvrage": r["BuildingByTgm"], "Etage": r["StoreyByTgm"],
-            "Decoupage": _level_kind(r["StoreyByTgm"], kinds),
+            "ID Projet": Formula(PROJECT_ID, pid), "Categorie SIA416": cat,
+            "Partie d'Ouvrage": r["BuildingByTgm"], "Etage": etage,
+            "Decoupage": _level_kind(etage, kinds),
             "Largeur globale": d[0] if len(d) == 2 else None, "Longueur globale": d[-1] if d else None,
             "Perimètre": _blank(r["Perimeter"]), "Hauteur brute (m)": h, "m2": m2,
-            "m3": Formula("SurfacesSIA4168[[#This Row],[m2]]*SurfacesSIA4168[[#This Row],[Hauteur brute (m)]]",
-                          m2 * h if m2 is not None and h is not None else None),
+            "m3": None if h is None else
+            Formula("SurfacesSIA4168[[#This Row],[m2]]*SurfacesSIA4168[[#This Row],[Hauteur brute (m)]]", m2 * h),
         })
     return out
 
@@ -125,7 +140,7 @@ def nettes_records(result, cfg, pid) -> list[dict]:
     aff = dict(zip(s["id"].astype(str), s["affectation"])) if "affectation" in s else {}
     return [{"ID Projet": Formula(PROJECT_ID, pid), "Categorie SIA416": r["Catégorie SIA"],
              "Partie d'Ouvrage": r["BuildingByTgm"], "Affectation": _blank(aff.get(str(r["Object.Name"]))),
-             "Etage": r["StoreyByTgm"],
+             "Etage": _etage(r["StoreyByTgm"], cfg),
              "Appartement_Unite": _blank(r["ApartmentByTgm"]), "Nºlocal": _blank(r["ID TGM"]),
              "Nom du local": _blank(r["Type"]), "m2": _blank(r["Area"])}
             for r in treegram.nettes(result, cfg).to_dict("records")]
@@ -163,7 +178,7 @@ def logements_records(lots: pd.DataFrame, cfg, pid, infos=None, columns=()) -> l
     out = []
     for r in _ordered(lots, cfg, "lot").to_dict("records"):
         beds = None if pd.isna(r["bedrooms"]) else int(r["bedrooms"])
-        out.append({"ID Projet": Formula(PROJECT_ID, pid), "Partie d'Ouvrage": r["building"], "Etage": r["level"],
+        out.append({"ID Projet": Formula(PROJECT_ID, pid), "Partie d'Ouvrage": r["building"], "Etage": _etage(r["level"], cfg),
                     "Appartement_Unite": r["lot"], "Nbr de chambres": beds,
                     **_champs(infos, columns, bedrooms=beds, building=r["building"])})
     return out
@@ -184,7 +199,7 @@ def enveloppe_records(result, cfg, pid) -> list[dict]:
         return []
     df = _ordered(pd.DataFrame(rows), cfg, "_k")
     return [{"ID Projet": Formula(PROJECT_ID, pid), "Partie de l'enveloppe": r["part"], "Partie d'Ouvrage": r["building"],
-             "Etage": r["level"], "Longueur (m)": r["len"], "Hauteur (m)": r["h"], "Surface Brutte": r["brute"],
+             "Etage": _etage(r["level"], cfg), "Longueur (m)": r["len"], "Hauteur (m)": r["h"], "Surface Brutte": r["brute"],
              "Surface nette (m2)": r["nette"], "Surface vitrée": r["vitree"]} for r in df.to_dict("records")]
 
 
@@ -230,7 +245,7 @@ def build(result: rules.Result, cfg: Config, template: str | Path, project_id=No
     if project_id is not None and "ID projet" in info:
         wb.set_cell("InfosProjet", f"C{info_row('ID projet')}", project_id)
     pid = wb.cell_value("InfosProjet", f"C{info_row('ID projet')}") if "ID projet" in info else project_id
-    if project_name and "Nom Projet HRS" in info and not wb.cell_value("InfosProjet", f"C{info_row('Nom Projet HRS')}"):
+    if project_name and "Nom Projet HRS" in info:
         wb.set_cell("InfosProjet", f"C{info_row('Nom Projet HRS')}", project_name)
 
     kinds = _decoupage(wb)

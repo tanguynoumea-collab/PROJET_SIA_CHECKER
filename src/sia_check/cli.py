@@ -50,6 +50,7 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--mdp", type=Path, help="tableau MDP HRS à écrire (fichier .xlsx)")
     ap.add_argument("--mdp-template", type=Path, help="gabarit MDP (défaut : gabarit vierge livré) ; ses tableaux sont remplacés")
     ap.add_argument("--project-id", help="ID projet HRS écrit dans InfosProjet (défaut : celui du gabarit)")
+    ap.add_argument("--project-name", help="Nom Projet HRS écrit dans InfosProjet (défaut : nom du dossier)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -174,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.mdp:
             pid = int(args.project_id) if args.project_id and args.project_id.isdigit() else args.project_id
             infos = applied.infos if applied is not None else None
-            log.info("tableau MDP écrit : %s", mdp.write(result, cfg, args.mdp, args.mdp_template, pid, project, infos))
+            log.info("tableau MDP écrit : %s", mdp.write(result, cfg, args.mdp, args.mdp_template, pid, args.project_name or project, infos))
         if args.corrections_xlsx:
             if applied is None:
                 log.error("--corrections-xlsx demande un journal (--corrections)")

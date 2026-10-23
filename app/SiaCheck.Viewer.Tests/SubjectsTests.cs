@@ -229,3 +229,54 @@ public class SubjectsViewModelTests
         Assert.Equal("Analyser", vm.AnalyseLabel);
     }
 }
+
+public class SubjectPointsTests
+{
+    [Fact]
+    public void Settled_subject_marks_its_points_seen_and_undoing_restores_them()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        var s1 = vm.Subjects.First(s => s.Id == "S1");
+        var points = vm.Issues.Where(i => s1.Subject.Points.Contains(i.Key)).ToList();
+        Assert.NotEmpty(points);
+        vm.SelectedSubject = s1;
+        vm.AcceptAllCorrectionsCommand.Execute(null);
+        Assert.All(points, i => Assert.Equal(ReviewStatus.Seen, i.Status));
+        Assert.All(points, i => Assert.StartsWith("Sujet réglé", i.Comment));
+        Assert.Equal(0, s1.OpenPoints);
+
+        vm.SelectedCorrection = s1.Corrections[0];
+        vm.SetCorrectionDecisionCommand.Execute("proposed");                 // plus réglé : retour « À traiter »
+        Assert.All(points, i => Assert.Equal(ReviewStatus.ToReview, i.Status));
+        Assert.Equal(points.Count, s1.OpenPoints);
+    }
+
+    [Fact]
+    public void Subject_without_corrections_can_mark_its_points()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        var sc = vm.Subjects.First(s => s.Id == "sc-implicite");
+        Assert.False(sc.HasCorrections);
+        Assert.Equal(1, sc.OpenPoints);
+        vm.SelectedSubject = sc;
+        vm.MarkSubjectPointsFalseCommand.Execute(null);
+        Assert.Equal(ReviewStatus.FalsePositive, vm.Issues.First(i => i.Key == "R1|ERR|N00||SP").Status);
+        Assert.Equal("1 faux positif", sc.PointsState);
+    }
+
+    [Fact]
+    public async Task Mdp_project_is_asked_and_remembered_per_folder()
+    {
+        using var tmp = new TempDir();
+        var shell = new FakeShell { AskAnswer = ["1778", "L'Orée"] };
+        var settings = new AppSettings();
+        var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
+        var hrs = await vm.AskMdpProjectAsync(tmp.Path + "/", "L OREE");
+        Assert.Equal(("1778", "L'Orée"), (hrs!.Id, hrs.Name));
+        Assert.Equal("1778", settings.FindMdpProject(tmp.Path)!.Id);          // même dossier, autre écriture
+        shell.AskAnswer = ["", "x"];
+        Assert.Null(await vm.AskMdpProjectAsync(tmp.Path, "L OREE"));           // ID obligatoire : pas d'export
+    }
+}

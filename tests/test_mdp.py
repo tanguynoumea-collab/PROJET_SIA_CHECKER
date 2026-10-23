@@ -57,7 +57,8 @@ def test_mdp_tables_content(filled, result, cfg):
     assert brutes.tables["SurfacesSIA4168"].ref == f"A1:L{1 + n_brutes}"
     row = [c.value for c in brutes[2]]
     assert row[0] == "=InfosProjet!$C$2" and row[1] == "SP" and row[4] == "Hors-sol"
-    assert row[11].startswith("=SurfacesSIA4168[[#This Row],[m2]]")
+    m3 = [(r[9], r[11]) for r in brutes.iter_rows(min_row=2, values_only=True)]
+    assert all(f.startswith("=SurfacesSIA4168[[#This Row],[m2]]") if h else f is None for h, f in m3)   # sans hauteur : vide
     cats = {r[1] for r in nettes.iter_rows(min_row=2, values_only=True)}
     assert {"SUP", "SED", "SUT"} <= cats and "SP" not in cats
     uspi = [r for r in wb["SurfacesUSPI"].iter_rows(min_row=2, values_only=True) if r[2] == "OK_N01_Apart-1"]

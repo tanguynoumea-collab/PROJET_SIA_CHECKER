@@ -26,7 +26,9 @@ categories:
   SEU:  {family: sia, parent: SEN}                                          # §3.1.1
   SED:  {family: sia, parent: SEN}                                          # §3.1.2
   SEI:  {family: sia, parent: SEN}                                          # §3.1.3
-  SEC:  {family: sia, parent: SEP, children: [SECP, SECN], rule: R3}        # §3.2
+  # SEC : comme SC, Treegram ne la crée pas (il la considère déduite) ; le résidu R3 des balcons et terrasses
+  # (garde-corps, murets, bords de dalle) en est l'image. Seuil relevé sur L'Orée : 10 à 34 % de la SEP du niveau.
+  SEC:  {family: sia, parent: SEP, children: [SECP, SECN], rule: R3, optional: true, implicit_max_rel: 0.35}  # §3.2
   SECP: {family: sia, parent: SEC}                                          # §3.2.1
   SECN: {family: sia, parent: SEC}                                          # §3.2.2
   # SIA 416 §1 — surface de terrain (absente de Treegram à ce jour)
@@ -146,6 +148,8 @@ levels:
 # logement : types de pièces qui prennent « Logement general » dans un appartement (avec lot) ; les autres
 #   (gaines, balcons…) gardent leur affectation. Une proposition refusée écrit « Inconnu ».
 mdp:
+  # Niveaux Treegram -> codes d'étage de la liste du gabarit MDP (Listes formulaire, Niveau)
+  etages: {Toiture: TOI}
   logement: [Chambre, PieceDeVie, PieceSecondaire_2PointsEau, PieceSecondaire_3PointsEau, PieceSecondaire_4PointsEau,
              Distribution, CirculationH, SUS]
   affectation:

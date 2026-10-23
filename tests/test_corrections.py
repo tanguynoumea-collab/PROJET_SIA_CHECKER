@@ -204,3 +204,24 @@ def test_traced_area_recomputed_from_polygon():
     b = corrections.apply(df, j, geometry)
     assert b.surfaces.set_index("id").loc["sep#c", "area"] == pytest.approx(50.3) and b.log.iloc[0].raison == ""
     assert corrections.apply(df, j).surfaces.set_index("id").loc["sep#c", "area"] == pytest.approx(50.3)   # sans géométrie
+
+
+def test_decouper_into_subcategory_keeps_parent(cfg):
+    # SEP 40 sans détail : 34 m² classés SEU (balcons), la SEP garde son aire et le résidu R3 tombe.
+    a = corrections.apply(surfaces(), journal({"id": "c1", "op": "découper", "cible": {"ids": ["A_N01_SEP#total"]},
+                                               "vers": "SEU", "aire": 34.0}), cfg=cfg)
+    s = a.surfaces.set_index("id")
+    assert s.loc["A_N01_SEP#total", "area"] == 40
+    assert s.loc["A_N01_SEP#total#c1", "category"] == "SEU"
+    assert check(rules.run(a.kept, cfg), "R3").verdict in ("OK", "INFO")
+
+
+def test_decouper_into_subcategory_joins_existing_leaves(cfg):
+    # SP -> SUS alors que SUS a déjà du détail : la nouvelle surface est élémentaire, sinon le détail la masquerait.
+    a = corrections.apply(surfaces(), journal({"id": "c1", "op": "découper", "cible": {"ids": ["A_N01_SP#total"]},
+                                               "vers": "SUS", "aire": 5.0}), cfg=cfg)
+    s = a.surfaces.set_index("id")
+    assert s.loc["A_N01_SP#total", "area"] == 100 and s.loc["A_N01_SP#total#c1", "kind"] == "leaf"
+    assert s.loc["A_N01_SUS#total", "area"] == 15
+    t = rules.level_totals(rules.classify(a.kept, cfg)[0]).loc[("A", "N01")]
+    assert t["SUS"] == 15

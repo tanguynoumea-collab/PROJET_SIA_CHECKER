@@ -17,7 +17,11 @@ Opérations (`op`) :
                avec `aire` : une seule cible, seule cette part est retirée (ex. toit d'attique) ;
                `polygone` (tracé) facultatif
     découper   une seule cible : `aire` m² passent dans une nouvelle surface de catégorie `vers`, même
-               bâtiment, même niveau, même sorte (élémentaire ou total) ; `polygone` (tracé) facultatif
+               bâtiment, même niveau ; `polygone` (tracé) facultatif. Quand `vers` est une sous-catégorie
+               de la cible (SEP -> SEU, SP -> SUS), l'aire est classée sans quitter la cible : le total
+               garde son aire, la part non classée devient une sous-catégorie (config requise). La nouvelle
+               surface est élémentaire si `vers` en a déjà au niveau (sinon elle serait masquée par elles),
+               sinon de la même sorte que la cible
     ajuster    aire des cibles fixée à `aire`
     affecter   colonne `affectation` (tableau MDP) fixée à `affectation`
     renseigner champs du tableau MDP sans surface (`champs` : {colonne: valeur}), pour les lots ou les
@@ -167,7 +171,21 @@ def _mark(df: pd.DataFrame, idx, cid: str) -> None:
     df.loc[idx, "corrections"] = [f"{c};{cid}" if c else cid for c in df.loc[idx, "corrections"]]
 
 
-def _apply_one(df: pd.DataFrame, c: dict) -> tuple[pd.DataFrame, int, float]:
+def _descends(cfg: Config | None, code: str, ancestor: str) -> bool:
+    """`code` est-il une sous-catégorie (à tout degré) de `ancestor` ?"""
+    if cfg is None or code not in cfg.categories or ancestor not in cfg.categories:
+        return False
+    code, ancestor = cfg.canonical(code), cfg.canonical(ancestor)
+    seen = set()
+    while code is not None and code not in seen:
+        seen.add(code)
+        code = cfg.categories.get(code, {}).get("parent")
+        if code == ancestor:
+            return True
+    return False
+
+
+def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd.DataFrame, int, float]:
     """Applique une correction ; renvoie (surfaces, nombre de surfaces touchées, m² déplacés ou modifiés)."""
     op, cid = c["op"], c["id"]
     idx = df.index[_target(df, c["cible"])]
@@ -216,16 +234,21 @@ def _apply_one(df: pd.DataFrame, c: dict) -> tuple[pd.DataFrame, int, float]:
         aire = float(c["aire"])
         if aire > float(r.area or 0) + 1e-6:
             raise _Refuse(f"aire découpée {aire:.2f} m² > aire de la surface {float(r.area or 0):.2f} m²")
-        df.loc[i, "area"] = float(r.area or 0) - aire
+        inside = _descends(cfg, c["vers"], r.category)   # classée dans la cible : la cible garde son aire
+        if not inside:
+            df.loc[i, "area"] = float(r.area or 0) - aire
         new = r.copy()
         new["id"] = f"{r['id']}#{cid}"
         new["category"], new["area"] = c["vers"], aire
+        leaves = (df.kind == "leaf") & (df.building == r.building) & (df.level == r.level)             & (df.category == c["vers"]) & ~df.excluded
+        new["kind"] = "leaf" if leaves.any() else r.kind
         for col in ("element_id", "tgm_id"):
             if col in new:
                 new[col] = None
         new["original_category"], new["original_area"], new["corrections"] = None, None, cid
-        if r.kind == "leaf":   # l'aire passe d'un total de niveau à l'autre
+        if r.kind == "leaf" and not inside:   # l'aire quitte le total de niveau de la cible
             _shift_node(df, r.building, r.level, r.category, -aire)
+        if new["kind"] == "leaf":   # et rejoint celui de sa nouvelle catégorie
             _shift_node(df, r.building, r.level, c["vers"], aire)
         df = pd.concat([df, pd.DataFrame([new.to_dict()])], ignore_index=True)
         moved = aire
@@ -246,7 +269,7 @@ CLASSIFIED_EXTERNAL = ("SEU", "SED", "SEI")
 
 def _traced_area(df: pd.DataFrame, c: dict, geometry) -> float | None:
     """Aire comptée du tracé d'une correction : polygone ∩ cible − sous-catégories externes classées du niveau."""
-    if geometry is None or not c.get("polygone") or not (c["op"] == "découper" or c["op"] == "exclure"):
+    if geometry is None or not c.get("polygone") or c["op"] not in ("découper", "exclure"):
         return None
     try:
         from shapely.geometry import shape
@@ -270,11 +293,13 @@ def _traced_area(df: pd.DataFrame, c: dict, geometry) -> float | None:
     return float(region.area)
 
 
-def apply(df: pd.DataFrame, journal: dict, geometry=None, tolerance: tuple[float, float] = (0.5, 0.005)) -> Applied:
+def apply(df: pd.DataFrame, journal: dict, geometry=None, tolerance: tuple[float, float] = (0.5, 0.005),
+          cfg: Config | None = None) -> Applied:
     """Applique les corrections acceptées du journal à une copie des surfaces lues (reader.read).
 
     `geometry(surface) -> polygone shapely | None` : géométrie en plan d'une surface, pour recalculer l'aire des
-    corrections tracées ; `tolerance` : (m², relatif), comme config.yaml > tolerance.
+    corrections tracées ; `tolerance` : (m², relatif), comme config.yaml > tolerance ; `cfg` : hiérarchie des
+    catégories, pour les découpes vers une sous-catégorie de la cible.
     """
     df = df.copy().reset_index(drop=True)
     df["excluded"] = False
@@ -301,7 +326,7 @@ def apply(df: pd.DataFrame, journal: dict, geometry=None, tolerance: tuple[float
                             and abs(computed - stated) > tolerance[1] * max(stated, computed):
                         c = {**c, "aire": round(computed, 2)}
                         entry["raison"] = f"aire recalculée depuis le tracé : {computed:.2f} m² au lieu de {stated:.2f}"
-                    df, n, m2 = _apply_one(df, c)
+                    df, n, m2 = _apply_one(df, c, cfg)
                     if c["op"] == "renseigner":
                         infos.append({"selection": (c["cible"].get("selection") or {}), "champs": c["champs"]})
                     entry.update(application=APPLIED if n or c["op"] == "renseigner" else NOT_FOUND,
@@ -377,5 +402,5 @@ def write_summary(applied: Applied, before: rules.Result, after: rules.Result, p
 
 def run(df: pd.DataFrame, journal: dict, cfg: Config, geometry=None) -> tuple[Applied, rules.Result, rules.Result]:
     """(corrections appliquées, contrôles avant, contrôles après)."""
-    applied = apply(df, journal, geometry, (cfg.abs_m2, cfg.rel))
+    applied = apply(df, journal, geometry, (cfg.abs_m2, cfg.rel), cfg)
     return applied, rules.run(df, cfg), rules.run(applied.kept, cfg)

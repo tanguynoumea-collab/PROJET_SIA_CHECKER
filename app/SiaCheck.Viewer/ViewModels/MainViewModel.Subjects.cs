@@ -178,7 +178,9 @@ public sealed partial class MainViewModel
         foreach (var c in s.Corrections)
             c.PropertyChanged += (_, e) =>
             {
-                if (e.PropertyName != nameof(CorrectionItem.Decision)) return;
+                // "" : modèle remplacé (destination choisie, tracé, édition) ; enregistrer deux fois la même correction est sans effet.
+                if (e.PropertyName != nameof(CorrectionItem.Decision) && !(e.PropertyName == "" && c.Model.Origin == "manuel"))
+                    return;
                 _journal?.Decide(c.Model);
                 OnCorrectionsChanged();
                 SyncSettledPoints(s);

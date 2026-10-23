@@ -49,6 +49,28 @@ internal static class SubjectFixture
     }
 }
 
+public class CorrectionDestinationTests
+{
+    [Fact]
+    public void Destination_reclassifies_the_part_and_survives_reload()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        var c = vm.Subjects.Single(s => s.Id == "S1").Corrections.Single(x => x.Id == "abords-ERR-N00");
+        Assert.Contains(c.Destinations, d => d.Value == "SEU");                 // part de SEP : catégories externes
+        c.Destination = "SEU";
+        Assert.Equal(("découper", "SEU", "manuel"), (c.Model.Op, c.Model.To, c.Model.Origin));
+        c.Destination = CorrectionItem.ExcludeChoice;
+        Assert.Equal(("exclure", (string?)null), (c.Model.Op, c.Model.To));
+        Assert.Equal(45.0, c.Model.Area);                                       // exclusion de la même part
+
+        var again = SubjectFixture.Loaded(tmp).Subjects.Single(s => s.Id == "S1").Corrections.Single(x => x.Id == "abords-ERR-N00");
+        Assert.Equal(CorrectionItem.ExcludeChoice, again.Destination);
+        var whole = SubjectFixture.Loaded(tmp).Subjects.Single(s => s.Id == "S1").Corrections.Single(x => x.Id == "abords-OK-N01");
+        Assert.False(whole.HasDestinations);                                    // SEP entière : pas de part à classer
+    }
+}
+
 public class CorrectionJournalTests
 {
     private static Correction Proposal(string id = "c1", string status = Correction.Proposed) =>

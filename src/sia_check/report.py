@@ -62,7 +62,8 @@ class Report:
 
     def __post_init__(self):
         res = self.result.residuals
-        nok = res[res.verdict != "OK"]
+        # Points d'attention : contrôles hors OK, sans les sommes que les niveaux détaillent déjà.
+        nok = res[(res.verdict != "OK") & ~rules.covered_aggregates(res)]
         self.residuals = nok.reindex(nok.diff_m2.abs().sort_values(ascending=False).index)
         self.surfaces = _surfaces(self.result)
         self.categories = _category_summary(self.result, self.cfg)
@@ -75,7 +76,8 @@ class Report:
 
     @property
     def counts(self) -> dict[str, int]:
-        vc = self.result.residuals.verdict.value_counts()
+        vc = self.residuals.verdict.value_counts()
+        vc["OK"] = int((self.result.residuals.verdict == "OK").sum())
         return {v: int(vc.get(v, 0)) for v in rules.VERDICTS}
 
 

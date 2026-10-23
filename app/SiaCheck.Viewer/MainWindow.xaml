@@ -786,6 +786,13 @@
                                     <TextBlock Margin="0,2,0,0" Style="{StaticResource TextCaption}" Text="Aire estimée, sans tracé."
                                                Visibility="{Binding HasNoTrace, Converter={StaticResource BoolToVisibility}}" />
                                     <StackPanel Margin="0,8,0,0" Visibility="{Binding IsEditing, Converter={StaticResource HiddenWhen}}">
+                                        <!-- Ce qu'est la part visée (SEP / SP non classée) : choisir, puis accepter -->
+                                        <DockPanel Margin="0,0,0,6" Visibility="{Binding HasDestinations, Converter={StaticResource BoolToVisibility}}">
+                                            <TextBlock DockPanel.Dock="Left" Width="80" Style="{StaticResource TextCaption}" VerticalAlignment="Center" Text="Classer en" />
+                                            <ComboBox ItemsSource="{Binding Destinations}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                      SelectedValue="{Binding Destination}" AutomationProperties.Name="Catégorie de la part visée"
+                                                      ToolTip="Catégorie SIA 416 de cette part de surface ; la correction devient « manuel »" />
+                                        </DockPanel>
                                         <Border Background="{DynamicResource BrushBackground}" CornerRadius="{StaticResource RadiusControl}" Padding="2">
                                             <UniformGrid Rows="1">
                                                 <RadioButton Style="{StaticResource Segment}" GroupName="Decision" Content="Proposée" ToolTip="1"

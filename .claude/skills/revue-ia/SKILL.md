@@ -23,7 +23,7 @@ Exemple de référence : `docs/revue-ia/L_OREE_2026-10-22.md` (L'Orée, 156 poin
    - la liste des points d'attention ;
    - les **ratios informatifs** (`ratios`, définis dans `config.yaml > ratios`) : par portée (`*` = projet, puis chaque bâtiment), valeur, numérateur et dénominateur en m², repère indicatif `ref_min`–`ref_max` et statut `ok|bas|haut|info|n/a`. Les ratios USPI (SNH, SH, SBH, SVN, SVB) ne somment que les lots ; SC absente vaut SP − SN ; `LOTS` compte les lots ;
    - les règles personnalisées actives (`custom_rules`) ;
-   - les **propositions** du moteur (`propositions`, `sia_check.sujets`) : les points déjà regroupés par cause (`toitures`, `abords`, `sc-implicite`, `agregats`, puis `<règle>-<catégorie>` à vérifier), chacun avec ses corrections de base. Une correction a un `id` stable, une opération (`exclure`, `découper` vers SA, `reclasser`, `ajuster`, `affecter`), une `cible` (identifiants de surface), une `aire` et une `explication`. Les tracés ne sont pas transmis : seule l'aire compte.
+   - les **propositions** du moteur (`propositions`, `sia_check.sujets`) : les points déjà regroupés par cause (`toitures`, `abords`, `sc-implicite`, `agregats`, puis `<règle>-<catégorie>`), chacun avec ses corrections de base. Les sommes par bâtiment ou projet que les niveaux détaillent déjà ne sont plus des points. La part non classée d'une SEP ou d'une SP de niveau (`R3-SEP`, `R1-SP`) reçoit une découpe `non-classe-<bât>-<niveau>-<code>` vers une sous-catégorie par défaut (SEU, SUS) : la décision `modifier` peut changer son `vers` (SEU, SED, SEI, SEC, SA ; SUP, SUS, SD, SI, SC) ou son `aire`. Une correction a un `id` stable, une opération (`exclure`, `découper` vers SA ou une sous-catégorie, `reclasser`, `ajuster`, `affecter`), une `cible` (identifiants de surface), une `aire` et une `explication`. Les tracés ne sont pas transmis : seule l'aire compte.
 3. **Lire et regrouper.** Chercher les causes communes avant de lire les points un par un. Les questions qui ont payé sur L'Orée :
    - Un résidu R1 disparaît-il si l'on compte un code maison ? Si oui, c'est une question de nomenclature, pas de modélisation. Vérifier d'abord dans `config.yaml > custom_rules` si une règle personnalisée le compte déjà (P1 pour SUT).
    - Où repose la SEP ? Au RDC, au-dessus du sous-sol : dalle sur sous-sol, donc abords SA (SIA 416 §1.2). Recouverte par SPT : toiture comptée en SEP (§3).
@@ -35,7 +35,25 @@ Exemple de référence : `docs/revue-ia/L_OREE_2026-10-22.md` (L'Orée, 156 poin
    - « En bref » : un tableau des sujets (points, surface en jeu, certitude, action) et l'effet sur les totaux ;
    - un chapitre par sujet : **Constat** chiffré (avec un tableau si plusieurs niveaux), **Pourquoi c'est un vrai sujet** (chiffre SIA 416 cité), **Ce qui reste à confirmer**, **Points concernés** ;
    - les faux positifs et leur justification statistique ;
-   - « Ratios de développement » : un tableau des ratios du projet (valeur, repère, statut, explication) puis les bâtiments qui s'écartent ; chaque ratio hors repère est relié à un sujet ou déclaré inexpliqué ;
+   - « Analyse des ratios » : reprendre **toutes les lignes** du diagramme de ratios de la visionneuse, sans en omettre une, même au repère :
+     1. un tableau du projet (`*`) : ratio, libellé, valeur, repère, statut, numérateur / dénominateur en m², **lecture** (une phrase) ;
+     2. un tableau par ratio × bâtiment (une ligne par ratio, une colonne par bâtiment, valeur et statut), pour voir d'un coup d'œil le bâtiment qui s'écarte ;
+     3. un **diagnostic** : les conclusions que les ratios permettent ensemble, chacune chiffrée, reliée aux sujets de la revue quand elle les explique, et classée « vrai sujet », « à confirmer » ou « typologie » (normal pour ce programme). Grille de lecture :
+
+        | Signal | Lecture probable |
+        |---|---|
+        | SC/SP haut, SN/SP bas (et SBH/SH haut) | murs très épais (isolation, porteurs massifs), **ou** surfaces non classées absorbées par SC = SP − SN : trancher avec le résidu R1 du niveau et sa régularité d'un étage à l'autre |
+        | SC/SP bas (< 10 %) | pièces dessinées jusqu'à l'axe des murs, ou SP trop petite |
+        | SI/SP haut | beaucoup de locaux techniques (chaufferie, ventilation, gaines) ou pièces techniques classées SI à tort (caves, local vélos → SUS) |
+        | SD/SP haut | dégagements généreux (coursives intérieures, halls) ou couloirs d'appartement classés SD au lieu de SUP |
+        | SUP/SU bas, SUS/SP haut | parkings, caves, abris en sous-sol, ou SUT compté dans SU (P1) |
+        | SEP/SP haut | balcons généreux, **ou** abords (SA) et toitures comptés en SEP : relier aux sujets abords / toitures |
+        | SNH/SP, SVN/SP bas | rendement de plan faible : usages non résidentiels, sous-sols comptés, ou SNH des lots incomplète |
+        | SH/SNH hors 1,03–1,08 | SCI USPI absente ou forfaitaire dans Treegram |
+        | SBH/SH haut | murs extérieurs épais, mitoyens comptés en entier |
+        | bâtiment isolé hors tendance | erreur d'attribution de surfaces propre à ce bâtiment : le désigner et le relier à ses points |
+
+        Un ratio hors repère sans sujet qui l'explique devient un sujet « à confirmer », jamais un faux positif par défaut ;
    - « Hors sujets SIA, mais à connaître » (cache 3D, USPI, corrections d'affirmations antérieures) ;
    - « Ce que la revue n'a pas pu vérifier ».
 6. **Écrire les verdicts** `docs/revue-ia/<PROJET>_<date>.verdicts.json` :

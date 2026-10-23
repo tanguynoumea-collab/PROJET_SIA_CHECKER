@@ -193,7 +193,9 @@ def test_review_v2_reorients_subjects(loree):
     doc = viewer.build(res, cfg, geom.read_cache(LOREE), "L OREE", [str(TGM)])
     rv = sujets.load_review(Path(__file__).resolve().parents[1] / "docs/revue-ia/L_OREE_2026-10-22.verdicts.json")
     out = sujets.apply_review(sujets.build(doc, cfg), rv, {s["id"] for s in doc["surfaces"]})
-    assert out["revue"]["problemes"] == [] and out["revue"]["decisions"] == 31 and not out["revue"]["points_inconnus"]
+    assert out["revue"]["problemes"] == [] and out["revue"]["decisions"] == 31
+    # Seuls les agrégats de la revue, que les niveaux détaillent, ne sont plus des points (rules.covered_aggregates).
+    assert all("|*||" in k for k in out["revue"]["points_inconnus"])
     by = {s["id"]: s for s in out["subjects"]}
     assert len(by["S1"]["corrections"]) == 9 and len(by["S2"]["corrections"]) == 22
     assert len(by["S6"]["points"]) == 71 and not by["S6"]["corrections"]

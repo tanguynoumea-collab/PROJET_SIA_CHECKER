@@ -3,7 +3,7 @@
 Des dalles carrées empilées, un angle face à l'observateur (isométrie vraie, 30°), chacune aux couleurs
 SIA : SI, SD, SUS, SUP de bas en haut, puis la SP au sommet, découpée en locaux. Les faces latérales
 sont des teintes assombries de la même couleur. Fond graphite de l'app.
-Les petites tailles (≤ 32 px) gardent trois dalles plus épaisses, sans les locaux.
+Toutes les tailles reprennent le même dessin : la barre des tâches (24–32 px) montre le logo de la barre de titre.
 
     .venv/Scripts/python scripts/make_logo.py
 
@@ -80,11 +80,11 @@ def draw(detail: bool) -> Image.Image:
 
 def main() -> None:
     ASSETS.mkdir(parents=True, exist_ok=True)
-    full, simple = draw(detail=True), draw(detail=False)
+    full = draw(detail=True)
     full.resize((512, 512), Image.LANCZOS).save(ASSETS / "SiaCheck.png")
     full.resize((512, 512), Image.LANCZOS).save(ROOT / "docs" / "logo.png")
     sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256]
-    frames = [(simple if s <= 32 else full).resize((s, s), Image.LANCZOS) for s in sizes]
+    frames = [full.resize((s, s), Image.LANCZOS) for s in sizes]
     frames[-1].save(ASSETS / "SiaCheck.ico", format="ICO", sizes=[(s, s) for s in sizes], append_images=frames[:-1])
     # planche de contrôle (non versionnée)
     (ROOT / "report").mkdir(exist_ok=True)

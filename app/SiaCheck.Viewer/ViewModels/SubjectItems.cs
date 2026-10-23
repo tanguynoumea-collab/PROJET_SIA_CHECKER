@@ -129,6 +129,48 @@ public sealed partial class CorrectionItem : ObservableObject
         OnPropertyChanged(string.Empty);
     }
 
+    // ------------------------------------------------------------------ destination de la part visée
+
+    /// <summary>Choix « Exclure » de la liste des destinations : la part sort des sommes SIA (toiture non accessible…).</summary>
+    public const string ExcludeChoice = "exclure";
+
+    private static readonly IReadOnlyList<ChoiceItem> SepDestinations =
+    [
+        new("SEU · balcons, terrasses", "SEU"), new("SED · coursives", "SED"), new("SEI · installations", "SEI"),
+        new("SEC · garde-corps, murets", "SEC"), new("SA · abords (contact terrain)", "SA"),
+        new("Exclure · toiture non accessible", ExcludeChoice),
+    ];
+    private static readonly IReadOnlyList<ChoiceItem> SpDestinations =
+    [
+        new("SUP · utile principale", "SUP"), new("SUS · utile secondaire", "SUS"), new("SD · dégagement", "SD"),
+        new("SI · installations", "SI"), new("SC · construction (murs)", "SC"), new("Exclure · hors SP", ExcludeChoice),
+    ];
+
+    /// <summary>
+    /// Catégories possibles pour la part visée d'une SEP ou d'une SP (découpe, exclusion partielle) : la correction
+    /// d'un résidu « non classé » se règle en choisissant ce qu'il est. Vide pour les autres corrections.
+    /// </summary>
+    public IReadOnlyList<ChoiceItem> Destinations =>
+        IsOrphan || Model.Area is null || Model.Op is not ("découper" or "exclure") ? []
+        : TargetCode switch { "SEP" => SepDestinations, "SP" => SpDestinations, _ => [] };
+    public bool HasDestinations => Destinations.Count > 0;
+
+    /// <summary>Destination choisie : change l'opération (découper ↔ exclure) ; la correction devient « manuel ».</summary>
+    public string? Destination
+    {
+        get => Model.Op == "exclure" ? ExcludeChoice : Model.To;
+        set
+        {
+            if (value is null || value == Destination) return;
+            var c = Model.Clone();
+            c.Op = value == ExcludeChoice ? "exclure" : "découper";
+            c.To = value == ExcludeChoice ? null : value;
+            c.Origin = "manuel";
+            Model = c;
+            OnPropertyChanged(string.Empty);
+        }
+    }
+
     /// <summary>L'aire est modifiable pour les opérations qui en portent une.</summary>
     public bool CanEditArea => Model.Op is "découper" or "ajuster" or "exclure";
 

@@ -17,7 +17,11 @@ Causes reconnues (L'Orée, revue IA du 22.10.2026) :
   (SIA 416 §1.2) ; le tracé pré-calculé est la SEP hors plancher du niveau et hors SEU/SED ;
 - sc-implicite : résidu R1 (SC) ou R3 (SEC) compatible avec la surface de construction, que Treegram ne crée
   pas -> aucune action ;
-- agrégats : contrôles sommés par bâtiment ou sur le projet (niveau « * ») -> suivent leurs niveaux.
+- agrégats : contrôles sommés par bâtiment ou sur le projet (niveau « * ») que les niveaux ne détaillent pas
+  (les autres ne sont plus des points : rules.covered_aggregates) ;
+- non classé : résidu R3 (SEP) ou R1 (SP) d'un niveau, hors toitures et abords -> `découper` la part non classée
+  vers une sous-catégorie (SEU, SUS…, choisie dans la visionneuse) : une correction par niveau, la cible garde
+  son aire (corrections.py), le résidu disparaît.
 Les autres points sont regroupés par règle et catégorie, à vérifier.
 
 La géométrie (shapely, comme preuves.py) donne les aires et les tracés ; sans elle, les aires viennent
@@ -51,6 +55,19 @@ WHY = {
     AGREGATS: "Sommes des contrôles de niveau : se corrigent avec les sujets de leurs niveaux.",
 }
 EXTERNAL_CLASSIFIED = ["SEU", "SED", "SEI"]
+# Résidus d'un total racine : destination proposée par défaut (balcons non créés ; locaux sans type) et
+# sous-catégories qui composent déjà le total, retirées du tracé.
+UNCLASSIFIED = {
+    "SEP": ("SEU", EXTERNAL_CLASSIFIED + ["SEC", "SECP", "SECN"]),
+    "SP": ("SUS", ["SUP", "SUS", "SUT", "SD", "SI", "SC", "SCP", "SCN"]),
+}
+UNCLASSIFIED_WHY = {
+    "SEP": "Choisir pour chaque niveau ce qu'est la SEP non classée : balcons ou terrasses (SEU), coursives (SED), "
+           "installations (SEI), garde-corps et murets (SEC) ; au contact du terrain, abords (SA) ; toiture non "
+           "accessible : exclure (SIA 416 §3).",
+    "SP": "Choisir pour chaque niveau ce qu'est la SP non classée : utile (SUP, SUS), dégagement (SD), installations "
+          "(SI) ou construction (SC, murs et cloisons) ; ajuster l'aire si seule une part est en cause (SIA 416 §2).",
+}
 
 
 # --------------------------------------------------------------------------- géométrie
@@ -235,6 +252,29 @@ def build(doc: dict, cfg: Config) -> dict:
             "aire": round(aire, 2), "polygone": _geojson(region), "trace": _trace(region, _top_z(by_id.get(sep_id))),
             "explication": f"{b} {lvl} : {_m2(aire)} m² de SEP hors plancher et hors SEU/SED, au contact du terrain.",
         }, aire)
+
+    # Part non classée des SEP et SP de niveau : une découpe vers une sous-catégorie par point.
+    for i in issues:
+        key = (i["building"], i["level"])
+        code = i["category"]
+        if i["rule"] not in ("R1", "R3") or i["verdict"] != "ERREUR" or code not in UNCLASSIFIED                 or i["level"] == rules.ALL or (code == "SEP" and (key in roofs or key in grounds)):
+            continue
+        node_id = _node_id(nodes, key, code)
+        diff = float(i.get("diff_m2") or 0)
+        if node_id is None or diff <= tol:
+            continue
+        b, lvl = key
+        to, classified = UNCLASSIFIED[code]
+        region = geo.minus(geo.union(key, [code]), key, classified) if geo.ok else None
+        s = subjects[f"{i['rule']}-{code}"]
+        s["action"] = "corriger"
+        s["explication"] = UNCLASSIFIED_WHY[code]
+        _propose(s, {
+            "id": f"non-classe-{b}-{lvl}-{code}", "op": "découper", "cible": {"ids": [node_id]}, "vers": to,
+            "aire": round(diff, 2), "trace": _trace(region, _top_z(by_id.get(node_id))),
+            "explication": f"{b} {lvl} : {_m2(diff)} m² de {code} sans sous-catégorie, classés en {to} par défaut ; "
+                           f"choisir la bonne catégorie.",
+        }, diff)
 
     order = [TOITURES, ABORDS, SC_IMPLICITE, AGREGATS]
     out = sorted(subjects.values(), key=lambda s: (order.index(s["id"]) if s["id"] in order else len(order), s["id"]))

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from sia_check import corrections, geom, sujets, viewer
+from sia_check import corrections, geom, rules, sujets, viewer
 
 
 @pytest.fixture
@@ -14,11 +14,12 @@ def subjects(result, cfg):
 
 
 def test_grouping_by_cause(subjects):
-    assert subjects["toitures"]["points"] == ["A2|ERR|Toiture||SEP", "R3|ERR|Toiture||SEP"]
+    assert sorted(subjects["toitures"]["points"]) == ["A2|ERR|Toiture||SEP", "R3|ERR|Toiture||SEP"]
     assert set(subjects["abords"]["points"]) == {"A1|ERR|N00||SEP", "R3|ERR|N00||SEP"}
     assert subjects["sc-implicite"]["action"] == "aucune" and subjects["sc-implicite"]["points"]
-    assert all("|*|" in k for k in subjects["agregats"]["points"])
-    assert not any(k.startswith("A3") for k in subjects["agregats"]["points"])     # codes inconnus : à part
+    agg = subjects.get("agregats", {"points": []})["points"]
+    assert all("|*|" in k for k in agg)
+    assert not any(k.startswith("A3") for k in agg)     # codes inconnus : à part
     assert subjects["R4-SP"]["action"] == "à vérifier" and not subjects["R4-SP"]["corrections"]
 
 
@@ -180,3 +181,23 @@ def test_reviewed_journal_skips_rejected(synth, cfg, result):
     applied, _, _ = corrections.run(synth, j, cfg)
     log = applied.log.set_index("id")
     assert log.loc[roof, "application"] == corrections.SKIPPED and log.loc[roof, "statut"] == "rejetée"
+
+
+def test_covered_aggregates_are_not_points(result, cfg):
+    doc = viewer.build(result, cfg, geom.Cache(), "Synth", ["synth.csv"], date="2026-10-21")
+    keys = {i["key"] for i in doc["issues"]}
+    assert "R1|ERR|N01||SP" in keys or any(k.startswith("R1|ERR|") for k in keys)
+    covered = result.residuals[rules.covered_aggregates(result.residuals)]
+    assert len(covered) and not keys & {viewer.issue_key(r) for _, r in covered.iterrows()}
+
+
+def test_unclassified_residual_proposals(subjects, synth, cfg):
+    # ERR N00 : SP 2 classée à moitié -> une découpe vers SUS par défaut, dans le sujet R1-SP qui passe « corriger ».
+    sp = subjects["R1-SP"]
+    assert sp["action"] == "corriger" and [c["id"] for c in sp["corrections"]] == ["non-classe-ERR-N00-SP"]
+    c = sp["corrections"][0]
+    assert (c["op"], c["vers"]) == ("découper", "SUS") and c["aire"] > 0
+    applied, before, after = corrections.run(synth, {"corrections": [{**c, "statut": "acceptée"}]}, cfg)
+    assert set(applied.log.application) == {corrections.APPLIED}
+    r = after.residuals
+    assert not len(r[(r.building == "ERR") & (r.level == "N00") & (r.rule == "R1") & (r.verdict == "ERREUR")])

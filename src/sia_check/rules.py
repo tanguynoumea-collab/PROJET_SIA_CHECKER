@@ -287,6 +287,21 @@ def _judge_sum(c: dict, cfg: Config) -> dict | None:
                 hint=HINTS.get((rule, code), f"Vérifier le classement des surfaces de la {code}."))
 
 
+def covered_aggregates(res: pd.DataFrame) -> pd.Series:
+    """Contrôles sommés (niveau « * ») hors OK dont un niveau porte déjà un point sur la même catégorie.
+
+    Ils redisent en somme ce que les points de niveau détaillent et ne se corrigent qu'à travers eux :
+    ils restent dans les contrôles, pas dans les points d'attention. Un agrégat sans point de niveau
+    (petits écarts sous la tolérance qui s'additionnent) reste un point.
+    """
+    lv = res[(res.level != ALL) & (res.verdict != "OK")]
+    by_bld = set(zip(lv.building, lv.category))
+    any_bld = set(lv.category)
+    agg = (res.level == ALL) & (res.verdict != "OK") & res.rule.isin(["R0", "R1", "R2", "R3", "R4"])
+    covered = [((b, c) in by_bld) if b != ALL else (c in any_bld) for b, c in zip(res.building, res.category)]
+    return agg & pd.Series(covered, index=res.index, dtype=bool)
+
+
 # --------------------------------------------------------------------------- niveaux (R5, A1, A2)
 
 def _matches(name: str, patterns: list[str]) -> bool:

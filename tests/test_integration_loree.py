@@ -171,8 +171,10 @@ def test_subjects_without_ai(loree):
     doc = viewer.build(res, cfg, geom.read_cache(LOREE), "L OREE", [str(TGM)])
     sj = {s["id"]: s for s in sujets.build(doc, cfg)["subjects"]}
     assert sj["toitures"]["m2"] == pytest.approx(7279, abs=5)
-    b03 = next(c for c in sj["abords"]["corrections"] if c["id"] == "abords-B03-N00")
+    b03 = next(c for c in sj["abords"]["corrections"] if c["id"] == "abords-B03-N00")   # miettes fondues : un morceau
     assert b03["aire"] == pytest.approx(1812.6, abs=1) and b03["polygone"]
+    e09 = [c for c in sj["abords"]["corrections"] if c.get("groupe") == "abords-E09-N00"]
+    assert [round(c["aire"]) for c in e09] == [1526, 114, 99]                       # trois morceaux de SEP au RDC
     assert sj["sc-implicite"]["action"] == "aucune" and len(sj["sc-implicite"]["points"]) > 50
     journal = sujets.journal({"subjects": list(sj.values())})
     for c in journal["corrections"]:
@@ -193,11 +195,14 @@ def test_review_v2_reorients_subjects(loree):
     doc = viewer.build(res, cfg, geom.read_cache(LOREE), "L OREE", [str(TGM)])
     rv = sujets.load_review(Path(__file__).resolve().parents[1] / "docs/revue-ia/L_OREE_2026-10-22.verdicts.json")
     out = sujets.apply_review(sujets.build(doc, cfg), rv, {s["id"] for s in doc["surfaces"]})
-    assert out["revue"]["problemes"] == [] and out["revue"]["decisions"] == 31
+    # 31 décisions de la revue ; celles d'un niveau découpé en morceaux valent pour chaque morceau.
+    assert out["revue"]["problemes"] == [] and out["revue"]["decisions"] >= 31
     # Seuls les agrégats de la revue, que les niveaux détaillent, ne sont plus des points (rules.covered_aggregates).
     assert all("|*||" in k for k in out["revue"]["points_inconnus"])
     by = {s["id"]: s for s in out["subjects"]}
-    assert len(by["S1"]["corrections"]) == 9 and len(by["S2"]["corrections"]) == 22
+    levels = lambda sid: {c.get("groupe") or c["id"] for c in by[sid]["corrections"]}   # noqa: E731
+    assert len(levels("S1")) == 9 and len(levels("S2")) == 22
+    assert len(by["S1"]["corrections"]) == 12                     # E09 N00 en trois morceaux, I14 N00 en deux
     assert len(by["S6"]["points"]) == 71 and not by["S6"]["corrections"]
     j = sujets.journal(out)
     for c in j["corrections"]:

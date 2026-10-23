@@ -93,7 +93,10 @@ def _concerned(r: pd.Series, surf: pd.DataFrame, unknown: pd.DataFrame, cfg: Con
     root = rules.SP if r["rule"] == "R5" else r["category"]
     if root not in cfg.categories:
         return []
-    return s[s.code.isin(_subtree(root, cfg))].id.astype(str).tolist()
+    # SEP non classée, au terrain ou en toiture : c'est la SEP qui est en cause, pas ses parties déjà classées
+    # (SEU, SED) qu'on prendrait sinon pour une partie du problème.
+    codes = {rules.SEP} if root == rules.SEP and r["rule"] in ("R3", "A1", "A2") else _subtree(root, cfg)
+    return s[s.code.isin(codes)].id.astype(str).tolist()
 
 
 def _mesh(meshes) -> dict | None:

@@ -74,8 +74,13 @@ public sealed partial class CorrectionItem : ObservableObject
 
     public bool IsRejected => Decision == CorrectionDecision.Rejected;
 
-    /// <summary>« A01·N07 », ou les critères d'une sélection (« Gaine », « 2 ch. », « A01 »).</summary>
-    public string Location => _target is { Building: { } b, Level: { } l } ? $"{b}·{l}" : Model.TargetIds.Count > 0 ? Model.TargetIds[0] : Selection();
+    /// <summary>« A01·N07 », « E09·N00 2/3 » pour un morceau de la part d'un niveau, ou les critères d'une sélection (« Gaine », « 2 ch. »).</summary>
+    public string Location => (_target is { Building: { } b, Level: { } l } ? $"{b}·{l}" : Model.TargetIds.Count > 0 ? Model.TargetIds[0] : Selection())
+        + (Piece is { } p ? $" {p}" : "");
+
+    /// <summary>« 2/3 » : morceau d'un seul tenant de la part tracée d'un niveau (sujets.py), décidé à part.</summary>
+    public string? Piece =>
+        Model.Extra?.TryGetValue("morceau", out var m) == true && m.ValueKind == System.Text.Json.JsonValueKind.String ? m.GetString() : null;
 
     private string Selection()
     {

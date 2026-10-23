@@ -374,20 +374,28 @@ public sealed partial class MainViewModel
 
     // ------------------------------------------------------------------ 3D
 
+    /// <summary>
+    /// Sujet avec corrections : ses seules cibles, et pour une correction tracée la seule part en cause (la zone déjà
+    /// classée de la même surface, SED d'une SEP par exemple, reste en fantôme). Sans correction : les surfaces des points.
+    /// </summary>
     private void FocusSubject(SubjectItem s)
     {
         if (Scene is null || s.SurfaceIds.Count == 0) return;
-        var bounds = Scene.Focus(s.SurfaceIds);
+        var corrections = s.Corrections.Where(c => !c.IsOrphan && c.TargetIds.Count > 0).ToList();
+        var bounds = corrections.Count == 0 ? Scene.Focus(s.SurfaceIds)
+            : Scene.Focus(corrections.Where(c => !c.HasTrace).SelectMany(c => c.TargetIds), Parts(corrections), _shell.AccentColor);
         SetFocused(null);
         _shell.Frame(bounds);
     }
 
+    private static List<(string, TraceMesh)> Parts(IEnumerable<CorrectionItem> corrections) =>
+        corrections.Where(c => c.HasTrace && c.TargetIds.Count == 1).Select(c => (c.TargetIds[0], c.Model.Trace!)).ToList();
+
     private void FocusCorrection(CorrectionItem c)
     {
         if (Scene is null) return;
-        var bounds = Scene.Focus(c.TargetIds);
-        if (c.Model.Trace is { } t && _surfaceById.GetValueOrDefault(c.TargetIds.FirstOrDefault() ?? "") is { Building: { } b, Level: { } l })
-            Scene.SetOverlay(t, b, l, _shell.AccentColor);
+        var parts = Parts([c]);
+        var bounds = parts.Count > 0 ? Scene.Focus([], parts, _shell.AccentColor) : Scene.Focus(c.TargetIds);
         SetFocused(null);
         if (bounds is null) _shell.Notify("La surface visée n'a pas de géométrie dans le cache VWR.");
         _shell.Frame(bounds);

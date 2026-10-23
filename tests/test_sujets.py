@@ -71,10 +71,13 @@ def test_ground_tracing_from_geometry(cfg):
         ],
     }
     sj = sujets.build(doc, cfg)
-    c = sj["subjects"][0]["corrections"][0]
-    assert sj["geometry"] and c["aire"] == pytest.approx(150.0)
-    assert c["polygone"]["type"] in ("Polygon", "MultiPolygon")
-    json.dumps(c)                                                  # sérialisable tel quel dans le journal
+    cs = sj["subjects"][0]["corrections"]
+    # Deux morceaux d'un seul tenant, de part et d'autre du plancher : une correction chacun, à décider à part.
+    assert sj["geometry"] and [c["aire"] for c in cs] == pytest.approx([100.0, 50.0])
+    assert [c["id"] for c in cs] == ["abords-A-N00-1", "abords-A-N00-2"]
+    assert [c["morceau"] for c in cs] == ["1/2", "2/2"] and {c["groupe"] for c in cs} == {"abords-A-N00"}
+    assert all(c["polygone"]["type"] == "Polygon" for c in cs)
+    json.dumps(cs)                                                 # sérialisable tel quel dans le journal
 
 
 def test_partial_exclusion(cfg):

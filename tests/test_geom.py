@@ -100,10 +100,10 @@ def test_issue_keys_unique_and_stable(doc, result, cfg):
     assert keys == [i["key"] for i in again["issues"]]
 
 
-def test_r3_concerns_sep_and_children(doc):
-    ids = set(issue(doc, "R3|ERR|N00||SEP")["surface_ids"])
-    assert {"err-n00-sep", "err-n00-seu", "err-n00-seu-node"} <= ids
-    assert "err-n00-sp" not in ids
+def test_r3_concerns_only_the_sep(doc):
+    # La part non classée est dans la SEP : ses sous-catégories déjà classées (SEU) ne sont pas en cause.
+    assert issue(doc, "R3|ERR|N00||SEP")["surface_ids"] == ["err-n00-sep"]
+    assert issue(doc, "A1|ERR|N00||SEP")["surface_ids"] == ["err-n00-sep"]
 
 
 def test_r5_concerns_whole_floor(doc):

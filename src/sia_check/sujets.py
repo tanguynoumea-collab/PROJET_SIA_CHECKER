@@ -210,29 +210,40 @@ def build(doc: dict, cfg: Config) -> dict:
                         why=i.get("hint") or "")
         s["points"].append(i["key"])
 
-    # Corrections de base.
+    # Corrections de base. Une part tracée en plusieurs morceaux d'un seul tenant donne une correction par morceau :
+    # chacun se confirme ou change de catégorie indépendamment (trois morceaux de SEP au RDC : SA, SA et SEU…).
+    def split(subject_id, base, region, z, why, aire_without_geometry):
+        pieces = _pieces(region)
+        if not pieces:
+            _propose(subjects[subject_id], {**base, "aire": round(max(aire_without_geometry, 0), 2), "polygone": None,
+                                            "trace": None, "explication": why(aire_without_geometry, "")}, 0)
+            return
+        for k, piece in enumerate(pieces, 1):
+            c = {**base, "aire": round(piece.area, 2), "polygone": _geojson(piece), "trace": _trace(piece, z),
+                 "explication": why(piece.area, f" (morceau {k} sur {len(pieces)})" if len(pieces) > 1 else "")}
+            if len(pieces) > 1:
+                c.update(id=f"{base['id']}-{k}", morceau=f"{k}/{len(pieces)}", groupe=base["id"])
+            _propose(subjects[subject_id], c, 0)
+
     for key in sorted(roofs, key=lambda k: (k[0], rules.level_rank(k[1], cfg) or 0)):
         sep_id = _node_id(nodes, key, "SEP")
         if sep_id is None:
             continue
         b, lvl = key
         classified = sum(val(key, c) for c in EXTERNAL_CLASSIFIED)
-        c = {"id": f"{TOITURES}-{b}-{lvl}", "op": "exclure", "cible": {"ids": [sep_id]}}
+        base = {"id": f"{TOITURES}-{b}-{lvl}", "op": "exclure", "cible": {"ids": [sep_id]}}
+        z = _top_z(by_id.get(sep_id))
         if key in roof_part:
-            part = roof_part[key]
-            c.update(aire=round(part.area, 2), polygone=_geojson(part), trace=_trace(part, _top_z(by_id.get(sep_id))),
-                     explication=f"{b} {lvl} : {_m2(part.area)} m² de SEP sous la toiture Treegram (SPT), hors "
-                                 f"terrasses classées SEU/SED.")
+            split(TOITURES, base, roof_part[key], z, lambda a, m: f"{b} {lvl}{m} : {_m2(a)} m² de SEP sous la toiture "
+                  f"Treegram (SPT), hors terrasses classées SEU/SED.", 0)
         elif classified <= tol:
-            c["explication"] = f"{b} {lvl} : niveau de toiture sans plancher ni terrasse classée, SEP entière exclue."
+            _propose(subjects[TOITURES], {**base, "explication": f"{b} {lvl} : niveau de toiture sans plancher ni "
+                                                                 f"terrasse classée, SEP entière exclue."},
+                     node_area.get((b, lvl, "SEP"), 0))
         else:
-            sep = node_area.get((b, lvl, "SEP"), 0)
             region = geo.minus(geo.union(key, ["SEP"]), key, EXTERNAL_CLASSIFIED) if geo.ok else None
-            aire = region.area if region is not None else sep - classified
-            c.update(aire=round(max(aire, 0), 2), polygone=_geojson(region),
-                     trace=_trace(region, _top_z(by_id.get(sep_id))),
-                     explication=f"{b} {lvl} : SEP hors terrasses classées ({_m2(classified)} m² de SEU/SED gardés).")
-        _propose(subjects[TOITURES], c, node_area.get((b, lvl, "SEP"), 0))
+            split(TOITURES, base, region, z, lambda a, m: f"{b} {lvl}{m} : {_m2(a)} m² de SEP hors terrasses classées "
+                  f"({_m2(classified)} m² de SEU/SED gardés).", node_area.get((b, lvl, "SEP"), 0) - classified)
 
     for key in sorted(grounds, key=lambda k: (k[0], rules.level_rank(k[1], cfg) or 0)):
         sep_id = _node_id(nodes, key, "SEP")
@@ -247,13 +258,11 @@ def build(doc: dict, cfg: Config) -> dict:
             aire = node_area.get((b, lvl, "SEP"), 0) - sum(val(key, c) for c in EXTERNAL_CLASSIFIED)
         if aire <= tol:
             continue
-        _propose(subjects[ABORDS], {
-            "id": f"{ABORDS}-{b}-{lvl}", "op": "découper", "cible": {"ids": [sep_id]}, "vers": "SA",
-            "aire": round(aire, 2), "polygone": _geojson(region), "trace": _trace(region, _top_z(by_id.get(sep_id))),
-            "explication": f"{b} {lvl} : {_m2(aire)} m² de SEP hors plancher et hors SEU/SED, au contact du terrain.",
-        }, aire)
+        split(ABORDS, {"id": f"{ABORDS}-{b}-{lvl}", "op": "découper", "cible": {"ids": [sep_id]}, "vers": "SA"},
+              region, _top_z(by_id.get(sep_id)),
+              lambda a, m: f"{b} {lvl}{m} : {_m2(a)} m² de SEP hors plancher et hors SEU/SED, au contact du terrain.", aire)
 
-    # Part non classée des SEP et SP de niveau : une découpe vers une sous-catégorie par point.
+    # Part non classée des SEP et SP de niveau : une découpe vers une sous-catégorie par morceau.
     for i in issues:
         key = (i["building"], i["level"])
         code = i["category"]
@@ -266,15 +275,12 @@ def build(doc: dict, cfg: Config) -> dict:
         b, lvl = key
         to, classified = UNCLASSIFIED[code]
         region = geo.minus(geo.union(key, [code]), key, classified) if geo.ok else None
-        s = subjects[f"{i['rule']}-{code}"]
-        s["action"] = "corriger"
-        s["explication"] = UNCLASSIFIED_WHY[code]
-        _propose(s, {
-            "id": f"non-classe-{b}-{lvl}-{code}", "op": "découper", "cible": {"ids": [node_id]}, "vers": to,
-            "aire": round(diff, 2), "trace": _trace(region, _top_z(by_id.get(node_id))),
-            "explication": f"{b} {lvl} : {_m2(diff)} m² de {code} sans sous-catégorie, classés en {to} par défaut ; "
-                           f"choisir la bonne catégorie.",
-        }, diff)
+        sid = f"{i['rule']}-{code}"
+        subjects[sid].update(action="corriger", explication=UNCLASSIFIED_WHY[code])
+        split(sid, {"id": f"non-classe-{b}-{lvl}-{code}", "op": "découper", "cible": {"ids": [node_id]}, "vers": to},
+              region, _top_z(by_id.get(node_id)),
+              lambda a, m: f"{b} {lvl}{m} : {_m2(a)} m² de {code} sans sous-catégorie, classés en {to} par défaut ; "
+                           f"choisir la bonne catégorie.", diff)
 
     order = [TOITURES, ABORDS, SC_IMPLICITE, AGREGATS]
     out = sorted(subjects.values(), key=lambda s: (order.index(s["id"]) if s["id"] in order else len(order), s["id"]))
@@ -283,6 +289,30 @@ def build(doc: dict, cfg: Config) -> dict:
         if s["action"] == "corriger" and not s["corrections"]:
             s["action"] = "à vérifier"
     return {"version": 1, "geometry": geo.ok, "subjects": out}
+
+
+# Miettes de tracé (artefacts le long des murs, 0,2 m de large sur L'Orée) : rejoignent le plus grand morceau.
+MIN_PIECE = 1.0         # m²
+MIN_PIECE_WIDTH = 0.8   # m : largeur moyenne 2 × aire / périmètre
+
+
+def _pieces(region) -> list:
+    """Morceaux d'un seul tenant d'une part tracée, du plus grand au plus petit ; vide sans géométrie."""
+    if region is None or region.is_empty:
+        return []
+    from shapely import get_parts, union_all
+    parts = sorted((g for g in get_parts(region) if g.geom_type in ("Polygon", "MultiPolygon") and g.area > 0),
+                   key=lambda g: -g.area)
+    def crumb(g):
+        return g.area < MIN_PIECE or 2 * g.area / g.length < MIN_PIECE_WIDTH
+
+    big = [g for g in parts if not crumb(g)]
+    if not big:
+        return [union_all(parts)] if parts else []
+    crumbs = [g for g in parts if crumb(g)]
+    if crumbs:
+        big[0] = union_all([big[0], *crumbs])
+    return big
 
 
 def _propose(subject: dict, correction: dict, m2: float) -> None:
@@ -317,6 +347,8 @@ def apply_review(base: dict, review: dict, surface_ids: set[str] | None = None) 
     - « rejeter » garde la correction au statut « rejetée », pour la traçabilité ; « modifier » change
       les seuls champs donnés (`EDITABLE`) et retire un tracé devenu faux (`a_retracer`) ;
       « ajouter » crée une correction complète.
+    - Une décision qui cite un niveau découpé en morceaux (`groupe`, ex. « abords-E09-N00 ») vaut pour chacun de ses
+      morceaux ; une aire modifiée n'a alors plus de sens et la décision est écartée.
     - Une décision inapplicable (id inconnu, correction incomplète, cible absente) est écartée et listée
       dans `revue.problemes` ; le reste de la revue s'applique.
     Les corrections restent « proposée » : l'utilisateur les accepte.
@@ -324,6 +356,10 @@ def apply_review(base: dict, review: dict, surface_ids: set[str] | None = None) 
     from . import corrections   # évite l'import circulaire au chargement
 
     proposals = {c["id"]: (s["id"], c) for s in base["subjects"] for c in s["corrections"]}
+    groups: dict[str, list[str]] = defaultdict(list)
+    for _, c in proposals.values():
+        if c.get("groupe"):
+            groups[c["groupe"]].append(c["id"])
     used: set[str] = set()
     problems: list[dict] = []
     ai_subjects = review.get("sujets") or {}
@@ -339,7 +375,16 @@ def apply_review(base: dict, review: dict, surface_ids: set[str] | None = None) 
     out_ai = []
     for sid, spec in ai_subjects.items():
         decided: list[dict] = []
+        decisions = []
         for d in spec.get("decisions") or []:
+            pieces = groups.get(d.get("id")) if d.get("id") not in proposals and d.get("decision") != "ajouter" else None
+            if not pieces:
+                decisions.append(d)
+            elif "aire" in d:
+                problem(sid, d.get("id"), "aire modifiée sur un niveau découpé en morceaux")
+            else:
+                decisions += [{**d, "id": pid} for pid in pieces]
+        for d in decisions:
             did, kind = d.get("id"), d.get("decision")
             if kind not in DECISIONS:
                 problem(sid, did, f"décision inconnue « {kind} »")

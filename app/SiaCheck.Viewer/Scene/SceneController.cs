@@ -36,6 +36,7 @@ public sealed class SceneController
     private const double OverlayLift = 0.05;    // m : tracé au-dessus de la surface visée
     private const double OverlayEdge = 0.35;    // m : hauteur du liseré du tracé
     private const byte OverlayAlpha = 0x55;     // aplat du tracé : accent à ~33 %
+    private const byte PartAlpha = 0xD0;        // part isolée : aplat presque opaque sur la surface en fantôme
 
     public Model3DGroup Root { get; } = new();
 
@@ -279,20 +280,33 @@ public sealed class SceneController
     // ------------------------------------------------------------------ isolement
 
     /// <summary>Isole des surfaces ; renvoie leurs bornes (éclatement compris), ou null si aucune n'a de géométrie.</summary>
-    public Rect3D? Focus(IEnumerable<string> surfaceIds)
+    public Rect3D? Focus(IEnumerable<string> surfaceIds) => Focus(surfaceIds, []);
+
+    /// <summary>
+    /// Isole des surfaces entières et des parts de surface (tracés des corrections). Une surface dont seule une part
+    /// est en cause reste en fantôme, la part est posée dessus à l'accent : la zone déjà classée de la même surface
+    /// (SED d'une SEP…) ne se confond pas avec le problème.
+    /// </summary>
+    public Rect3D? Focus(IEnumerable<string> surfaceIds, IReadOnlyList<(string SurfaceId, TraceMesh Trace)> parts, Color accent = default)
     {
         ClearFocusBatches();
+        var partIds = parts.Select(p => p.SurfaceId).ToHashSet();
+        surfaceIds = surfaceIds.Where(id => !partIds.Contains(id)).ToList();
+        var traced = parts.Where(p => _surfaces.ContainsKey(p.SurfaceId)).ToList();
         var shown = surfaceIds.Where(_surfaces.ContainsKey).Select(id => _surfaces[id]).ToList();
-        _focus = shown.Select(s => s.Id).ToHashSet();
-        _cutZ = Bounds(shown) is { } fb ? fb.Z + fb.SizeZ : null;
+        var all = shown.Concat(traced.Select(p => _surfaces[p.SurfaceId])).ToList();
+        _focus = all.Select(s => s.Id).ToHashSet();
+        _cutZ = Bounds(all) is { } fb ? fb.Z + fb.SizeZ : null;
         foreach (var grp in shown.GroupBy(s => (s.Building, s.Level)))
         {
             var node = _levels[grp.Key];
             foreach (var byCode in grp.GroupBy(s => s.Code))
                 node.FocusBatches.Add(MakeBatch(byCode.Key, byCode, lift: FocusLift));
         }
+        foreach (var (id, trace) in traced)
+            AddOverlay(trace, _surfaces[id].Building, _surfaces[id].Level, accent, PartAlpha);
         Refresh();
-        return Bounds(shown);
+        return Bounds(all);
     }
 
     public void ClearFocus()
@@ -319,15 +333,21 @@ public sealed class SceneController
     /// </summary>
     public void SetOverlay(TraceMesh trace, string building, string level, Color accent)
     {
+        if (_levels.TryGetValue((building, level), out var node)) node.Overlay.Clear();
+        AddOverlay(trace, building, level, accent, OverlayAlpha);
+        Refresh();
+    }
+
+    private void AddOverlay(TraceMesh trace, string building, string level, Color accent, byte alpha)
+    {
         if (!_levels.TryGetValue((building, level), out var node) || trace.Indices.Length < 3) return;
-        node.Overlay.Clear();
         var z = trace.Z + OverlayLift;
         var pts = new Point3D[trace.Vertices.Length / 2];
         for (var k = 0; k < pts.Length; k++) pts[k] = new Point3D(trace.Vertices[2 * k], trace.Vertices[2 * k + 1], z);
 
         var fill = new MeshGeometry3D { Positions = new Point3DCollection(pts), TriangleIndices = new Int32Collection(trace.Indices) };
         fill.Freeze();
-        var fillMat = Frozen(new DiffuseMaterial(new SolidColorBrush(Color.FromArgb(OverlayAlpha, accent.R, accent.G, accent.B))));
+        var fillMat = Frozen(new DiffuseMaterial(new SolidColorBrush(Color.FromArgb(alpha, accent.R, accent.G, accent.B))));
         var edges = new MeshGeometry3D();
         var pos = new Point3DCollection();
         var idx = new Int32Collection();
@@ -346,7 +366,6 @@ public sealed class SceneController
         // Liseré opaque d'abord, aplat translucide ensuite : ordre de rendu WPF de la transparence.
         node.Overlay.Add(new GeometryModel3D(edges, edgeMat) { BackMaterial = edgeMat });
         node.Overlay.Add(new GeometryModel3D(fill, fillMat) { BackMaterial = fillMat });
-        Refresh();
     }
 
     public Rect3D? Bounds(IEnumerable<string> surfaceIds) =>

@@ -333,3 +333,18 @@ public class DeleteProjectTests
         Assert.Empty(AppSettings.Load(paths).Recents);
     }
 }
+
+public class CorrectionPieceTests
+{
+    [Fact]
+    public void Piece_number_follows_the_location()
+    {
+        var c = JsonSerializer.Deserialize<Correction>("""
+            {"id": "abords-E09-N00-2", "op": "découper", "cible": {"ids": ["s"]}, "vers": "SA", "aire": 113.57,
+             "morceau": "2/3", "groupe": "abords-E09-N00", "statut": "proposée", "origine": "règle", "explication": ""}
+            """)!;
+        var item = new CorrectionItem(c, null, new Surface { Id = "s", Building = "E09", Level = "N00", Category = "SEP" });
+        Assert.Equal("E09·N00 2/3", item.Location);
+        Assert.Contains("morceau", JsonSerializer.Serialize(c));                 // rendu tel quel au moteur
+    }
+}

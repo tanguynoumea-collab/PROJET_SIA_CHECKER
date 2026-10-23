@@ -95,6 +95,32 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private Task OpenRecentAsync(RecentProject recent) => OpenAsync(recent.Path);
 
+    /// <summary>Supprime un projet de l'application (récents, statuts, corrections, analyse, revues IA, ID MDP) : repartir de zéro.</summary>
+    [RelayCommand]
+    private async Task DeleteRecentAsync(RecentProject recent)
+    {
+        var ok = await _shell.ConfirmAsync($"Supprimer « {recent.Name} » ?",
+            "Les statuts et commentaires des points, les décisions sur les corrections, la dernière analyse, les revues IA " +
+            "lancées depuis l'app et l'ID MDP de ce projet seront effacés.\n\n" +
+            "Le dossier Treegram (.tgm, VWR) et les fichiers exportés ne sont pas touchés : le projet pourra être rouvert et " +
+            "réanalysé de zéro.",
+            "Supprimer", "Annuler");
+        if (!ok) return;
+        try
+        {
+            _paths.DeleteProject(recent.Path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _shell.Notify($"Suppression incomplète : {ex.Message}", isError: true);
+            return;
+        }
+        _settings.Forget(recent.Path);
+        _settings.Save(_paths);
+        Recents.Remove(recent);
+        _shell.Notify($"« {recent.Name} » supprimé de SIA Check.");
+    }
+
     public async Task OpenAsync(string dir)
     {
         HomeError = null;

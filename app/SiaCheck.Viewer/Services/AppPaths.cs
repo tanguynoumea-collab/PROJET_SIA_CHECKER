@@ -27,6 +27,17 @@ public sealed class AppPaths(string roamingRoot, string localRoot)
     /// <summary>Revues IA lancées depuis l'app (rapport, verdicts, preuves) : suivent l'utilisateur, comme les statuts.</summary>
     public string AiReviewDir(string projectDir) => Path.Combine(roamingRoot, "revue-ia", Slug(projectDir));
 
+    /// <summary>
+    /// Efface tout ce que l'application garde d'un projet : statuts et commentaires, décisions de corrections, dernière
+    /// analyse et son journal, revues IA lancées depuis l'app. Le dossier Treegram et les exports ne sont pas touchés.
+    /// </summary>
+    public void DeleteProject(string projectDir)
+    {
+        foreach (var f in new[] { ReviewFile(projectDir), CorrectionsFile(projectDir), AnalysisFile(projectDir), LogFile(projectDir) })
+            if (File.Exists(f)) File.Delete(f);
+        if (Directory.Exists(AiReviewDir(projectDir))) Directory.Delete(AiReviewDir(projectDir), recursive: true);
+    }
+
     /// <summary>Clé API Anthropic chiffrée (DPAPI, utilisateur courant) : locale, jamais dans le dépôt.</summary>
     public string ApiKeyFile => Path.Combine(localRoot, "anthropic-key.bin");
 

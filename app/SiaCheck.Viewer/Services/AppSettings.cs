@@ -51,6 +51,14 @@ public sealed class AppSettings
         if (Recents.Count > MaxRecents) Recents.RemoveRange(MaxRecents, Recents.Count - MaxRecents);
     }
 
+    /// <summary>Retire le projet des récents et oublie son identité MDP.</summary>
+    public void Forget(string path)
+    {
+        path = Normalize(path);
+        Recents.RemoveAll(r => string.Equals(Normalize(r.Path), path, StringComparison.OrdinalIgnoreCase));
+        MdpProjects.Remove(path);
+    }
+
     private static string Normalize(string path) =>
         System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(path));
 

@@ -302,3 +302,34 @@ public class SubjectPointsTests
         Assert.Null(await vm.AskMdpProjectAsync(tmp.Path, "L OREE"));           // ID obligatoire : pas d'export
     }
 }
+
+public class DeleteProjectTests
+{
+    [Fact]
+    public async Task Delete_forgets_the_project_and_its_data_but_not_the_treegram_folder()
+    {
+        using var tmp = new TempDir();
+        var project = Directory.CreateDirectory(Path.Combine(tmp.Path, "L OREE")).FullName;
+        var paths = new AppPaths(Path.Combine(tmp.Path, "roaming"), Path.Combine(tmp.Path, "local"));
+        var files = new[] { paths.ReviewFile(project), paths.CorrectionsFile(project), paths.AnalysisFile(project),
+                            Path.Combine(paths.AiReviewDir(project), "r.md") };
+        foreach (var f in files) { Directory.CreateDirectory(Path.GetDirectoryName(f)!); File.WriteAllText(f, "{}"); }
+        var settings = new AppSettings();
+        settings.Touch(project, "L OREE", DateTime.Today, 3);
+        settings.SetMdpProject(project, new MdpProject { Id = "1778", Name = "L'Orée" });
+        var shell = new FakeShell();
+        var vm = new MainViewModel(shell, paths, settings, enginePath: null);
+
+        shell.ConfirmAnswer = false;
+        await vm.DeleteRecentCommand.ExecuteAsync(vm.Recents.Single());
+        Assert.True(File.Exists(files[0]));                                     // annulé : rien n'est effacé
+
+        shell.ConfirmAnswer = true;
+        await vm.DeleteRecentCommand.ExecuteAsync(vm.Recents.Single());
+        Assert.Empty(vm.Recents);
+        Assert.All(files, f => Assert.False(File.Exists(f)));
+        Assert.Null(settings.FindMdpProject(project));
+        Assert.True(Directory.Exists(project));                                 // le dossier Treegram reste
+        Assert.Empty(AppSettings.Load(paths).Recents);
+    }
+}

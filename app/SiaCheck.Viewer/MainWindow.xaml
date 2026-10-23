@@ -59,22 +59,29 @@
                     <ItemsControl ItemsSource="{Binding Recents}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}"
-                                        Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                        CommandParameter="{Binding}">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="160" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Style="{StaticResource TextSubtitle}" Text="{Binding Name}" />
-                                        <TextBlock Grid.Column="1" Style="{StaticResource TextCaption}" Margin="8,0" Text="{Binding Path}" />
-                                        <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}">
-                                            <Run Text="{Binding IssueCount, Mode=OneWay}" /><Run Text=" points · " /><Run Text="{Binding LastAnalysis, StringFormat=dd.MM.yyyy, Mode=OneWay}" />
-                                        </TextBlock>
-                                    </Grid>
-                                </Button>
+                                <DockPanel>
+                                    <ui:Button DockPanel.Dock="Right" Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Delete20}"
+                                               VerticalAlignment="Center" MinHeight="{StaticResource TargetSize}"
+                                               Command="{Binding DataContext.DeleteRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                               CommandParameter="{Binding}" ToolTip="Supprimer le projet de SIA Check (statuts, corrections, analyse, revues IA)"
+                                               AutomationProperties.Name="Supprimer le projet" />
+                                    <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}"
+                                            Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="160" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Style="{StaticResource TextSubtitle}" Text="{Binding Name}" />
+                                            <TextBlock Grid.Column="1" Style="{StaticResource TextCaption}" Margin="8,0" Text="{Binding Path}" />
+                                            <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}">
+                                                <Run Text="{Binding IssueCount, Mode=OneWay}" /><Run Text=" points · " /><Run Text="{Binding LastAnalysis, StringFormat=dd.MM.yyyy, Mode=OneWay}" />
+                                            </TextBlock>
+                                        </Grid>
+                                    </Button>
+                                </DockPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

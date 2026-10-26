@@ -86,9 +86,15 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private void OpenReshapeForSurface()
     {
-        if (SelectedSurface?.Pending is { } pending)
+        if (SelectedSurface is { Pending: { } pending, Surface: { FromCorrection: not null, Mesh: not null } part })
+        {   // part découpée : son contour et son type, comme toute surface ; la correction qui la crée suit
+            SetTraceTargets(SurfaceTypes.Contains(part.DisplayCode) ? SurfaceTypes : [part.DisplayCode, .. SurfaceTypes], part.DisplayCode);
+            OpenTrace(part, part.DisplayCode, pending, TraceKind.Reshape);
+            return;
+        }
+        if (SelectedSurface?.Pending is { } other)
         {
-            ReopenCorrection(pending);
+            ReopenCorrection(other);
             return;
         }
         if (SelectedSurface?.Surface is not { } s) return;
@@ -149,11 +155,15 @@ public sealed partial class MainViewModel
         var target = c.TargetIds.Select(id => _surfaceById.GetValueOrDefault(id)).FirstOrDefault(s => s is not null);
         var place = c.CreatedOn ?? (target is { Building: { } b, Level: { } l } ? (b, l) : null);
         var code = c.Model.To ?? target?.DisplayCode ?? "";
+        var part = c.Model.Op == "découper";
         var surface = new Surface
         {
             Id = target is not null && c.Model.Op == "remodeler" ? target.Id : c.Id,
-            Building = place?.Item1, Level = place?.Item2, Category = code, Code = code, Kind = "leaf",
+            Building = place?.Item1, Level = place?.Item2, Category = code, Code = code, Kind = "leaf", Status = "checked",
             Area = c.Model.Area, RoomType = target?.RoomType, Lot = target?.Lot,
+            // Part découpée : une surface à part entière, avec son emprise (le tracé) et sa surface d'origine.
+            IslandOf = part ? target?.Id : null, FromCorrection = part ? c.Id : null,
+            Mesh = part && c.Model.Trace is { } t ? TraceSession.ToMesh(t) : null,
         };
         var linked = target is null ? [] : Issues.Where(i => i.SurfaceIds.Contains(target.Id)).OrderBy(i => i.SortKey).ToList();
         return new SurfaceInfo(surface, linked, c);
@@ -217,7 +227,7 @@ public sealed partial class MainViewModel
         }
         var level = Document.DisplaySurfaces.Where(s => s.Building == source.Building && s.Level == source.Level)
             .Select(s => Current(s, cuts, item?.Id)).Concat(PendingParts(source.Building, source.Level, item?.Id)).ToList();
-        var siblings = source.IslandOf is { } parent && Document.Islands.TryGetValue(parent, out var parts)
+        var siblings = source.FromCorrection is null && source.IslandOf is { } parent && Document.Islands.TryGetValue(parent, out var parts)
             ? parts.Where(p => p.Id != source.Id).Select(p => Current(p, cuts, item?.Id)).Where(p => p.Mesh is not null).ToList() : null;
         var levels = Document.Levels.Where(l => l.Building == source.Building).ToList();
         var rank = levels.FirstOrDefault(l => l.Level == source.Level)?.Rank ?? 0;
@@ -251,12 +261,24 @@ public sealed partial class MainViewModel
     private void SaveTrace()
     {
         if (Trace is not { CanSave: true } t || _journal is null) return;
+        if (t.IsSplitMode && t.Source.FromCorrection is not null && _tracedItem is { } partItem)
+        {   // scinder une part découpée : elle garde la partie 1, la partie 2 est découpée de la surface d'origine
+            var keep = t.PartAsSplitA(partItem.Model);
+            var second = t.BuildSplitCorrections(NewManualId("scission", t.Source.Building, t.Source.Level), partItem.Model.Subject)
+                          .Single(c => c.Id.EndsWith("-2", StringComparison.Ordinal));
+            second.Status = Correction.Accepted;
+            partItem.ReplaceModel(keep);
+            _journal.Decide(keep);
+            AddManualCorrection(second);
+            _shell.Notify($"Surface scindée en deux ({t.SplitAreaAText} et {t.SplitAreaBText}).");
+            return;
+        }
         if (t.IsSplitMode)   // SPLIT : deux surfaces, la seconde découpée de l'origine, chacune avec son type
         {
             var split = t.BuildSplitCorrections(NewManualId("scission", t.Source.Building, t.Source.Level), SubjectOf(t.TargetSurfaceId));
             foreach (var c in split) { c.Status = Correction.Accepted; _journal.Decide(c); }
             AddManualCorrection(split[0]);
-            _shell.Notify($"Surface scindée en deux ({t.SplitAreaAText} et {t.SplitAreaBText}) : appliquée à la prochaine analyse (Analyser).");
+            _shell.Notify($"Surface scindée en deux ({t.SplitAreaAText} et {t.SplitAreaBText}).");
             return;
         }
         if (_tracedItem is { } item)
@@ -347,7 +369,8 @@ public sealed partial class MainViewModel
         var n = 1;
         var stem = prefix == "" ? $"manuel-{building}-{level}" : $"manuel-{prefix}-{building}-{level}";
         string id;
-        do id = $"{stem}-{n++}"; while (_journal!.Get(id) is not null);
+        // Libre aussi comme préfixe : une scission ajoute « -1 », « -2 » à son identifiant.
+        do id = $"{stem}-{n++}"; while (_journal!.Decisions.Any(d => d.Id == id || d.Id.StartsWith(id + "-", StringComparison.Ordinal)));
         return id;
     }
 

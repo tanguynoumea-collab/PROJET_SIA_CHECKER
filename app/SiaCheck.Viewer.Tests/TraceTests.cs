@@ -630,3 +630,48 @@ public class PendingSplitTests
         Assert.Equal(20, s.OnSource, 3);                                  // plus « hors de la surface »
     }
 }
+
+public class CutPartTests
+{
+    [Fact]
+    public void A_split_part_is_edited_like_any_surface()
+    {
+        using var tmp = new TempDir();
+        var vm = new MainViewModel(new FakeShell(), new AppPaths(tmp.Path, tmp.Path), new AppSettings(), enginePath: null) { AiSearchBaseDir = tmp.Path };
+        vm.LoadDocument(tmp.Path, new ViewerDocument
+        {
+            Surfaces = [Plan.Square("sus", "SUS", 0, 0, 10, 4), Plan.Square("sp", "SP", 0, 0, 30, 10, kind: "node")],
+        });
+        vm.SelectSurface("sus");
+        vm.OpenReshapeForSurfaceCommand.Execute(null);
+        vm.Trace!.IsSplitMode = true;
+        vm.Trace.AddSplitPoint(new Point(4, -1));
+        vm.Trace.AddSplitPoint(new Point(4, 5));
+        vm.Trace.FinishSplit();
+        vm.SaveTraceCommand.Execute(null);
+        var part = vm.SelectedCorrection!;                                // partie 2 : 16 m², même type
+
+        vm.SelectSurface(SceneController.PreviewPrefix + part.Id);       // clic sur la partie en 3D
+        Assert.Equal(("SUS", "sus", 16.0), (vm.SelectedSurface!.Surface.DisplayCode, vm.SelectedSurface.Surface.IslandOf, vm.SelectedSurface.Surface.Area));
+        vm.OpenReshapeForSurfaceCommand.Execute(null);                   // Modifier… : contour et type, comme une surface
+        Assert.True(vm.Trace!.IsReshape && vm.ShowTraceTargets);
+        Assert.Equal(16, vm.Trace.CountedArea, 2);
+        vm.TraceTarget = "SUP";
+        vm.SaveTraceCommand.Execute(null);
+        var cuts = vm.Subjects.SelectMany(s => s.Corrections).Where(c => c.Model.Op == "découper").ToList();
+        Assert.Equal(("SUP", "découper"), (Assert.Single(cuts).Model.To, cuts[0].Model.Op));   // même correction, nouveau type
+        Assert.Equal(["sus"], cuts[0].TargetIds);
+
+        vm.SelectSurface(SceneController.PreviewPrefix + part.Id);       // puis scindée à son tour
+        vm.OpenReshapeForSurfaceCommand.Execute(null);
+        vm.Trace!.IsSplitMode = true;
+        vm.Trace.AddSplitPoint(new Point(-1, 1));
+        vm.Trace.AddSplitPoint(new Point(5, 1));
+        Assert.True(vm.Trace.FinishSplit());
+        vm.SaveTraceCommand.Execute(null);
+        cuts = vm.Subjects.SelectMany(s => s.Corrections).Where(c => c.Model.Op == "découper").ToList();
+        Assert.Equal(2, cuts.Count);
+        Assert.Equal(16.0, cuts.Sum(c => c.Model.Area!.Value), 2);           // les deux parties couvrent l'ancienne, sans double compte
+        Assert.All(cuts, c => Assert.Equal(["sus"], c.TargetIds));
+    }
+}

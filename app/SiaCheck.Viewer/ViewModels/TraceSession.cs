@@ -670,8 +670,10 @@ public sealed partial class TraceSession : ObservableObject
         if (Kind != TraceKind.Cut)
         {
             c.Extra["z"] = JsonSerializer.SerializeToElement(Math.Round(_z, 3));
-            c.To = Kind == TraceKind.Reshape && Target == Source.DisplayCode ? null : Target;
+            c.To = c.Op == "remodeler" && Target == Source.DisplayCode ? null : Target;   // une découpe garde toujours sa catégorie
         }
+        if (Source.FromCorrection is not null)
+            c.Explanation = $"{Source.Building} {Source.Level} : surface découpée de {CountedText}, {Target}.";
         if (IsIsland && Existing is null)
             c.Explanation = islandRetype
                 ? $"{Source.Building} {Source.Level} : îlot de {CountedText} de la {Source.DisplayCode} classé {Target}."
@@ -762,6 +764,28 @@ public sealed partial class TraceSession : ObservableObject
 
     internal static double TopZ(MeshData m) =>
         m.Vertices.Length > 2 ? Enumerable.Range(0, m.Vertices.Length / 3).Max(k => (double)m.Vertices[3 * k + 2]) : 0;
+
+    /// <summary>Maillage du tracé d'une correction (2D + altitude).</summary>
+    public static MeshData ToMesh(TraceMesh t) => new()
+    {
+        Vertices = Enumerable.Range(0, t.Vertices.Length / 2).SelectMany(k => new[] { (float)t.Vertices[2 * k], (float)t.Vertices[2 * k + 1], (float)t.Z }).ToArray(),
+        Indices = t.Indices,
+    };
+
+    /// <summary>Scission d'une part découpée : sa correction ne garde que la partie 1 (contour, type, aire).</summary>
+    public Correction PartAsSplitA(Correction part)
+    {
+        var c = part.Clone();
+        var area = Math.Round(Math.Abs(Clipper.Area(SplitPartA)), 2);
+        c.To = SplitTypeA;
+        c.Area = c.M2 = area;
+        c.Trace = Triangulate(SplitPartA, _z);
+        c.Extra ??= [];
+        c.Extra["polygone"] = MultiPolygon(OuterRings(SplitPartA).Select(r => r.Select(ToPoint).ToList()));
+        c.Origin = "manuel";
+        c.Explanation = $"{Source.Building} {Source.Level} : surface découpée de {Area(area)}, {SplitTypeA} (partie 1 d'une scission).";
+        return c;
+    }
 
     /// <summary>Tracé d'une correction (`polygone`) en contours Clipper.</summary>
     public static PathsD PolygonOf(Correction c) => new(ReadPolygons(c).Select(ToPath));

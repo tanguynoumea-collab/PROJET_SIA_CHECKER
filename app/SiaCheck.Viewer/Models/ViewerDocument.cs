@@ -160,6 +160,12 @@ public sealed class Surface
     [JsonIgnore] public bool IsExcluded => Status == "excluded";
     /// <summary>Îlot d'une surface en plusieurs morceaux (<see cref="ViewerDocument.Islands"/>) : identifiant de la surface d'origine.</summary>
     [JsonIgnore] public string? IslandOf { get; init; }
+    /// <summary>
+    /// Part découpée d'une surface (scission, découpe), pas encore appliquée par une analyse : la correction qui la crée.
+    /// Elle se modifie comme une surface ; ses changements mettent à jour cette correction. <see cref="IslandOf"/> porte
+    /// la surface d'origine, visée par la correction.
+    /// </summary>
+    [JsonIgnore] public string? FromCorrection { get; init; }
 }
 
 public sealed class MeshData

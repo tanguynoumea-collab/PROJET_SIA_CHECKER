@@ -195,9 +195,9 @@ public sealed class SurfaceInfo(Surface surface, IReadOnlyList<IssueItem> issues
     public string Kind => Surface.IsLevelTotal ? "Total de niveau" : "Surface élémentaire";
     public string PendingText => Pending?.Model.Op switch
     {
-        "créer" => "Nouvelle surface : créée à la prochaine analyse (Analyser).",
-        "remodeler" => "Emprise redessinée : appliquée à la prochaine analyse (Analyser).",
-        "découper" => $"Part découpée de la {Pending.TargetCode} : appliquée à la prochaine analyse (Analyser).",
+        "créer" => "Surface créée à la main.",
+        "remodeler" => "Emprise redessinée à la main.",
+        "découper" => $"Surface découpée de la {Pending.TargetCode} (scission ou découpe).",
         _ => "",
     };
 }

@@ -63,9 +63,12 @@ public sealed partial class TraceSession : ObservableObject
     /// <param name="appliedArea">Aire de cette correction déjà appliquée par la dernière analyse (0 sinon).</param>
     public TraceSession(Surface source, IEnumerable<Surface> level, IEnumerable<Surface> below, string target,
                         Correction? existing, double r3Now, double appliedArea, Tolerance tolerance,
-                        TraceKind kind = TraceKind.Cut, IReadOnlyList<IReadOnlyList<Point>>? initial = null)
+                        TraceKind kind = TraceKind.Cut, IReadOnlyList<IReadOnlyList<Point>>? initial = null,
+                        IReadOnlyList<Surface>? siblings = null)
     {
         Kind = kind;
+        // Îlot d'une surface en plusieurs morceaux : les autres îlots gardent leur emprise dans la correction.
+        _siblings = (siblings ?? []).SelectMany(s => OuterRings(Outline(s))).Select(r => r.Select(ToPoint).ToList()).ToList();
         Source = source;
         _target = target;
         Existing = existing;
@@ -108,6 +111,11 @@ public sealed partial class TraceSession : ObservableObject
     }
 
     private readonly double _z;
+    private readonly List<List<Point>> _siblings;
+
+    /// <summary>Surface visée par la correction : la surface d'origine d'un îlot, sinon la source elle-même.</summary>
+    public string TargetSurfaceId => Source.IslandOf ?? Source.Id;
+    public bool IsIsland => Source.IslandOf is not null;
 
     public TraceKind Kind { get; }
     public bool IsCut => Kind == TraceKind.Cut;
@@ -510,23 +518,25 @@ public sealed partial class TraceSession : ObservableObject
     /// </summary>
     public Correction BuildCorrection(string newId, string? subject)
     {
+        // Îlot d'une surface en plusieurs morceaux, dont le type change : la part passe à ce type (découpe de la surface
+        // d'origine) ; même type : la surface d'origine est redessinée, les autres îlots gardés tels quels.
+        var islandRetype = IsIsland && Kind == TraceKind.Reshape && Target != Source.DisplayCode;
+        var keepSiblings = IsIsland && Kind == TraceKind.Reshape && !islandRetype;
         var c = Existing?.Clone() ?? new Correction
         {
-            Id = newId, Op = Kind switch { TraceKind.Reshape => "remodeler", TraceKind.Create => "créer", _ => "découper" },
+            Id = newId,
+            Op = islandRetype ? "découper" : Kind switch { TraceKind.Reshape => "remodeler", TraceKind.Create => "créer", _ => "découper" },
             To = Target, Subject = subject, Status = Correction.Proposed,
-            Target = Kind == TraceKind.Create ? default : JsonSerializer.SerializeToElement(new { ids = new[] { Source.Id } }),
+            Target = Kind == TraceKind.Create ? default : JsonSerializer.SerializeToElement(new { ids = new[] { TargetSurfaceId } }),
         };
         c.Extra ??= [];
         if (Existing is not null && !c.Extra.ContainsKey("base"))
             c.Extra["base"] = JsonSerializer.SerializeToElement(new { aire = Existing.Area, origine = Existing.Origin });
-        c.Extra["polygone"] = JsonSerializer.SerializeToElement(new
-        {
-            type = "MultiPolygon",
-            coordinates = ClosedPolygons().Select(p => new[] { p.Append(p[0]).Select(v => new[] { Math.Round(v.X, 3), Math.Round(v.Y, 3) }).ToArray() }).ToArray(),
-        });
-        c.Area = Math.Round(CountedArea, 2);
+        var rings = (keepSiblings ? _siblings.Concat(ClosedPolygons()) : ClosedPolygons()).ToList();
+        c.Extra["polygone"] = MultiPolygon(rings);
+        c.Area = Math.Round(CountedArea + (keepSiblings ? _siblings.Sum(r => Math.Abs(Clipper.Area(ToPath(r)))) : 0), 2);
         c.M2 = c.Area;
-        c.Trace = Triangulate(Counted, _z);
+        c.Trace = Triangulate(keepSiblings ? Clipper.Union(new PathsD(rings.Select(ToPath)), FillRule.NonZero) : Counted, _z);
         c.NeedsRetrace = false;
         c.Origin = "manuel";
         if (Kind != TraceKind.Cut)
@@ -534,9 +544,13 @@ public sealed partial class TraceSession : ObservableObject
             c.Extra["z"] = JsonSerializer.SerializeToElement(Math.Round(_z, 3));
             c.To = Kind == TraceKind.Reshape && Target == Source.DisplayCode ? null : Target;
         }
+        if (IsIsland && Existing is null)
+            c.Explanation = islandRetype
+                ? $"{Source.Building} {Source.Level} : îlot de {CountedText} de la {Source.DisplayCode} classé {Target}."
+                : $"{Source.Building} {Source.Level} : îlot de la {Source.DisplayCode} redessiné, {OriginalAreaText} → {CountedText} ; autres îlots inchangés.";
         if (Kind == TraceKind.Create)
             c.Extra["niveau"] = JsonSerializer.SerializeToElement(new { building = Source.Building, level = Source.Level });
-        if (string.IsNullOrWhiteSpace(c.Explanation) || Existing is null)
+        if (!IsIsland && (string.IsNullOrWhiteSpace(c.Explanation) || Existing is null))   // îlot : explication posée plus haut
             c.Explanation = Kind switch
             {
                 TraceKind.Create => $"{Source.Building} {Source.Level} : nouvelle {Target} de {CountedText}, tracée sur le plan.",
@@ -545,6 +559,20 @@ public sealed partial class TraceSession : ObservableObject
                 _ => $"{Source.Building} {Source.Level} : {CountedText} de {Source.DisplayCode} tracés → {(Target == "" ? "exclus" : Target)}.",
             };
         return c;
+    }
+
+    private static JsonElement MultiPolygon(IEnumerable<List<Point>> rings) => JsonSerializer.SerializeToElement(new
+    {
+        type = "MultiPolygon",
+        coordinates = rings.Select(p => new[] { p.Append(p[0]).Select(v => new[] { Math.Round(v.X, 3), Math.Round(v.Y, 3) }).ToArray() }).ToArray(),
+    });
+
+    /// <summary>Emprise d'une surface (îlot) : polygone GeoJSON, tracé pour la 3D, aire en plan.</summary>
+    public static (JsonElement Polygon, TraceMesh? Trace, double Area) Footprint(Surface s)
+    {
+        var rings = OuterRings(Outline(s)).Select(r => r.Select(ToPoint).ToList()).ToList();
+        var paths = Outline(s);
+        return (MultiPolygon(rings), Triangulate(paths, TopZ(s)), Math.Abs(Clipper.Area(paths)));
     }
 
     internal static TraceMesh? Triangulate(PathsD paths, double z)

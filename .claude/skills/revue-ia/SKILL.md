@@ -29,7 +29,7 @@ Exemple de référence : `docs/revue-ia/L_OREE_2026-10-22.md` (L'Orée, 156 poin
    - Où repose la SEP ? Au RDC, au-dessus du sous-sol : dalle sur sous-sol, donc abords SA (SIA 416 §1.2). Recouverte par SPT : toiture comptée en SEP (§3).
    - Le résidu est-il régulier d'un étage à l'autre et dans la plage habituelle (SC 14–18 % aux étages, 4–15 % en sous-sol) ? Si oui, faux positif.
    - Un écart identique sur plusieurs étages courants indique un élément type mal classé, pas une erreur ponctuelle.
-   - **Les ratios sont-ils cohérents ?** Les repères sont indicatifs, pas normatifs : un ratio hors repère n'est pas une erreur, c'est une question. Pour chacun, l'expliquer par un sujet déjà trouvé (SEP/SP haut ← SEP mal classée ; SUP/SU bas ← P1 compte SUT dans SU ; SH/SNH bas ← SCI USPI faible dans Treegram) ou par la typologie (logement, commerce, parking), sinon le signaler comme sujet à confirmer. Vérifier aussi la cohérence interne : num/den = valeur, SN/SP + SC/SP = 1, mêmes tendances d'un bâtiment à l'autre, bâtiment isolé qui s'écarte du projet.
+   - **Les ratios sont-ils cohérents ?** Les repères sont indicatifs, pas normatifs : un ratio hors repère n'est pas une erreur, c'est une question. Pour chacun, l'expliquer par un sujet déjà trouvé (SEP/SP haut ← SEP mal classée ; SH/SNH bas ← SCI USPI faible dans Treegram) ou par la typologie (logement, commerce, parking), sinon le signaler comme sujet à confirmer. Vérifier aussi la cohérence interne : num/den = valeur, SN/SP + SC/SP = 1, mêmes tendances d'un bâtiment à l'autre, bâtiment isolé qui s'écarte du projet.
 4. **Vérifier chaque chiffre avant de l'écrire.** Recalculer depuis le fichier de preuves tout total, part ou fourchette cité dans le rapport. Ne jamais arrondir un ordre de grandeur sans l'avoir calculé.
 5. **Écrire le rapport** `docs/revue-ia/<PROJET>_<date>.md`, sur le modèle de L'Orée :
    - « En bref » : un tableau des sujets (points, surface en jeu, certitude, action) et l'effet sur les totaux ;
@@ -46,7 +46,7 @@ Exemple de référence : `docs/revue-ia/L_OREE_2026-10-22.md` (L'Orée, 156 poin
         | SC/SP bas (< 10 %) | pièces dessinées jusqu'à l'axe des murs, ou SP trop petite |
         | SI/SP haut | beaucoup de locaux techniques (chaufferie, ventilation, gaines) ou pièces techniques classées SI à tort (caves, local vélos → SUS) |
         | SD/SP haut | dégagements généreux (coursives intérieures, halls) ou couloirs d'appartement classés SD au lieu de SUP |
-        | SUP/SU bas, SUS/SP haut | parkings, caves, abris en sous-sol, ou SUT compté dans SU (P1) |
+        | SUP/SU bas, SUS/SP haut | parkings, caves, abris en sous-sol (les ratios de la SUP comptent déjà la SUT, comme la SU) |
         | SEP/SP haut | balcons généreux, **ou** abords (SA) et toitures comptés en SEP : relier aux sujets abords / toitures |
         | SNH/SP, SVN/SP bas | rendement de plan faible : usages non résidentiels, sous-sols comptés, ou SNH des lots incomplète |
         | SH/SNH hors 1,03–1,08 | SCI USPI absente ou forfaitaire dans Treegram |

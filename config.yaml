@@ -113,9 +113,12 @@ ratios:
   - {id: SC/SP,   family: sia,  label: "Part de construction (SP − SN)", num: [SC], den: [SP], ref: [0.12, 0.22],
      note: "SC n'est pas fournie par Treegram : calculée par différence, elle absorbe aussi les surfaces non classées."}
   - {id: SU/SP,   family: sia,  label: "Efficience utile (SU / SP)", num: [SU], den: [SP], ref: [0.62, 0.80]}
-  - {id: SUP/SP,  family: sia,  label: "Part utile principale (SUP / SP)", num: [SUP], den: [SP], ref: [0.50, 0.72]}
-  - {id: SUP/SU,  family: sia,  label: "Principale dans l'utile (SUP / SU)", num: [SUP], den: [SU], ref: [0.70, 0.95],
-     note: "Sous la règle P1, SU comprend SUT : le ratio baisse sans que la SUP change."}
+  # SUT : catégorie Treegram (activités, commerces, bureaux…) qui relève de la SUP au sens SIA 416 §2.1.1.1 ; elle reste
+  # affichée à part (calques, bilan), mais les ratios de la SUP la comptent pour rester cohérents avec SU = SUP + SUS + SUT.
+  - {id: SUP/SP,  family: sia,  label: "Part utile principale (SUP + SUT) / SP", num: [SUP, SUT], den: [SP], ref: [0.50, 0.72],
+     note: "SUT (catégorie Treegram : activités, commerces, bureaux) comptée dans la SUP."}
+  - {id: SUP/SU,  family: sia,  label: "Principale dans l'utile (SUP + SUT) / SU", num: [SUP, SUT], den: [SU], ref: [0.70, 0.95],
+     note: "SUT (catégorie Treegram) comptée dans la SUP, comme dans la SU (règle P1)."}
   - {id: SD/SP,   family: sia,  label: "Part de dégagement (SD / SP)", num: [SD], den: [SP], ref: [0.05, 0.12]}
   - {id: SI/SP,   family: sia,  label: "Part d'installations (SI / SP)", num: [SI], den: [SP], ref: [0.01, 0.05]}
   - {id: SEP/SP,  family: sia,  label: "Surface externe / plancher (SEP / SP)", num: [SEP], den: [SP], ref: [0.05, 0.20],

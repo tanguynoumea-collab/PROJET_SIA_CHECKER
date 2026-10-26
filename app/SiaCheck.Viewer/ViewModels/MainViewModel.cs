@@ -653,6 +653,14 @@ public sealed partial class MainViewModel : ObservableObject
     {
         foreach (var i in Issues.Where(i => i.IsLinked)) i.IsLinked = false;
         if (id is not null && SiaCheck.Viewer.Scene.SceneController.IsPreview(id)) { SelectedSurface = PendingSurface(id); return; }
+        if (id is not null && Document?.IslandById.TryGetValue(id, out var island) == true)
+        {   // îlot d'une surface en plusieurs morceaux : sa propre fiche, les points de la surface d'origine
+            var parentLinked = Issues.Where(i => i.SurfaceIds.Contains(island.IslandOf!)).OrderBy(i => i.SortKey).ToList();
+            foreach (var i in parentLinked) i.IsLinked = true;
+            SelectedSurface = new SurfaceInfo(island, parentLinked);
+            LinkedIssuesChanged?.Invoke(parentLinked.FirstOrDefault(Matches));
+            return;
+        }
         if (id is null || !_surfaceById.TryGetValue(id, out var s)) { SelectedSurface = null; return; }
         var linked = Issues.Where(i => i.SurfaceIds.Contains(id)).OrderBy(i => i.SortKey).ToList();
         foreach (var i in linked) i.IsLinked = true;

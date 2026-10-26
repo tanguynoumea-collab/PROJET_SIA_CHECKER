@@ -285,19 +285,51 @@ public sealed partial class MainViewModel
             var former = Document.Surfaces.Where(s => s.Id.EndsWith("#" + m.Id, StringComparison.Ordinal)).Select(s => s.Id).ToList();
             var targetCode = targets.Select(id => _surfaceById.GetValueOrDefault(id)?.DisplayCode).FirstOrDefault(x => x is not null);
             var on = c.CreatedOn ?? (_surfaceById.GetValueOrDefault(targets.FirstOrDefault() ?? "") is { Building: { } b, Level: { } l } ? (b, l) : null);
+            var islands = m.Trace is { } tr && m.Op is "découper" or "exclure" ? IslandsUnder(targets, tr) : [];
             ScenePreview? p = m.Op switch
             {
                 "exclure" when m.Area is null => new(m.Id, targets, [], null, null, null, null),
+                "exclure" when islands.Count > 0 => new(m.Id, islands, [], null, null, null, null),
                 "reclasser" when m.To is not null => new(m.Id, [], targets, m.To, null, null, null),
                 "remodeler" when m.Trace is not null => new(m.Id, [.. targets, .. former], [], m.To ?? targetCode, m.Trace, on?.Item1, on?.Item2),
                 "remodeler" when m.To is not null => new(m.Id, [], targets, m.To, null, null, null),
                 "créer" when m.Trace is not null => new(m.Id, former, [], m.To, m.Trace, on?.Item1, on?.Item2),
-                "découper" when m.Trace is not null => new(m.Id, former, [], m.To, m.Trace, on?.Item1, on?.Item2, Lift: true),
+                "découper" when m.Trace is not null => new(m.Id, [.. former, .. islands], [], m.To, m.Trace, on?.Item1, on?.Item2, Lift: true),
                 _ => null,
             };
             if (p is not null) items.Add(p);
         }
         Scene.SetPreview(items);
+    }
+
+    /// <summary>Îlots des surfaces visées dont le centre est sous le tracé : ceux qu'une découpe ou une exclusion retire.</summary>
+    private List<string> IslandsUnder(IReadOnlyList<string> targets, TraceMesh trace)
+    {
+        var hit = new List<string>();
+        foreach (var t in targets)
+            if (Document!.Islands.TryGetValue(t, out var parts))
+                hit.AddRange(parts.Where(p => p.Mesh is { Indices.Length: >= 3 } pm && Inside(trace, Centroid(pm))).Select(p => p.Id));
+        return hit;
+
+        static (double X, double Y) Centroid(MeshData m)
+        {
+            var (a, b, c) = (m.Indices[0], m.Indices[1], m.Indices[2]);
+            return ((m.Vertices[3 * a] + m.Vertices[3 * b] + m.Vertices[3 * c]) / 3, (m.Vertices[3 * a + 1] + m.Vertices[3 * b + 1] + m.Vertices[3 * c + 1]) / 3);
+        }
+
+        static bool Inside(TraceMesh tr, (double X, double Y) p)
+        {
+            for (var k = 0; k + 2 < tr.Indices.Length; k += 3)
+            {
+                double X(int i) => tr.Vertices[2 * tr.Indices[k + i]];
+                double Y(int i) => tr.Vertices[2 * tr.Indices[k + i] + 1];
+                var d1 = (p.X - X(1)) * (Y(0) - Y(1)) - (X(0) - X(1)) * (p.Y - Y(1));
+                var d2 = (p.X - X(2)) * (Y(1) - Y(2)) - (X(1) - X(2)) * (p.Y - Y(2));
+                var d3 = (p.X - X(0)) * (Y(2) - Y(0)) - (X(2) - X(0)) * (p.Y - Y(0));
+                if (!((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) return true;
+            }
+            return false;
+        }
     }
 
     private void OnCorrectionsChanged()

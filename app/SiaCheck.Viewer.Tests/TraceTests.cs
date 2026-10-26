@@ -462,3 +462,70 @@ public class SaLayerTests
         Assert.Contains("abords", sa.Title);
     }
 }
+
+public class IslandTests
+{
+    /// <summary>SEP de niveau en deux îlots : 10 × 4 (40 m²) et 2 × 5 (10 m²), à l'écart ; Treegram donne 50 m².</summary>
+    private static Surface TwoIslandSep() => JsonSerializer.Deserialize<Surface>(JsonSerializer.Serialize(new
+    {
+        id = "sep", building = "A", level = "N00", category = "SEP", code = "SEP", kind = "node", status = "checked", area = 50.0,
+        mesh = new
+        {
+            v = new[] { 0, 0, 0, 10, 0, 0, 10, 4, 0, 0, 4, 0, 20, 0, 0, 22, 0, 0, 22, 5, 0, 20, 5, 0 },
+            i = new[] { 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7 },
+        },
+    }))!;
+
+    private static ViewerDocument Doc() => new() { Surfaces = [TwoIslandSep(), Plan.Square("sp", "SP", 0, 0, 30, 10, kind: "node")] };
+
+    [Fact]
+    public void A_surface_in_separate_pieces_becomes_one_object_per_island()
+    {
+        var doc = Doc();
+        var islands = doc.Islands["sep"];
+        Assert.Equal(["sep#ilot1", "sep#ilot2"], islands.Select(i => i.Id));
+        Assert.Equal([40.0, 10.0], islands.Select(i => i.Area!.Value));
+        Assert.All(islands, i => Assert.Equal("sep", i.IslandOf));
+        Assert.DoesNotContain(doc.DisplaySurfaces, s => s.Id == "sep");
+        var scene = new SceneController(doc, new SiaPalette(doc.Categories), System.Windows.Media.Colors.Gray);
+        Assert.Contains("sep#ilot2", scene.SurfacesOfLevel("A", "N00"));
+        Assert.NotNull(scene.Focus(["sep"]));                            // un point qui cite la SEP isole ses îlots
+    }
+
+    [Fact]
+    public void Editing_an_island_corrects_its_surface_only_there()
+    {
+        var doc = Doc();
+        var (big, small) = (doc.Islands["sep"][0], doc.Islands["sep"][1]);
+        var tol = new Tolerance { AbsM2 = 0.5, Rel = 0.005 };
+
+        var retype = new TraceSession(small, doc.DisplaySurfaces, [], "SEP", null, 0, 0, tol, TraceKind.Reshape, siblings: [big]) { Target = "NC" };
+        var c = retype.BuildCorrection("c1", null);
+        Assert.Equal(("découper", "NC", 10.0), (c.Op, c.To, c.Area));          // l'îlot seul passe en NC
+        Assert.Equal(["sep"], c.TargetIds);
+
+        var reshape = new TraceSession(small, doc.DisplaySurfaces, [], "SEP", null, 0, 0, tol, TraceKind.Reshape, siblings: [big]);
+        reshape.BeginChange();
+        reshape.MovePolygon(0, new Vector(0, 1));
+        var r = reshape.BuildCorrection("c2", null);
+        Assert.Equal(("remodeler", 50.0), (r.Op, r.Area));                    // l'autre îlot reste dans l'emprise
+        Assert.Equal(2, r.Extra!["polygone"].GetProperty("coordinates").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Deleting_an_island_excludes_only_its_part()
+    {
+        using var tmp = new TempDir();
+        var vm = new MainViewModel(new FakeShell(), new AppPaths(tmp.Path, tmp.Path), new AppSettings(), enginePath: null) { AiSearchBaseDir = tmp.Path };
+        vm.LoadDocument(tmp.Path, Doc());
+        vm.SelectSurface("sep#ilot2");
+        Assert.Equal("sep", vm.SelectedSurface!.Surface.IslandOf);
+        await vm.DeleteSelectedSurfaceCommand.ExecuteAsync(null);
+        var c = vm.SelectedCorrection!.Model;
+        Assert.Equal(("exclure", 10.0), (c.Op, c.Area));
+        Assert.Equal(["sep"], c.TargetIds);
+        Assert.True(c.Extra!.ContainsKey("polygone"));
+        Assert.DoesNotContain("sep#ilot2", vm.Scene!.SurfacesOfLevel("A", "N00"));   // aperçu : l'îlot disparaît
+        Assert.Contains("sep#ilot1", vm.Scene!.SurfacesOfLevel("A", "N00"));
+    }
+}

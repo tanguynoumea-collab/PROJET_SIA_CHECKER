@@ -92,7 +92,7 @@ public sealed partial class MainViewModel
             return;
         }
         if (SelectedSurface?.Surface is not { } s) return;
-        if (PendingFor(s.Id, "remodeler") is { } existing) { ReopenCorrection(existing); return; }
+        if (s.IslandOf is null && PendingFor(s.Id, "remodeler") is { } existing) { ReopenCorrection(existing); return; }
         SetTraceTargets(SurfaceTypes.Contains(s.DisplayCode) ? SurfaceTypes : [s.DisplayCode, .. SurfaceTypes], s.DisplayCode);
         OpenTrace(s, s.DisplayCode, null, TraceKind.Reshape);
     }
@@ -212,8 +212,9 @@ public sealed partial class MainViewModel
             _shell.Notify("Pas de géométrie pour ce niveau dans le cache VWR : ajustez l'aire avec Modifier.");
             return;
         }
-        var level = Document.Surfaces.Where(s => s.Building == source.Building && s.Level == source.Level
-                                                && !Document.RedundantTotals.Contains(s.Id)).ToList();
+        var level = Document.DisplaySurfaces.Where(s => s.Building == source.Building && s.Level == source.Level).ToList();
+        var siblings = source.IslandOf is { } parent && Document.Islands.TryGetValue(parent, out var parts)
+            ? parts.Where(p => p.Id != source.Id).ToList() : null;
         var levels = Document.Levels.Where(l => l.Building == source.Building).ToList();
         var rank = levels.FirstOrDefault(l => l.Level == source.Level)?.Rank ?? 0;
         var belowLevel = levels.Where(l => (l.Rank ?? 0) < rank).OrderByDescending(l => l.Rank ?? 0).FirstOrDefault()?.Level;
@@ -222,7 +223,7 @@ public sealed partial class MainViewModel
         var r3 = lv?.R3?.Diff ?? 0;
         var applied = item?.State == CorrectionState.Applied ? item.Model.Area ?? 0 : 0;
         _tracedItem = item;
-        Trace = new TraceSession(source, level, below, target, item?.Model, r3, applied, Document.Tolerance, kind, initial);
+        Trace = new TraceSession(source, level, below, target, item?.Model, r3, applied, Document.Tolerance, kind, initial, siblings);
         IsAiReportOpen = false;
         TraceFitRequested?.Invoke();
     }
@@ -267,7 +268,7 @@ public sealed partial class MainViewModel
             TraceKind.Create => ("creation", "Surface créée"),
             _ => ("", "Découpe créée"),
         };
-        var created = t.BuildCorrection(NewManualId(prefix, source.Building, source.Level), SubjectOf(t.IsCreate ? null : source.Id));
+        var created = t.BuildCorrection(NewManualId(prefix, source.Building, source.Level), SubjectOf(t.IsCreate ? null : t.TargetSurfaceId));
         if (t.IsCut)
             created.Explanation = $"{source.Building} {source.Level} : {created.Area:#,##0.00} m² de {source.DisplayCode} tracés → {TraceTarget}.";
         else created.Status = Correction.Accepted;   // geste direct de l'utilisateur : décidé d'emblée
@@ -310,12 +311,21 @@ public sealed partial class MainViewModel
                 $"{s.Building} {s.Level} · {s.Id}{area} sera retirée des sommes et des exports à la prochaine analyse. " +
                 "La correction reste dans le journal : vous pourrez la rejeter pour revenir en arrière.", "Supprimer", "Annuler"))
             return;
+        var target = s.IslandOf ?? s.Id;
         var c = new Correction
         {
-            Id = NewManualId("suppression", s.Building, s.Level), Op = "exclure", Subject = SubjectOf(s.Id),
-            Target = JsonSerializer.SerializeToElement(new { ids = new[] { s.Id } }), Status = Correction.Accepted, Origin = "manuel",
+            Id = NewManualId("suppression", s.Building, s.Level), Op = "exclure", Subject = SubjectOf(target),
+            Target = JsonSerializer.SerializeToElement(new { ids = new[] { target } }), Status = Correction.Accepted, Origin = "manuel",
             M2 = s.Area, Explanation = $"{s.Building} {s.Level} : {s.DisplayCode} {s.Id}{area} supprimée à la main.",
         };
+        if (s.IslandOf is not null)   // un îlot seul : exclusion partielle de la surface d'origine, à son emprise
+        {
+            var (polygon, trace, _) = TraceSession.Footprint(s);
+            c.Area = s.Area;
+            c.Trace = trace;
+            c.Extra = new() { ["polygone"] = polygon };
+            c.Explanation = $"{s.Building} {s.Level} : îlot {s.Id}{area} de la {s.DisplayCode} supprimé à la main.";
+        }
         AddManualCorrection(c);
         _shell.Notify($"{s.DisplayCode} supprimée : elle sortira des sommes à la prochaine analyse (Analyser).");
     }

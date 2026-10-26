@@ -92,6 +92,10 @@ TRACK_COLUMNS = ["excluded", "corrections", "original_category", "original_area"
 # Géométrie dessinée d'une surface remodelée ou créée : {"polygone": GeoJSON, "z": altitude} ; la visionneuse la
 # triangule à la place du maillage du cache VWR (viewer.build).
 GEOMETRY_COLUMN = "geometrie"
+# Parts retirées de l'emprise d'une surface par une découpe ou une exclusion partielle tracées : [GeoJSON, …].
+# La visionneuse les soustrait du maillage (viewer.build) ; la part découpée porte sa géométrie (`dans` = surface
+# d'origine, pour la découper à son emprise).
+CUTS_COLUMN = "retraits"
 
 
 # --------------------------------------------------------------------------- journal
@@ -205,6 +209,12 @@ def _geometry(c: dict) -> dict | None:
     return {"polygone": c["polygone"], "z": c.get("z")} if isinstance(c.get("polygone"), dict) else None
 
 
+def _cut(df: pd.DataFrame, i, c: dict) -> None:
+    """Tracé d'une découpe ou d'une exclusion partielle : retiré de l'emprise affichée de la surface d'origine."""
+    if isinstance(c.get("polygone"), dict):
+        df.at[i, CUTS_COLUMN] = [*(df.at[i, CUTS_COLUMN] or []), c["polygone"]]
+
+
 def _create(df: pd.DataFrame, c: dict) -> tuple[pd.DataFrame, int, float]:
     """`créer` : nouvelle surface du niveau ; elle rejoint le détail de sa catégorie s'il existe."""
     b, lvl, code, aire = c["niveau"]["building"], c["niveau"]["level"], c["vers"], float(c["aire"])
@@ -244,6 +254,7 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
         if r.kind == "leaf":
             _shift_node(df, r.building, r.level, r.category, -aire)
         df.loc[i, "area"] = float(r.area or 0) - aire
+        _cut(df, i, c)
         moved = aire
     elif op == "reclasser":
         for i in idx:
@@ -301,6 +312,10 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
             if col in new:
                 new[col] = None
         new["original_category"], new["original_area"], new["corrections"] = None, None, cid
+        new[CUTS_COLUMN] = None
+        if (geo := _geometry(c)) is not None:
+            new[GEOMETRY_COLUMN] = {**geo, "dans": str(r["id"])}
+        _cut(df, i, c)
         if r.kind == "leaf" and not inside:   # l'aire quitte le total de niveau de la cible
             _shift_node(df, r.building, r.level, r.category, -aire)
         if new["kind"] == "leaf":   # et rejoint celui de sa nouvelle catégorie
@@ -368,9 +383,10 @@ def apply(df: pd.DataFrame, journal: dict, geometry=None, tolerance: tuple[float
     df["corrections"] = ""
     df["original_category"] = df["category"]
     df["original_area"] = df["area"]
-    if GEOMETRY_COLUMN not in df:
-        df[GEOMETRY_COLUMN] = None
-    df[GEOMETRY_COLUMN] = df[GEOMETRY_COLUMN].astype(object)
+    for col in (GEOMETRY_COLUMN, CUTS_COLUMN):
+        if col not in df:
+            df[col] = None
+        df[col] = df[col].astype(object)
     if "affectation" not in df:
         df["affectation"] = None
     log, infos = [], []

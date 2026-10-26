@@ -110,21 +110,49 @@ def _mesh(meshes) -> dict | None:
     return {"v": v, "i": idx}
 
 
-def _drawn_mesh(geometry, fallback_z: float | None) -> dict | None:
-    """Maillage d'une surface remodelée ou créée (corrections.GEOMETRY_COLUMN) : son tracé triangulé, à plat."""
-    if not isinstance(geometry, dict) or not isinstance(geometry.get("polygone"), dict):
-        return None
-    try:
-        from shapely.geometry import shape
-        from .sujets import _trace
-    except ImportError:
-        return None
-    z = geometry.get("z")
-    t = _trace(shape(geometry["polygone"]).buffer(0), float(z if z is not None else fallback_z or 0.0))
+def _flat_mesh(geom, z: float) -> dict | None:
+    """Maillage à plat d'une géométrie shapely (tracé triangulé de sujets._trace, en 3D)."""
+    from .sujets import _trace
+    t = _trace(geom, z) if geom is not None and not geom.is_empty else None
     if t is None:
         return None
     xy = t["v"]
     return {"v": [c for k in range(0, len(xy), 2) for c in (xy[k], xy[k + 1], t["z"])], "i": t["i"]}
+
+
+def _top(mesh: dict | None) -> float | None:
+    return max(mesh["v"][2::3]) if mesh and mesh.get("v") else None
+
+
+def _drawn_mesh(geometry, fallback_z: float | None, within=None) -> dict | None:
+    """Maillage d'une surface remodelée, créée ou découpée (corrections.GEOMETRY_COLUMN) : son tracé triangulé, à plat,
+    limité à l'emprise d'origine (`within`) pour une part découpée."""
+    if not isinstance(geometry, dict) or not isinstance(geometry.get("polygone"), dict):
+        return None
+    try:
+        from shapely.geometry import shape
+    except ImportError:
+        return None
+    geom = shape(geometry["polygone"]).buffer(0)
+    if within is not None:
+        geom = geom.intersection(within)
+    z = geometry.get("z")
+    return _flat_mesh(geom, float(z if z is not None else fallback_z or 0.0))
+
+
+def _cut_mesh(mesh: dict, cuts: list) -> dict | None:
+    """Emprise d'une surface moins les parts découpées ou exclues par les corrections (corrections.CUTS_COLUMN)."""
+    try:
+        from shapely import union_all
+        from shapely.geometry import shape
+        from .preuves import polygon_of
+    except ImportError:
+        return mesh
+    base = polygon_of(mesh)
+    if base is None:
+        return mesh
+    rest = base.difference(union_all([shape(c).buffer(0) for c in cuts]))
+    return _flat_mesh(rest, _top(mesh) or 0.0)
 
 
 def _levels(rep: report.Report, cfg: Config) -> list[dict]:
@@ -181,17 +209,35 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
     detailed = set(zip(shown.building[shown.kind == "leaf"], shown.level[shown.kind == "leaf"],
                        shown.category[shown.kind == "leaf"]))
     redundant = set()
+    # Maillages lus (cache VWR) : emprise d'origine des parts découpées.
+    read_mesh = {}
+    for r in all_surf.itertuples(index=False):
+        eid = None if pd.isna(getattr(r, "element_id", None)) else int(r.element_id)
+        read_mesh[str(r.id)] = _mesh(cache.meshes.get(eid)) if eid is not None else None
+
+    def footprint(sid):
+        try:
+            from .preuves import polygon_of
+        except ImportError:
+            return None
+        m = read_mesh.get(sid)
+        return polygon_of(m) if m else None
+
     for r in all_surf.itertuples(index=False):
         if pd.isna(getattr(r, "element_id", None)) and "#" in str(r.id) and not str(r.id).endswith("#total"):
             created.add(str(r.id))
-        eid = None if pd.isna(getattr(r, "element_id", None)) else int(r.element_id)
-        mesh = _mesh(cache.meshes.get(eid)) if eid is not None else None
+        mesh = read_mesh[str(r.id)]
         drawn = getattr(r, "geometrie", None)
-        if isinstance(drawn, dict):   # emprise redessinée ou surface créée : le tracé remplace le maillage
-            mesh = _drawn_mesh(drawn, max(mesh["v"][2::3]) if mesh else None) or mesh
+        cuts = getattr(r, "retraits", None)
+        if isinstance(drawn, dict):   # emprise redessinée, surface créée ou part découpée : le tracé fait l'emprise
+            parent = drawn.get("dans")
+            mesh = _drawn_mesh(drawn, _top(mesh) or _top(read_mesh.get(parent)),
+                               footprint(parent) if parent else None) or mesh
         elif r.kind == "node" and (r.building, r.level, r.category) in detailed:
             mesh = None
             redundant.add(str(r.id))
+        if isinstance(cuts, list) and cuts and mesh:
+            mesh = _cut_mesh(mesh, cuts)
         surfaces.append({
             "id": str(r.id), "building": _text(r.building), "level": _text(r.level),
             "category": r.category, "code": _text(r.code), "kind": r.kind, "status": r.status,

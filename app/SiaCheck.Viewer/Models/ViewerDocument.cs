@@ -35,6 +35,48 @@ public sealed class ViewerDocument
     [JsonPropertyName("review")] public ReviewInfo? Review { get; init; }
 
     private HashSet<string>? _redundantTotals;
+    private Dictionary<string, IReadOnlyList<Surface>>? _islands;
+    private Dictionary<string, Surface>? _islandById;
+
+    /// <summary>
+    /// Surfaces faites de plusieurs îlots séparés (une SEP de niveau en plusieurs morceaux…) : chaque îlot est un objet
+    /// à part pour la 3D, le plan et la fiche (id « parent#ilotN », aire au prorata de la géométrie). Les corrections
+    /// visent la surface d'origine, avec le tracé de l'îlot.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyDictionary<string, IReadOnlyList<Surface>> Islands => _islands ??= FindIslands();
+
+    /// <summary>Îlot par identifiant.</summary>
+    [JsonIgnore]
+    public IReadOnlyDictionary<string, Surface> IslandById =>
+        _islandById ??= Islands.Values.SelectMany(i => i).ToDictionary(s => s.Id, StringComparer.Ordinal);
+
+    /// <summary>Surfaces à montrer et à sélectionner : sans les totaux doublés, chaque surface à îlots remplacée par ses îlots.</summary>
+    [JsonIgnore]
+    public IEnumerable<Surface> DisplaySurfaces =>
+        Surfaces.Where(s => !RedundantTotals.Contains(s.Id))
+                .SelectMany(s => Islands.TryGetValue(s.Id, out var parts) ? parts : [s]);
+
+    private Dictionary<string, IReadOnlyList<Surface>> FindIslands()
+    {
+        var found = new Dictionary<string, IReadOnlyList<Surface>>(StringComparer.Ordinal);
+        // Surfaces SIA 416 seulement : une surface USPI d'appartement (SNH d'un lot) reste un seul objet, pièces comprises.
+        var sia = Categories.Where(c => c.Family == "sia").Select(c => c.Code).ToHashSet(StringComparer.Ordinal);
+        foreach (var s in Surfaces.Where(s => s.Mesh is not null && !RedundantTotals.Contains(s.Id)
+                                              && (sia.Count == 0 || sia.Contains(s.DisplayCode))))
+        {
+            var parts = MeshIslands.Split(s.Mesh!);
+            if (parts.Count < 2) continue;
+            var total = parts.Sum(p => p.Area);
+            found[s.Id] = parts.Select((p, k) => new Surface
+            {
+                Id = $"{s.Id}#ilot{k + 1}", IslandOf = s.Id, Building = s.Building, Level = s.Level, Category = s.Category,
+                Code = s.Code, Kind = s.Kind, Status = s.Status, RoomType = s.RoomType, Lot = s.Lot, Mesh = p.Mesh,
+                Area = s.Area is double a && total > 0 ? Math.Round(a * p.Area / total, 2) : Math.Round(p.Area, 2),
+            }).ToList();
+        }
+        return found;
+    }
 
     /// <summary>
     /// Totaux de niveau Treegram dont les pièces (même catégorie, avec géométrie) sont livrées : même emprise que leur
@@ -116,12 +158,74 @@ public sealed class Surface
     [JsonIgnore] public bool IsLevelTotal => Kind == "node";
     /// <summary>Retirée par une correction : hors calques et hors sommes, montrée seulement à la demande.</summary>
     [JsonIgnore] public bool IsExcluded => Status == "excluded";
+    /// <summary>Îlot d'une surface en plusieurs morceaux (<see cref="ViewerDocument.Islands"/>) : identifiant de la surface d'origine.</summary>
+    [JsonIgnore] public string? IslandOf { get; init; }
 }
 
 public sealed class MeshData
 {
     [JsonPropertyName("v")] public float[] Vertices { get; init; } = [];
     [JsonPropertyName("i")] public int[] Indices { get; init; } = [];
+}
+
+/// <summary>Morceaux d'un seul tenant d'un maillage : triangles reliés par un sommet commun (au millimètre près).</summary>
+public static class MeshIslands
+{
+    /// <summary>Au-dessous (m²), un morceau est une miette du maillage : il rejoint le plus grand.</summary>
+    private const double MinArea = 0.05;
+
+    public static List<(MeshData Mesh, double Area)> Split(MeshData m)
+    {
+        var tris = m.Indices.Length / 3;
+        if (tris < 2) return [(m, AreaOf(m, Enumerable.Range(0, tris)))];
+        var parent = Enumerable.Range(0, tris).ToArray();
+        int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
+        var owner = new Dictionary<(long, long), int>();
+        for (var t = 0; t < tris; t++)
+            for (var k = 0; k < 3; k++)
+            {
+                var i = m.Indices[3 * t + k];
+                var key = ((long)Math.Round(m.Vertices[3 * i] * 1000), (long)Math.Round(m.Vertices[3 * i + 1] * 1000));
+                if (owner.TryGetValue(key, out var other)) parent[Find(t)] = Find(other);
+                else owner[key] = t;
+            }
+        var groups = Enumerable.Range(0, tris).GroupBy(Find).Select(g => g.ToList()).OrderByDescending(g => AreaOf(m, g)).ToList();
+        var big = groups.Where(g => AreaOf(m, g) >= MinArea).ToList();
+        if (big.Count < 2) return [(m, AreaOf(m, Enumerable.Range(0, tris)))];
+        foreach (var crumb in groups.Where(g => AreaOf(m, g) < MinArea)) big[0].AddRange(crumb);
+        return big.Select(g => (SubMesh(m, g), AreaOf(m, g))).ToList();
+    }
+
+    private static double AreaOf(MeshData m, IEnumerable<int> tris)
+    {
+        double a = 0;
+        foreach (var t in tris)
+        {
+            var (i, j, k) = (m.Indices[3 * t], m.Indices[3 * t + 1], m.Indices[3 * t + 2]);
+            a += Math.Abs((m.Vertices[3 * j] - m.Vertices[3 * i]) * (m.Vertices[3 * k + 1] - m.Vertices[3 * i + 1])
+                          - (m.Vertices[3 * k] - m.Vertices[3 * i]) * (m.Vertices[3 * j + 1] - m.Vertices[3 * i + 1])) / 2;
+        }
+        return a;
+    }
+
+    private static MeshData SubMesh(MeshData m, List<int> tris)
+    {
+        var map = new Dictionary<int, int>();
+        var v = new List<float>();
+        var idx = new List<int>();
+        foreach (var t in tris)
+            for (var k = 0; k < 3; k++)
+            {
+                var i = m.Indices[3 * t + k];
+                if (!map.TryGetValue(i, out var n))
+                {
+                    map[i] = n = map.Count;
+                    v.AddRange([m.Vertices[3 * i], m.Vertices[3 * i + 1], m.Vertices[3 * i + 2]]);
+                }
+                idx.Add(n);
+            }
+        return new MeshData { Vertices = [.. v], Indices = [.. idx] };
+    }
 }
 
 /// <summary>Ratio informatif SIA 416 / USPI (src/sia_check/ratios.py) ; Building « * » = projet entier.</summary>

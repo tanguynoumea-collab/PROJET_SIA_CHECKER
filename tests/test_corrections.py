@@ -298,3 +298,22 @@ def test_nc_keeps_the_surface_out_of_the_sums(cfg):
     surf, _ = rules.classify(a.kept, cfg)
     assert bool(surf.set_index("id").loc["sup-2", "ignored"])
     assert rules.level_totals(surf).loc[("A", "N01")]["SUP"] == 40
+
+
+def test_cut_parts_get_their_footprint_in_the_viewer(cfg):
+    # SEP 20 × 10 dont un îlot 4 × 5 passe en NC : la part a son emprise, la SEP la perd (pas de superposition en 3D).
+    pytest.importorskip("shapely")
+    from sia_check import geom, viewer
+    from sia_check.preuves import polygon_of
+    rect = lambda x0, y0, x1, y1: [geom.Mesh(vertices=[x0, y0, 3, x1, y0, 3, x1, y1, 3, x0, y1, 3], indices=[0, 1, 2, 0, 2, 3])]  # noqa: E731
+    df = pd.DataFrame([
+        {"id": "sp", "building": "A", "level": "N01", "category": "SP", "area": 400.0, "kind": "node", "element_id": 1},
+        {"id": "sep", "building": "A", "level": "N01", "category": "SEP", "area": 200.0, "kind": "node", "element_id": 2},
+    ]).assign(room_type=None, lot=None, elevation=None)
+    cache = geom.Cache()
+    cache.meshes.update({1: rect(0, 10, 20, 30), 2: rect(0, 0, 20, 10)})
+    j = journal({"id": "c1", "op": "découper", "cible": {"ids": ["sep"]}, "vers": "NC", "aire": 20.0, "polygone": SQUARE})
+    applied, before, after = corrections.run(df, j, cfg)
+    doc = viewer.build(after, cfg, cache, "T", ["t"], date="2026-10-26")
+    area = {s["id"]: polygon_of(s["mesh"]).area for s in doc["surfaces"] if s["mesh"]}
+    assert area["sep#c1"] == pytest.approx(20) and area["sep"] == pytest.approx(180)

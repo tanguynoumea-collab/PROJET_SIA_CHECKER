@@ -112,12 +112,20 @@ public sealed class SceneController
         public double MinZ { get; set; }
     }
 
+    /// <summary>Surface en plusieurs îlots : ses îlots, seuls présents dans la scène (<see cref="ViewerDocument.Islands"/>).</summary>
+    private readonly Dictionary<string, List<string>> _islandsOf = new(StringComparer.Ordinal);
+
+    /// <summary>Identifiants de la scène : une surface à îlots devient ses îlots.</summary>
+    private IEnumerable<string> Expand(IEnumerable<string> ids) =>
+        ids.SelectMany(id => _islandsOf.TryGetValue(id, out var parts) ? parts : [id]);
+
     private void Build(ViewerDocument doc)
     {
-        foreach (var s in doc.Surfaces)
+        foreach (var (parent, parts) in doc.Islands) _islandsOf[parent] = parts.Select(p => p.Id).ToList();
+        // Sans les totaux doublés par leurs pièces ; une surface en plusieurs îlots, un objet par îlot.
+        foreach (var s in doc.DisplaySurfaces)
         {
             if (s.Mesh is not { Vertices.Length: > 0 } m || s.Building is null || s.Level is null) continue;
-            if (doc.RedundantTotals.Contains(s.Id)) continue;   // total doublé par ses pièces : pas de doublon en 3D
             var pts = new Point3D[m.Vertices.Length / 3];
             for (var k = 0; k < pts.Length; k++)
                 pts[k] = new Point3D(m.Vertices[3 * k], m.Vertices[3 * k + 1], m.Vertices[3 * k + 2]);
@@ -176,14 +184,14 @@ public sealed class SceneController
 
         foreach (var p in items)
         {
-            foreach (var id in p.Hide.Where(id => _surfaces.ContainsKey(id) && !_hidden.Contains(id)))
+            foreach (var id in Expand(p.Hide).Where(id => _surfaces.ContainsKey(id) && !_hidden.Contains(id)))
             {
                 _hidden.Add(id);
                 _previewHidden.Add(id);
                 Touch(id);
             }
             if (p.Code is { } code)
-                foreach (var id in p.Recolor.Where(id => _surfaces.ContainsKey(id) && !_previewRecolored.ContainsKey(id)))
+                foreach (var id in Expand(p.Recolor).Where(id => _surfaces.ContainsKey(id) && !_previewRecolored.ContainsKey(id)))
                 {
                     _previewRecolored[id] = _surfaces[id].Code;
                     _surfaces[id] = _surfaces[id] with { Code = code };
@@ -371,11 +379,12 @@ public sealed class SceneController
     public Rect3D? Focus(IEnumerable<string> surfaceIds, IReadOnlyList<(string SurfaceId, TraceMesh Trace)> parts, Color accent = default)
     {
         ClearFocusBatches();
-        var partIds = parts.Select(p => p.SurfaceId).ToHashSet();
-        surfaceIds = surfaceIds.Where(id => !partIds.Contains(id)).ToList();
-        var traced = parts.Where(p => _surfaces.ContainsKey(p.SurfaceId)).ToList();
-        var shown = surfaceIds.Where(_surfaces.ContainsKey).Select(id => _surfaces[id]).ToList();
-        var all = shown.Concat(traced.Select(p => _surfaces[p.SurfaceId])).ToList();
+        // Une part posée sur une surface à îlots : tous ses îlots en fantôme, le tracé sur leur niveau.
+        var traced = parts.Select(p => (Ids: Expand([p.SurfaceId]).Where(_surfaces.ContainsKey).ToList(), p.Trace))
+                          .Where(p => p.Ids.Count > 0).ToList();
+        var partIds = traced.SelectMany(p => p.Ids).ToHashSet();
+        var shown = Expand(surfaceIds).Where(id => _surfaces.ContainsKey(id) && !partIds.Contains(id)).Select(id => _surfaces[id]).ToList();
+        var all = shown.Concat(partIds.Select(id => _surfaces[id])).ToList();
         _focus = all.Select(s => s.Id).ToHashSet();
         _cutZ = Bounds(all) is { } fb ? fb.Z + fb.SizeZ : null;
         foreach (var grp in shown.GroupBy(s => (s.Building, s.Level)))
@@ -384,8 +393,8 @@ public sealed class SceneController
             foreach (var byCode in grp.GroupBy(s => s.Code))
                 node.FocusBatches.Add(MakeBatch(byCode.Key, byCode, lift: FocusLift));
         }
-        foreach (var (id, trace) in traced)
-            AddOverlay(trace, _surfaces[id].Building, _surfaces[id].Level, accent, PartAlpha);
+        foreach (var (ids, trace) in traced)
+            AddOverlay(trace, _surfaces[ids[0]].Building, _surfaces[ids[0]].Level, accent, PartAlpha);
         Refresh();
         return Bounds(all);
     }
@@ -450,7 +459,7 @@ public sealed class SceneController
     }
 
     public Rect3D? Bounds(IEnumerable<string> surfaceIds) =>
-        Bounds(surfaceIds.Where(_surfaces.ContainsKey).Select(id => _surfaces[id]));
+        Bounds(Expand(surfaceIds).Where(_surfaces.ContainsKey).Select(id => _surfaces[id]));
 
     private Rect3D? Bounds(IEnumerable<SurfaceGeometry> surfaces)
     {

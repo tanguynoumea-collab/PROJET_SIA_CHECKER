@@ -247,6 +247,14 @@ public sealed partial class MainViewModel
     private void SaveTrace()
     {
         if (Trace is not { CanSave: true } t || _journal is null) return;
+        if (t.IsSplitMode)   // SPLIT : deux surfaces, la seconde découpée de l'origine, chacune avec son type
+        {
+            var split = t.BuildSplitCorrections(NewManualId("scission", t.Source.Building, t.Source.Level), SubjectOf(t.TargetSurfaceId));
+            foreach (var c in split) { c.Status = Correction.Accepted; _journal.Decide(c); }
+            AddManualCorrection(split[0]);
+            _shell.Notify($"Surface scindée en deux ({t.SplitAreaAText} et {t.SplitAreaBText}) : appliquée à la prochaine analyse (Analyser).");
+            return;
+        }
         if (_tracedItem is { } item)
         {
             var c = t.BuildCorrection(item.Id, item.Model.Subject);

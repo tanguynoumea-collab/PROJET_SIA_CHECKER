@@ -317,3 +317,13 @@ def test_cut_parts_get_their_footprint_in_the_viewer(cfg):
     doc = viewer.build(after, cfg, cache, "T", ["t"], date="2026-10-26")
     area = {s["id"]: polygon_of(s["mesh"]).area for s in doc["surfaces"] if s["mesh"]}
     assert area["sep#c1"] == pytest.approx(20) and area["sep"] == pytest.approx(180)
+
+
+def test_split_part_keeps_metadata_and_level_totals(cfg):
+    # SPLIT : une part de sup-1 (40 m²) découpée vers SUP, même type : mêmes métadonnées, totaux inchangés.
+    a = corrections.apply(surfaces(), journal({"id": "c1", "op": "découper", "cible": {"ids": ["sup-1"]}, "vers": "SUP",
+                                               "aire": 15.0, "polygone": SQUARE}), cfg=cfg)
+    s = a.surfaces.set_index("id")
+    assert (s.loc["sup-1", "area"], s.loc["sup-1#c1", "area"]) == (25.0, 15.0)
+    assert s.loc["sup-1#c1", "room_type"] == "Chambre" and s.loc["sup-1#c1", "kind"] == "leaf"
+    assert rules.level_totals(rules.classify(a.kept, cfg)[0]).loc[("A", "N01")]["SUP"] == 60

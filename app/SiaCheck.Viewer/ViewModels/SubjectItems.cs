@@ -168,7 +168,15 @@ public sealed partial class CorrectionItem : ObservableObject
     /// </summary>
     public IReadOnlyList<ChoiceItem> Destinations =>
         IsOrphan || Model.Area is null || Model.Op is not ("découper" or "exclure") ? []
-        : TargetCode switch { "SEP" => SepDestinations, "SP" => SpDestinations, _ => [] };
+        : TargetCode switch
+        {
+            "SEP" => SepDestinations,
+            "SP" => SpDestinations,
+            _ => Model.Op == "découper" ? AnyDestinations : [],   // part scindée d'une autre surface : tous les types
+        };
+
+    private static readonly IReadOnlyList<ChoiceItem> AnyDestinations =
+        [.. MainViewModel.SurfaceTypes.Select(c => new ChoiceItem(c, c)), new("Exclure · retirer du modèle", ExcludeChoice)];
     public bool HasDestinations => Destinations.Count > 0;
 
     /// <summary>Destination choisie : change l'opération (découper ↔ exclure) ; la correction devient « manuel ».</summary>

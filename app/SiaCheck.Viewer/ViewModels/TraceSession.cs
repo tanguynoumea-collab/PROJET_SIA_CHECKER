@@ -8,7 +8,8 @@ using SiaCheck.Viewer.Models;
 
 namespace SiaCheck.Viewer.ViewModels;
 
-public enum TraceMode { Draw, Edit }
+/// <summary>Tracer un contour, le modifier, ou scinder la surface par une ligne (emprise d'une surface seulement).</summary>
+public enum TraceMode { Draw, Edit, Split }
 
 /// <summary>
 /// Usage du module : découper une part d'une surface (correction « découper » / exclusion partielle), redessiner
@@ -150,9 +151,11 @@ public sealed partial class TraceSession : ObservableObject
         _ => $"{Source.Building}·{Source.Level} · {Source.DisplayCode} → {(Target == "" ? "exclue" : Target)}",
     };
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsDrawMode), nameof(IsEditMode), nameof(Help))] private TraceMode _mode;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsDrawMode), nameof(IsEditMode), nameof(IsSplitMode), nameof(Help), nameof(CanSave))]
+    private TraceMode _mode;
     public bool IsDrawMode { get => Mode == TraceMode.Draw; set { if (value) Mode = TraceMode.Draw; } }
     public bool IsEditMode { get => Mode == TraceMode.Edit; set { if (value) Mode = TraceMode.Edit; } }
+    public bool IsSplitMode { get => Mode == TraceMode.Split; set { if (value) Mode = TraceMode.Split; } }
     [ObservableProperty] private bool _snapToVertices = true;
     [ObservableProperty] private bool _snapToEdges = true;
     /// <summary>Accrochage léger aux angles droits avec les arêtes voisines du tracé (repère ⦜ à l'angle).</summary>
@@ -163,7 +166,9 @@ public sealed partial class TraceSession : ObservableObject
     [ObservableProperty] private bool _isDrawingOpen;
     [ObservableProperty] private bool _isDirty;
 
-    public string Help => Mode == TraceMode.Draw
+    public string Help => Mode == TraceMode.Split
+        ? "Clic : poser un point de la ligne de coupe, qui traverse la surface de part en part · Entrée ou double-clic : couper · ⌫ : retirer le dernier point · Échap : effacer la ligne · Alt : sans accrochage"
+        : Mode == TraceMode.Draw
         ? "Clic : ajouter un point · clic sur le premier point, Entrée ou double-clic : fermer · ⌫ : retirer le dernier point · Maj : horizontal / vertical · Alt : sans accrochage · Échap : annuler le point en cours"
         : "Clic : sélectionner un sommet ou une arête, glisser pour la déplacer · glisser l'intérieur : tout le contour · double-clic sur une arête : ajouter un sommet · Suppr : retirer le sommet, ou l'arête (le contour s'ouvre : complétez-le en mode Tracer) · flèches : 0,10 m (Maj : 1 m) · Ctrl+Z / Ctrl+Y";
 
@@ -204,9 +209,131 @@ public sealed partial class TraceSession : ObservableObject
     public bool HasMessage => Message is not null;
     public bool MessageIsError => IsSelfIntersecting || IsCut && ClosedPolygons().Any() && CountedArea <= 0.005;
 
-    /// <summary>Emprise redessinée : un changement de type seul suffit à enregistrer.</summary>
-    public bool CanSave => IsDirty || Existing?.NeedsRetrace == true || IsReshape && Target != Source.DisplayCode
-        ? !IsDrawingOpen && !IsSelfIntersecting && CountedArea > 0.005 : false;
+    /// <summary>Emprise redessinée : un changement de type seul suffit à enregistrer ; en mode Scinder, une coupe faite.</summary>
+    public bool CanSave => IsSplitMode ? HasSplit
+        : IsDirty || Existing?.NeedsRetrace == true || IsReshape && Target != Source.DisplayCode
+            ? !IsDrawingOpen && !IsSelfIntersecting && CountedArea > 0.005 : false;
+
+    // ------------------------------------------------------------------ scinder
+
+    private readonly List<Point> _splitLine = [];
+    /// <summary>Ligne de coupe en cours (mode Scinder).</summary>
+    public IReadOnlyList<Point> SplitLine => _splitLine;
+    /// <summary>Les deux parties de la surface après la coupe ; vides tant que la ligne n'est pas validée.</summary>
+    public PathsD SplitPartA { get; private set; } = [];
+    public PathsD SplitPartB { get; private set; } = [];
+    public bool HasSplit => SplitPartA.Count > 0 && SplitPartB.Count > 0;
+    public bool IsSplitDone => HasSplit;
+    public string SplitAreaAText => Area(Math.Abs(Clipper.Area(SplitPartA)));
+    public string SplitAreaBText => Area(Math.Abs(Clipper.Area(SplitPartB)));
+    /// <summary>Type de chaque partie : celui de la surface d'origine par défaut.</summary>
+    [ObservableProperty] private string _splitTypeA = "";
+    [ObservableProperty] private string _splitTypeB = "";
+    public string? SplitMessage { get; private set; }
+
+    public void AddSplitPoint(Point p)
+    {
+        if (HasSplit) ClearSplit();
+        _splitLine.Add(p);
+        OnPropertyChanged(string.Empty);
+    }
+
+    public void RemoveLastSplitPoint()
+    {
+        if (HasSplit) { SplitPartA = SplitPartB = []; }
+        if (_splitLine.Count > 0) _splitLine.RemoveAt(_splitLine.Count - 1);
+        OnPropertyChanged(string.Empty);
+    }
+
+    /// <summary>Échap : efface la ligne et la coupe ; false s'il n'y avait rien.</summary>
+    public bool ClearSplit()
+    {
+        if (_splitLine.Count == 0 && !HasSplit) return false;
+        _splitLine.Clear();
+        SplitPartA = SplitPartB = [];
+        SplitMessage = null;
+        OnPropertyChanged(string.Empty);
+        return true;
+    }
+
+    /// <summary>
+    /// Entrée ou double-clic : coupe la surface par la ligne. Les extrémités sont prolongées bien au-delà du niveau, et
+    /// un grand détour d'un côté ferme un demi-plan : partie 1 = surface ∩ ce côté, partie 2 = le reste.
+    /// </summary>
+    public bool FinishSplit()
+    {
+        var line = _splitLine.ToList();
+        if (line.Count >= 2 && (line[^1] - line[^2]).Length < 1e-6) line.RemoveAt(line.Count - 1);   // double-clic
+        SplitPartA = SplitPartB = [];
+        SplitMessage = null;
+        if (line.Count < 2 || _source.Count == 0)
+        {
+            SplitMessage = "Posez au moins deux points : la ligne doit traverser la surface.";
+            OnPropertyChanged(string.Empty);
+            return false;
+        }
+        var side = SideOf(line, Bounds);
+        var a = Clipper.Intersect(_source, side, FillRule.NonZero, Precision);
+        var b = Clipper.Difference(_source, side, FillRule.NonZero, Precision);
+        if (Math.Abs(Clipper.Area(a)) < 0.01 || Math.Abs(Clipper.Area(b)) < 0.01)
+        {
+            SplitMessage = "La ligne ne coupe pas la surface en deux : prolongez-la de part en part.";
+            OnPropertyChanged(string.Empty);
+            return false;
+        }
+        // Partie 1 : la plus grande, elle garde la surface d'origine.
+        (SplitPartA, SplitPartB) = Math.Abs(Clipper.Area(a)) >= Math.Abs(Clipper.Area(b)) ? (a, b) : (b, a);
+        if (SplitTypeA == "") SplitTypeA = Source.DisplayCode;
+        if (SplitTypeB == "") SplitTypeB = Source.DisplayCode;
+        OnPropertyChanged(string.Empty);
+        return true;
+    }
+
+    private static PathsD SideOf(List<Point> line, Rect bounds)
+    {
+        var size = Math.Max(Math.Max(bounds.Width, bounds.Height), 1) * 4;
+        var c = new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+        Point Extend(Point from, Point to) { var d = to - from; d.Normalize(); return to + d * size; }
+        var start = Extend(line[1], line[0]);
+        var end = Extend(line[^2], line[^1]);
+        // Détour par un grand cercle autour du niveau, de la fin de la ligne à son début, toujours du même côté.
+        double Angle(Point p) => Math.Atan2(p.Y - c.Y, p.X - c.X);
+        var a0 = Angle(end);
+        var a1 = Angle(start);
+        if (a1 <= a0) a1 += 2 * Math.PI;
+        var ring = new List<Point> { start };
+        ring.AddRange(line);
+        ring.Add(end);
+        for (var t = 1; t < 32; t++)
+        {
+            var ang = a0 + (a1 - a0) * t / 32;
+            ring.Add(new Point(c.X + Math.Cos(ang) * size * 3, c.Y + Math.Sin(ang) * size * 3));
+        }
+        return Clipper.Union(new PathsD([new PathD(ring.Select(p => new PointD(p.X, p.Y)))]), FillRule.NonZero);
+    }
+
+    /// <summary>
+    /// Corrections de la coupe : la partie 2 est découpée de la surface d'origine (même catégorie ou celle choisie, mêmes
+    /// métadonnées) ; la partie 1 reste la surface d'origine, découpée elle aussi si son type change.
+    /// </summary>
+    public IReadOnlyList<Correction> BuildSplitCorrections(string idStem, string? subject)
+    {
+        var parts = new List<(int N, PathsD Paths, string Type)> { (2, SplitPartB, SplitTypeB) };
+        if (SplitTypeA != Source.DisplayCode) parts.Add((1, SplitPartA, SplitTypeA));
+        return parts.Select(p =>
+        {
+            var area = Math.Round(Math.Abs(Clipper.Area(p.Paths)), 2);
+            return new Correction
+            {
+                Id = $"{idStem}-{p.N}", Op = "découper", To = p.Type, Subject = subject, Status = Correction.Proposed, Origin = "manuel",
+                Target = JsonSerializer.SerializeToElement(new { ids = new[] { TargetSurfaceId } }),
+                Area = area, M2 = area, Trace = Triangulate(p.Paths, _z),
+                Extra = new() { ["polygone"] = MultiPolygon(OuterRings(p.Paths).Select(r => r.Select(ToPoint).ToList())) },
+                Explanation = $"{Source.Building} {Source.Level} : {Source.DisplayCode} scindée, partie {p.N} ({Area(area)})" +
+                              (p.Type != Source.DisplayCode ? $" classée {p.Type}." : ", nouvelle surface de même type."),
+            };
+        }).ToList();
+    }
 
     private static string Area(double v) => v.ToString("#,##0.00", Format) + " m²";
 

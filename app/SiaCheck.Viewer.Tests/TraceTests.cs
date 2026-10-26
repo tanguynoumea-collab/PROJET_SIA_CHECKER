@@ -529,3 +529,63 @@ public class IslandTests
         Assert.Contains("sep#ilot1", vm.Scene!.SurfacesOfLevel("A", "N00"));
     }
 }
+
+public class LayerFocusTests
+{
+    [Fact]
+    public void Hidden_layers_stay_hidden_in_an_isolation()
+    {
+        var sep = Plan.Square("sep", "SEP", 0, 0, 10, 4, kind: "node");
+        var sp = Plan.Square("sp", "SP", 0, 0, 30, 10, kind: "node");
+        var doc = new ViewerDocument { Surfaces = [sep, sp] };
+        var scene = new SceneController(doc, new SiaPalette(doc.Categories), System.Windows.Media.Colors.Gray);
+        scene.Focus(["sep", "sp"]);
+        scene.SetVisibleCodes([], ["SEP", "SP"]);                          // tous les calques décochés
+        Assert.Empty(scene.Root.Children);
+    }
+}
+
+public class SplitTests
+{
+    private static TraceSession Session()
+    {
+        var sus = Plan.Square("sus", "SUS", 0, 0, 10, 4);                // 40 m²
+        return new TraceSession(sus, [sus], [], "SUS", null, 0, 0, new Tolerance { AbsM2 = 0.5, Rel = 0.005 }, TraceKind.Reshape)
+        {
+            IsSplitMode = true,
+        };
+    }
+
+    [Fact]
+    public void A_line_across_cuts_the_surface_in_two_typed_parts()
+    {
+        var s = Session();
+        Assert.False(s.CanSave);
+        s.AddSplitPoint(new Point(4, -1));
+        s.AddSplitPoint(new Point(4, 5));
+        Assert.True(s.FinishSplit());
+        Assert.Equal("24,00 m²", s.SplitAreaAText);                       // partie 1 : la plus grande, garde l'origine
+        Assert.Equal("16,00 m²", s.SplitAreaBText);
+        Assert.True(s.CanSave);
+
+        s.SplitTypeB = "NC";
+        var one = s.BuildSplitCorrections("scission-1", "manuel");
+        var c = Assert.Single(one);                                      // partie 1 inchangée : rien à faire pour elle
+        Assert.Equal(("découper", "NC", 16.0, "scission-1-2"), (c.Op, c.To, c.Area, c.Id));
+        Assert.Equal(["sus"], c.TargetIds);
+
+        s.SplitTypeA = "SUP";
+        Assert.Equal(2, s.BuildSplitCorrections("scission-1", "manuel").Count);
+    }
+
+    [Fact]
+    public void A_line_that_does_not_cross_is_refused()
+    {
+        var s = Session();
+        s.AddSplitPoint(new Point(20, 0));
+        s.AddSplitPoint(new Point(20, 4));
+        Assert.False(s.FinishSplit());
+        Assert.NotNull(s.SplitMessage);
+        Assert.False(s.CanSave);
+    }
+}

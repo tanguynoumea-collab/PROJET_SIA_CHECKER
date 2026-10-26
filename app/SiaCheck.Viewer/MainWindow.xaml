@@ -607,6 +607,9 @@
                                                          ToolTip="Ajouter des points ; Entrée ou double-clic ferme le polygone" />
                                             <RadioButton Style="{StaticResource Segment}" GroupName="TraceMode" Content="Modifier" IsChecked="{Binding Trace.IsEditMode}"
                                                          ToolTip="Déplacer, ajouter ou retirer des sommets" />
+                                            <RadioButton Style="{StaticResource Segment}" GroupName="TraceMode" Content="Scinder" IsChecked="{Binding Trace.IsSplitMode}"
+                                                         Visibility="{Binding Trace.IsReshape, Converter={StaticResource BoolToVisibility}}"
+                                                         ToolTip="SPLIT : tracer une ligne qui coupe la surface en deux surfaces, chacune avec son type" />
                                         </StackPanel>
                                     </Border>
                                     <TextBlock Margin="16,0,6,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center" Text="Accrochage" />
@@ -631,6 +634,29 @@
                             <!-- Chiffres : aire comptée, décomposition, écart R3 du niveau -->
                             <Border DockPanel.Dock="Right" Width="248" Padding="16,12" BorderBrush="{DynamicResource BrushDivider}" BorderThickness="1,0,0,0">
                                 <StackPanel>
+                                    <!-- Scinder : les deux parties, leur type et leur aire -->
+                                    <StackPanel Margin="0,0,0,16" Visibility="{Binding Trace.IsSplitMode, Converter={StaticResource BoolToVisibility}}">
+                                        <TextBlock Style="{StaticResource TextSection}" Margin="0,0,0,4" Text="Scinder la surface" />
+                                        <TextBlock Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                                                   Visibility="{Binding Trace.IsSplitDone, Converter={StaticResource HiddenWhen}}"
+                                                   Text="Tracez une ligne qui traverse la surface, puis Entrée ou double-clic." />
+                                        <Grid Visibility="{Binding Trace.IsSplitDone, Converter={StaticResource BoolToVisibility}}">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                            <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="1" />
+                                            <ComboBox Grid.Column="1" Margin="8,2" ItemsSource="{x:Static vm:MainViewModel.SurfaceTypes}" SelectedItem="{Binding Trace.SplitTypeA}"
+                                                      FontFamily="{StaticResource FontMono}" AutomationProperties.Name="Type de la partie 1"
+                                                      ToolTip="Partie 1 : la plus grande, elle garde la surface d'origine" />
+                                            <TextBlock Grid.Column="2" Style="{StaticResource TextNumber}" VerticalAlignment="Center" Text="{Binding Trace.SplitAreaAText}" />
+                                            <TextBlock Grid.Row="1" Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="2" />
+                                            <ComboBox Grid.Row="1" Grid.Column="1" Margin="8,2" ItemsSource="{x:Static vm:MainViewModel.SurfaceTypes}" SelectedItem="{Binding Trace.SplitTypeB}"
+                                                      FontFamily="{StaticResource FontMono}" AutomationProperties.Name="Type de la partie 2"
+                                                      ToolTip="Partie 2 : nouvelle surface, mêmes bâtiment, niveau, lot et sous-type" />
+                                            <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource TextNumber}" VerticalAlignment="Center" Text="{Binding Trace.SplitAreaBText}" />
+                                        </Grid>
+                                        <TextBlock Margin="0,6,0,0" Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushVerdictError}" TextWrapping="Wrap"
+                                                   Text="{Binding Trace.SplitMessage}" />
+                                    </StackPanel>
                                     <TextBlock Style="{StaticResource TextSection}" Margin="0,0,0,4" Text="Aire du tracé" />
                                     <TextBlock Style="{StaticResource TextNumber}" FontSize="{StaticResource FontSizeTitle}" FontFamily="{StaticResource FontUISemibold}"
                                                HorizontalAlignment="Left" Text="{Binding Trace.CountedText}" />

@@ -167,9 +167,43 @@ public sealed class TracePlan : FrameworkElement
             d.Freeze();
             dc.DrawGeometry(null, Pen(Accent, 1.5), d);
         }
+        if (s.IsSplitMode) DrawSplit(dc, s, pal);
         foreach (var mark in _rightAngles) DrawRightAngle(dc, mark);
         DrawScale(dc);
         if (_cursor is { } c2) Text(dc, $"x {c2.X:#,##0.00}   y {c2.Y:#,##0.00}", new Point(ActualWidth - 12, ActualHeight - 22), right: true, mono: true);
+    }
+
+    /// <summary>Mode Scinder : les deux parties aux couleurs de leur type, numérotées, et la ligne de coupe.</summary>
+    private void DrawSplit(DrawingContext dc, TraceSession s, SiaPalette pal)
+    {
+        foreach (var (paths, type, n) in new[] { (s.SplitPartA, s.SplitTypeA, "1"), (s.SplitPartB, s.SplitTypeB, "2") })
+        {
+            if (paths.Count == 0) continue;
+            var c = pal.ColorOf(type);
+            var fill = new SolidColorBrush(Color.FromArgb(0x99, c.R, c.G, c.B));
+            fill.Freeze();
+            dc.DrawGeometry(fill, Pen(Primary, 1.5), Geometry(paths));
+            var big = paths.MaxBy(p => Math.Abs(Clipper.Area(p)))!;
+            var at = ToScreen(new Point(big.Average(p => p.x), big.Average(p => p.y)));
+            var label = new FormattedText($"{n} · {type}", CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                new Typeface((FontFamily)FindResource("FontMono"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), 14, Primary,
+                VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            dc.DrawText(label, new Point(at.X - label.Width / 2, at.Y - label.Height / 2));
+        }
+        if (s.SplitLine.Count == 0) return;
+        var g = new StreamGeometry();
+        using (var ctx = g.Open())
+        {
+            ctx.BeginFigure(ToScreen(s.SplitLine[0]), false, false);
+            ctx.PolyLineTo(s.SplitLine.Skip(1).Select(ToScreen).ToList(), true, true);
+            if (!s.HasSplit && _cursor is { } cur) ctx.LineTo(ToScreen(_snap ?? cur), true, true);
+        }
+        g.Freeze();
+        var pen = new Pen(Accent, 2.5) { DashStyle = new DashStyle([5, 3], 0), LineJoin = PenLineJoin.Round };
+        pen.Freeze();
+        dc.DrawGeometry(null, pen, g);
+        foreach (var p in s.SplitLine.Select(ToScreen))
+            dc.DrawEllipse(Brushes.White, Pen(Accent, 1.5), p, VertexSize / 2, VertexSize / 2);
     }
 
     /// <summary>Repère d'angle droit : petit carré à l'angle, côtés le long des deux arêtes.</summary>
@@ -325,6 +359,13 @@ public sealed class TracePlan : FrameworkElement
         }
         if (e.ChangedButton != MouseButton.Left) return;
         var m = ToWorld(px);
+        if (s.Mode == TraceMode.Split)   // ligne de coupe : un point par clic, double-clic pour couper
+        {
+            if (e.ClickCount == 2) s.FinishSplit();
+            else s.AddSplitPoint(Constrained(m));
+            InvalidateVisual();
+            return;
+        }
         if (s.Mode == TraceMode.Draw)
         {
             if (e.ClickCount == 2 || s.IsFirstPoint(m, GrabPixels / _scale)) { s.ClosePolygon(); _snap = null; return; }
@@ -382,7 +423,7 @@ public sealed class TracePlan : FrameworkElement
         if (_dragVertex is { } v) s.MoveVertex(v.Polygon, v.Index, Constrained(m));
         else if (_dragEdge is { } ed) { s.MoveEdge(ed.Polygon, ed.Index, m - _dragStart); _dragStart = m; _snap = null; }
         else if (_dragPolygon is { } k) { s.MovePolygon(k, m - _dragStart); _dragStart = m; _snap = null; }
-        else if (s.Mode == TraceMode.Draw) Constrained(m);
+        else if (s.Mode is TraceMode.Draw or TraceMode.Split) Constrained(m);
         else { _snap = null; _rightAngles = []; }
         Cursor = _spaceDown || _panFrom is not null ? Cursors.SizeAll
             : s.Mode == TraceMode.Edit && (s.VertexAt(m, GrabPixels / _scale) is not null) ? Cursors.Hand
@@ -443,6 +484,8 @@ public sealed class TracePlan : FrameworkElement
         switch (e.Key)
         {
             case Key.Space: _spaceDown = true; Cursor = Cursors.SizeAll; break;
+            case Key.Enter when s.Mode == TraceMode.Split: s.FinishSplit(); break;
+            case Key.Back when s.Mode == TraceMode.Split: s.RemoveLastSplitPoint(); break;
             case Key.Enter when s.Mode == TraceMode.Draw: s.ClosePolygon(); break;
             case Key.Back when s.Mode == TraceMode.Draw: s.RemoveLastPoint(); break;
             case Key.Delete or Key.Back when s.Mode == TraceMode.Edit && _selected is { IsEdge: false } v:
@@ -457,7 +500,7 @@ public sealed class TracePlan : FrameworkElement
             case Key.Y when ctrl: s.Redo(); _selected = null; break;
             case Key.F: Fit(); break;
             case Key.Escape:
-                if (!s.CancelOpenPolygon()) CloseRequested?.Invoke(this, EventArgs.Empty);
+                if (!(s.IsSplitMode && s.ClearSplit()) && !s.CancelOpenPolygon()) CloseRequested?.Invoke(this, EventArgs.Empty);
                 break;
             case Key.Left or Key.Right or Key.Up or Key.Down when _selected is { } v:
                 var d = e.Key switch { Key.Left => new Vector(-step, 0), Key.Right => new Vector(step, 0), Key.Up => new Vector(0, step), _ => new Vector(0, -step) };

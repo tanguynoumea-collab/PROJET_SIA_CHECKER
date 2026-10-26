@@ -342,6 +342,9 @@ public sealed class SceneController
         (_buildings is null || _buildings.Contains(n.Building)) && (_level is null || _level == n.Level) &&
         !(_cutZ is { } cut && n.MinZ + n.Ordinal * _explode > cut + CutTolerance);
 
+    /// <summary>Calque coché, ou code sans calque (apparu par l'aperçu des corrections).</summary>
+    private bool IsShown(string code) => _visibleCodes.Contains(code) || !_baseCodes.Contains(code);
+
     private void Refresh()
     {
         Root.Children.Clear();
@@ -349,10 +352,11 @@ public sealed class SceneController
         {
             n.Group.Children.Clear();
             // Opaques d'abord (surfaces isolées), fantôme translucide ensuite : ordre de rendu WPF.
-            foreach (var f in n.FocusBatches) { n.Group.Children.Add(f.Top); n.Group.Children.Add(f.Edges); }
+            // Les calques valent aussi pour l'isolement : un calque masqué ne revient pas avec la surface isolée.
+            foreach (var f in n.FocusBatches.Where(b => IsShown(b.Code))) { n.Group.Children.Add(f.Top); n.Group.Children.Add(f.Edges); }
             foreach (var o in n.Overlay) n.Group.Children.Add(o);
             if (FilterShows(n))
-                foreach (var b in n.Batches.Where(b => _visibleCodes.Contains(b.Code) || !_baseCodes.Contains(b.Code)))
+                foreach (var b in n.Batches.Where(b => IsShown(b.Code)))
                 {
                     var top = _focus is null ? MaterialOf(b.Code, false) : _ghost;
                     var edge = _focus is null ? MaterialOf(b.Code, true) : _ghost;

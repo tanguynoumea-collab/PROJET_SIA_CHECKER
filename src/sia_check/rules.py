@@ -103,23 +103,39 @@ def level_totals(surf: pd.DataFrame, include_ignored: bool = False) -> pd.DataFr
     SPT sont retirées du total SEP de Treegram, qui les compte (COUNTED_IN).
     `include_ignored` sert aux synthèses : les règles ne voient jamais les codes ignorés.
     """
-    s = surf if include_ignored else surf[~surf["ignored"]]
+    s = net_of_roofs(surf)
+    s = s if include_ignored else s[~s["ignored"]]
     if s.empty:
         return pd.DataFrame(index=pd.MultiIndex.from_tuples([], names=["building", "level"]))
-    totals = _detail_first(s).unstack("code")
-    # Toitures (COUNTED_IN) : retirées du total Treegram qui les contient, jamais d'un total fait de surfaces élémentaires.
-    from_node = s[s.code.isin(COUNTED_IN.values())].groupby(["building", "level", "code"])["kind"]         .agg(lambda k: not (k == "leaf").any())
-    inner = surf[surf.code.isin(COUNTED_IN.keys())]
-    if not inner.empty:
-        for (bld, lvl, code), area in _detail_first(inner).items():
-            host = COUNTED_IN[code]
-            if pd.isna(area) or host not in totals or not from_node.get((bld, lvl, host), False):
-                continue
-            v = totals.at[(bld, lvl), host]
-            if not pd.isna(v):
-                rest = float(v) - float(area)
-                totals.at[(bld, lvl), host] = 0.0 if rest <= COUNTED_IN_SNAP_REL * float(v) else rest
-    return totals
+    return _detail_first(s).unstack("code")
+
+
+def net_of_roofs(surf: pd.DataFrame) -> pd.DataFrame:
+    """Copie des surfaces où chaque total de niveau Treegram qui compte des toitures (COUNTED_IN : la SEP compte les
+    SPT) a perdu leur aire. Seul le total livré par Treegram (`…#total`, sinon le plus grand) la perd, jamais un total
+    fait de surfaces élémentaires. Source unique du bilan (level_totals) et des exports (SurfacesBrutes, MDP).
+    `code` attendu ; les surfaces `excluded` (corrections.Applied.surfaces) ne comptent pas."""
+    out = surf.copy()
+    live = ~out["excluded"].astype(bool) if "excluded" in out else pd.Series(True, index=out.index)
+    roofs = out[live & out.code.isin(COUNTED_IN.keys())]
+    if roofs.empty:
+        return out
+    for (bld, lvl, code), roof in _detail_first(roofs).items():
+        host = COUNTED_IN[code]
+        if pd.isna(roof) or not roof:
+            continue
+        here = live & (out.building == bld) & (out.level == lvl) & (out.code == host)
+        if (here & (out.kind == "leaf")).any():
+            continue   # détail livré : Treegram n'y compte pas la toiture
+        nodes = out[here & (out.kind == "node") & out.area.notna()]
+        if nodes.empty:
+            continue
+        own = nodes[nodes.id.astype(str).str.endswith("#total")]
+        i = (own if len(own) else nodes).area.idxmax()
+        area = float(out.at[i, "area"])
+        rest = area - float(roof)
+        out.at[i, "area"] = 0.0 if rest <= COUNTED_IN_SNAP_REL * area else rest
+    return out
 
 
 def _detail_first(s: pd.DataFrame) -> pd.Series:

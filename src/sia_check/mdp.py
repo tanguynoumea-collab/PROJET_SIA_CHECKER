@@ -115,13 +115,9 @@ def _etage(level, cfg: Config):
 def brutes_records(result, cfg, kinds, pid) -> list[dict]:
     """Une ligne par total de niveau non nul. Les abords (SA) n'ont pas de volume : hauteur et m³ vides."""
     dims, out = _dims(result), []
-    hosts = set(rules.COUNTED_IN.values())
-    sep = {h: result.totals[h].dropna().to_dict() for h in hosts if h in result.totals}
     for r in treegram.brutes(result, cfg).to_dict("records"):
         d = dims.get(r["ID TGM"], [])
         m2, h = _blank(r["Area"]), _blank(r["GrossHeight"])
-        if r["Catégorie SIA"] in sep:   # SEP du niveau sans les toitures SPT que Treegram y compte (rules.COUNTED_IN)
-            m2 = _blank(round(sep[r["Catégorie SIA"]].get((r["BuildingByTgm"], r["StoreyByTgm"]), m2 or 0), 2))
         if not m2 and r["Catégorie SIA"] == "SP":   # SP de toiture à 0 m² : pas un étage
             continue
         cat, etage = r["Catégorie SIA"], _etage(r["StoreyByTgm"], cfg)

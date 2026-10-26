@@ -118,7 +118,10 @@ def test_treegram_exports_match_treegram(loree):
     assert len(n) == 3221 + 26 + 47 and len(b) == 160
     assert n["Catégorie SIA"].value_counts()[["SED", "SUT"]].tolist() == [26, 47]
     assert n["ID TGM"].iloc[0] == "H170::H2527" and n["ID TGM"].is_unique and n["ID TGM"].notna().all()
-    assert b.Area.sum() == pytest.approx(74518.54, abs=0.01)
+    # Aires brutes de Treegram (74 518,54 m²) moins les 7 280,38 m² de toitures SPT que Treegram compte dans la SEP.
+    assert b.Area.sum() == pytest.approx(74518.54 - 7280.38, abs=0.05)
+    sep = b[b["Catégorie SIA"] == "SEP"].set_index(["BuildingByTgm", "StoreyByTgm"]).Area
+    assert sep[("E09", "Toiture")] == 0 and sep[("E09", "N04")] == pytest.approx(166.85, abs=0.01)
     assert b.Perimeter.sum() == pytest.approx(17233.96, abs=0.01)
 
 

@@ -82,7 +82,7 @@ def nettes(result: rules.Result, cfg: Config) -> pd.DataFrame:
 
 
 def brutes(result: rules.Result, cfg: Config) -> pd.DataFrame:
-    s = result.surfaces
+    s = rules.net_of_roofs(result.surfaces)   # SEP sans les toitures SPT que Treegram y compte
     codes = gross_codes(cfg)
     s = _sorted(s[(s.kind == "node") & s.code.isin(codes)], codes)
     out = pd.DataFrame({
@@ -109,6 +109,8 @@ def write(result: rules.Result, cfg: Config, out_dir: str | Path, stem: str) -> 
 
 # --------------------------------------------------------------------------- Excel de correction
 
+# Correction de règle, sans entrée au journal : la SEP Treegram perd les toitures SPT (rules.net_of_roofs).
+ROOFS = "toitures SPT"
 CORRECTION_COLUMNS = ["Catégorie corrigée", "Aire corrigée", "Exclue", "Affectation", "Correction", "Explication"]
 
 
@@ -117,12 +119,22 @@ def corrections_frames(applied, journal: dict, cfg: Config) -> tuple[pd.DataFram
     entries = {c.get("id"): c for c in journal.get("corrections", [])}
     s = applied.surfaces.copy()
     canon = lambda c: cfg.canonical(c) if isinstance(c, str) and c in cfg.categories else None  # noqa: E731
+    # Aire corrigée : SEP sans les toitures SPT que Treegram y compte (rules.net_of_roofs), comme le bilan.
+    net_area = rules.net_of_roofs(s.assign(code=s.category.map(canon)))["area"]
+    roofed = (s.kind == "node") & ~s.excluded & ((net_area - s.area).abs() > 1e-9)
+    s["area"] = net_area
+    s.loc[roofed, "corrections"] = [f"{c};{ROOFS}" if c else ROOFS for c in s.loc[roofed, "corrections"]]
     s["code"] = s.original_category.map(canon).fillna(s.category.map(canon))
     s = s[s.code.notna()]
 
     def describe(ids: str) -> tuple[str, str]:
         parts, why = [], []
         for cid in [i for i in str(ids or "").split(";") if i]:
+            if cid == ROOFS:
+                parts.append(ROOFS)
+                why.append("Toitures classées SPT retirées de la SEP du niveau, qui les comptait (SIA 416 §3 : une "
+                           "toiture non accessible n'est ni SP ni SEP).")
+                continue
             c = entries.get(cid, {})
             to = f" → {c['vers']}" if c.get("vers") else f" : {c['affectation']}" if c.get("affectation") else ""
             parts.append(f"{cid} ({c.get('op', '?')}{to})")

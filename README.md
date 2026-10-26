@@ -192,7 +192,7 @@ Développement : `dotnet test app/SiaCheckViewer.sln`.
 
 Tolérance : un écart est signalé si **à la fois** 0,5 m² et 0,5 % sont dépassés (`config.yaml > tolerance`).
 
-Toitures : Treegram compte les toitures classées SPT dans le total SEP du niveau. Le moteur les en retire (`rules.COUNTED_IN`) : une toiture passée en SPT ne pèse plus dans la SEP, le bilan, R3/A2, les ratios ni la feuille des surfaces brutes du MDP. Un reste sous 0,5 % de la SEP Treegram (écart de contour) est ramené à 0. Une toiture reclassée en SEU (toiture accessible) revient dans la SEP.
+Toitures : Treegram compte les toitures classées SPT dans le total SEP du niveau. Le moteur les en retire (`rules.COUNTED_IN`) : une toiture passée en SPT ne pèse plus dans la SEP, le bilan, R3/A2, les ratios, la 3D ni les exports (surfaces brutes du MDP, export Treegram « SurfacesBrutes », Excel de correction, où la ligne porte la correction « toitures SPT »). Un reste sous 0,5 % de la SEP Treegram (écart de contour) est ramené à 0. Une toiture reclassée en SEU (toiture accessible) revient dans la SEP.
 
 ## Structure
 

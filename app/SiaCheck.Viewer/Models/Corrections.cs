@@ -36,7 +36,8 @@ public sealed class Correction
     [JsonPropertyName("id")] public string Id { get; set; } = "";
     /// <summary>reclasser | exclure | découper | ajuster | affecter</summary>
     [JsonPropertyName("op")] public string Op { get; set; } = "";
-    [JsonPropertyName("cible")] public JsonElement Target { get; set; }
+    /// <summary>Absente pour « créer » (la nouvelle surface porte son `niveau`) : non écrite.</summary>
+    [JsonPropertyName("cible"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public JsonElement Target { get; set; }
     [JsonPropertyName("vers"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? To { get; set; }
     [JsonPropertyName("aire"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? Area { get; set; }
     [JsonPropertyName("affectation"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Assignment { get; set; }

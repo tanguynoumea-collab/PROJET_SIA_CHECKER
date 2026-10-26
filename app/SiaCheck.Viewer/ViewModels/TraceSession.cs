@@ -10,6 +10,15 @@ namespace SiaCheck.Viewer.ViewModels;
 
 public enum TraceMode { Draw, Edit }
 
+/// <summary>
+/// Usage du module : découper une part d'une surface (correction « découper » / exclusion partielle), redessiner
+/// l'emprise d'une surface (« remodeler », type compris), ou créer une surface sur un niveau (« créer »).
+/// </summary>
+public enum TraceKind { Cut, Reshape, Create }
+
+/// <summary>Élément du tracé sélectionné en mode Modifier : un sommet, ou l'arête qui part de ce sommet.</summary>
+public readonly record struct TraceSelection(int Polygon, int Index, bool IsEdge);
+
 /// <summary>Surface du niveau dessinée dans le plan : contours (union des triangles du maillage, en mètres).</summary>
 public sealed record PlanShape(string Id, string Code, PathsD Paths, bool IsSource, bool IsBelow);
 
@@ -42,17 +51,20 @@ public sealed partial class TraceSession : ObservableObject
     private readonly List<Point> _snapVertices = [];
     private readonly List<(Point A, Point B)> _snapEdges = [];
 
-    /// <param name="source">Surface à découper (ou à exclure en partie).</param>
+    /// <param name="source">Surface à découper (ou à exclure en partie), à redessiner, ou, pour une création, surface
+    /// fictive qui porte le bâtiment, le niveau et le type de la nouvelle surface.</param>
     /// <param name="level">Surfaces du niveau (avec maillage), source comprise.</param>
     /// <param name="below">Surfaces du niveau inférieur : leur emprise sert de repère et d'accroche.</param>
     /// <param name="existing">Correction déjà tracée (pré-calcul du moteur ou tracé manuel), sinon null.</param>
     /// <param name="r3Now">Écart R3 actuel du niveau (bilan).</param>
     /// <param name="appliedArea">Aire de cette correction déjà appliquée par la dernière analyse (0 sinon).</param>
     public TraceSession(Surface source, IEnumerable<Surface> level, IEnumerable<Surface> below, string target,
-                        Correction? existing, double r3Now, double appliedArea, Tolerance tolerance)
+                        Correction? existing, double r3Now, double appliedArea, Tolerance tolerance,
+                        TraceKind kind = TraceKind.Cut, IReadOnlyList<IReadOnlyList<Point>>? initial = null)
     {
+        Kind = kind;
         Source = source;
-        Target = target;
+        _target = target;
         Existing = existing;
         _r3Now = r3Now;
         _appliedArea = appliedArea;
@@ -80,12 +92,28 @@ public sealed partial class TraceSession : ObservableObject
                     _snapEdges.Add((a, ToPoint(path[(i + 1) % path.Count])));
                 }
         if (existing is not null) _polygons = ReadPolygons(existing);
+        else if (initial is not null)   // contour repris d'un autre niveau (nouvelle surface) : à enregistrer tel quel
+        {
+            _polygons = initial.Where(p => p.Count >= 3).Select(p => p.ToList()).ToList();
+            _isDirty = _polygons.Count > 0;
+        }
+        else if (kind == TraceKind.Reshape)   // l'emprise actuelle, prête à modifier (contours extérieurs)
+            _polygons = OuterRings(_source).Select(path => path.Select(ToPoint).ToList()).Where(p => p.Count >= 3).ToList();
+        _z = kind == TraceKind.Create ? LevelZ(level) : TopZ(source);
         _mode = _polygons.Count > 0 ? TraceMode.Edit : TraceMode.Draw;
         Recompute();
     }
 
+    private readonly double _z;
+
+    public TraceKind Kind { get; }
+    public bool IsCut => Kind == TraceKind.Cut;
+    public bool IsReshape => Kind == TraceKind.Reshape;
+    public bool IsCreate => Kind == TraceKind.Create;
     public Surface Source { get; }
-    public string Target { get; }
+
+    /// <summary>Catégorie visée : de la part découpée (« » = exclue), de la surface redessinée ou créée.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(Title), nameof(CanSave))] private string _target;
     public Correction? Existing { get; }
     public bool HasGeometry => _source.Count > 0;
     public IReadOnlyList<PlanShape> Shapes { get; }
@@ -104,7 +132,12 @@ public sealed partial class TraceSession : ObservableObject
         }
     }
 
-    public string Title => $"{Source.Building}·{Source.Level} · {Source.DisplayCode} → {(Target == "" ? "exclue" : Target)}";
+    public string Title => Kind switch
+    {
+        TraceKind.Create => $"{Source.Building}·{Source.Level} · nouvelle {Target}",
+        TraceKind.Reshape => $"{Source.Building}·{Source.Level} · {Source.DisplayCode}{(Target != Source.DisplayCode ? " → " + Target : "")} · emprise",
+        _ => $"{Source.Building}·{Source.Level} · {Source.DisplayCode} → {(Target == "" ? "exclue" : Target)}",
+    };
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsDrawMode), nameof(IsEditMode), nameof(Help))] private TraceMode _mode;
     public bool IsDrawMode { get => Mode == TraceMode.Draw; set { if (value) Mode = TraceMode.Draw; } }
@@ -116,8 +149,8 @@ public sealed partial class TraceSession : ObservableObject
     [ObservableProperty] private bool _isDirty;
 
     public string Help => Mode == TraceMode.Draw
-        ? "Clic : ajouter un point · Entrée ou double-clic : fermer · ⌫ : retirer le dernier point · Maj : horizontal / vertical · Alt : sans accrochage · Échap : annuler le point en cours"
-        : "Glisser un sommet ou le tracé · double-clic sur une arête : ajouter un sommet · Suppr : retirer le sommet · flèches : 0,10 m (Maj : 1 m) · Ctrl+Z / Ctrl+Y";
+        ? "Clic : ajouter un point · clic sur le premier point, Entrée ou double-clic : fermer · ⌫ : retirer le dernier point · Maj : horizontal / vertical · Alt : sans accrochage · Échap : annuler le point en cours"
+        : "Clic : sélectionner un sommet ou une arête, glisser pour la déplacer · glisser l'intérieur : tout le contour · double-clic sur une arête : ajouter un sommet · Suppr : retirer le sommet, ou l'arête (le contour s'ouvre : complétez-le en mode Tracer) · flèches : 0,10 m (Maj : 1 m) · Ctrl+Z / Ctrl+Y";
 
     // ------------------------------------------------------------------ chiffres
 
@@ -138,20 +171,26 @@ public sealed partial class TraceSession : ObservableObject
     public string R3BeforeText => Area(R3Before);
     public string R3AfterText => Area(R3After);
     public string SourceLabel => $"sur la {Source.DisplayCode}";
+    /// <summary>Emprise redessinée : aire de la surface avant modification, et l'écart.</summary>
+    public string OriginalAreaText => Area(Source.Area ?? SourceArea);
+    public string AreaDeltaText => (CountedArea - (Source.Area ?? SourceArea)).ToString("+#,##0.00;−#,##0.00;0,00", Format) + " m²";
     public string OutsideLabel => $"hors de la {Source.DisplayCode}";
     public bool HasClassified => _classified.Count > 0;
 
     public string? Message =>
         IsSelfIntersecting ? "Le contour se recoupe : déplacez un sommet."
+        : IsDrawingOpen && !IsCut && _polygons.Count > 0 ? "Contour ouvert : complétez-le en mode Tracer, puis fermez-le (clic sur le premier point ou Entrée)."
+        : !IsCut ? null
         : ClosedPolygons().Any() && CountedArea <= 0.005 ? $"Le tracé ne recouvre pas la {Source.DisplayCode} du niveau."
         : CountedArea > 0 && SourceArea > 0 && CountedArea >= SourceArea - Math.Max(0.5, 0.005 * SourceArea)
             ? "Le tracé couvre toute la surface : une exclusion ou un reclassement entier serait plus simple."
         : Existing?.NeedsRetrace == true && !IsDirty ? "L'aire a été modifiée à la main depuis ce tracé."
         : null;
     public bool HasMessage => Message is not null;
-    public bool MessageIsError => IsSelfIntersecting || ClosedPolygons().Any() && CountedArea <= 0.005;
+    public bool MessageIsError => IsSelfIntersecting || IsCut && ClosedPolygons().Any() && CountedArea <= 0.005;
 
-    public bool CanSave => IsDirty || Existing?.NeedsRetrace == true
+    /// <summary>Emprise redessinée : un changement de type seul suffit à enregistrer.</summary>
+    public bool CanSave => IsDirty || Existing?.NeedsRetrace == true || IsReshape && Target != Source.DisplayCode
         ? !IsDrawingOpen && !IsSelfIntersecting && CountedArea > 0.005 : false;
 
     private static string Area(double v) => v.ToString("#,##0.00", Format) + " m²";
@@ -163,6 +202,15 @@ public sealed partial class TraceSession : ObservableObject
     {
         var drawn = new PathsD(ClosedPolygons().Select(ToPath));
         var union = drawn.Count > 0 ? Clipper.Union(drawn, FillRule.NonZero) : [];
+        if (!IsCut)   // emprise ou nouvelle surface : l'aire est celle du contour dessiné
+        {
+            Counted = union;
+            OnSource = CountedArea = Math.Abs(Clipper.Area(union));
+            RemovedClassified = Outside = 0;
+            IsSelfIntersecting = ClosedPolygons().Any(SelfIntersects);
+            OnPropertyChanged(string.Empty);
+            return;
+        }
         var onSource = union.Count > 0 && _source.Count > 0 ? Clipper.Intersect(union, _source, FillRule.NonZero, Precision) : [];
         Counted = onSource.Count > 0 && _classified.Count > 0 ? Clipper.Difference(onSource, _classified, FillRule.NonZero, Precision) : onSource;
         OnSource = Math.Abs(Clipper.Area(onSource));
@@ -239,6 +287,39 @@ public sealed partial class TraceSession : ObservableObject
         for (var i = 0; i < poly.Count; i++) poly[i] += delta;
         Recompute();
     }
+
+    /// <summary>Glisser ou flèches sur une arête : ses deux sommets bougent ensemble (sans étape d'annulation).</summary>
+    public void MoveEdge(int polygon, int index, Vector delta)
+    {
+        var poly = _polygons[polygon];
+        poly[index] += delta;
+        poly[(index + 1) % poly.Count] += delta;
+        Recompute();
+    }
+
+    /// <summary>
+    /// Supprime une arête : le contour s'ouvre à cet endroit et devient le tracé en cours (mode Tracer), à compléter
+    /// puis refermer. Il reprend au sommet qui suit l'arête et finit sur celui qui la précède. Refusé tant qu'un
+    /// autre contour est en cours de dessin.
+    /// </summary>
+    public bool DeleteEdge(int polygon, int index)
+    {
+        if (IsDrawingOpen) return false;
+        BeginChange();
+        var poly = _polygons[polygon];
+        var n = poly.Count;
+        var open = Enumerable.Range(1, n).Select(k => poly[(index + k) % n]).ToList();
+        _polygons.RemoveAt(polygon);
+        _polygons.Add(open);
+        IsDrawingOpen = true;
+        Mode = TraceMode.Draw;
+        Recompute();
+        return true;
+    }
+
+    /// <summary>Clic sur le premier point du contour en cours : il se ferme (au moins 3 points).</summary>
+    public bool IsFirstPoint(Point p, double radius) =>
+        IsDrawingOpen && _polygons[^1].Count >= 3 && (_polygons[^1][0] - p).Length <= radius;
 
     public void InsertVertex(int polygon, int afterIndex, Point p)
     {
@@ -362,8 +443,9 @@ public sealed partial class TraceSession : ObservableObject
     {
         var c = Existing?.Clone() ?? new Correction
         {
-            Id = newId, Op = "découper", To = Target, Subject = subject, Status = Correction.Proposed,
-            Target = JsonSerializer.SerializeToElement(new { ids = new[] { Source.Id } }),
+            Id = newId, Op = Kind switch { TraceKind.Reshape => "remodeler", TraceKind.Create => "créer", _ => "découper" },
+            To = Target, Subject = subject, Status = Correction.Proposed,
+            Target = Kind == TraceKind.Create ? default : JsonSerializer.SerializeToElement(new { ids = new[] { Source.Id } }),
         };
         c.Extra ??= [];
         if (Existing is not null && !c.Extra.ContainsKey("base"))
@@ -375,11 +457,24 @@ public sealed partial class TraceSession : ObservableObject
         });
         c.Area = Math.Round(CountedArea, 2);
         c.M2 = c.Area;
-        c.Trace = Triangulate(Counted, TopZ(Source));
+        c.Trace = Triangulate(Counted, _z);
         c.NeedsRetrace = false;
         c.Origin = "manuel";
+        if (Kind != TraceKind.Cut)
+        {
+            c.Extra["z"] = JsonSerializer.SerializeToElement(Math.Round(_z, 3));
+            c.To = Kind == TraceKind.Reshape && Target == Source.DisplayCode ? null : Target;
+        }
+        if (Kind == TraceKind.Create)
+            c.Extra["niveau"] = JsonSerializer.SerializeToElement(new { building = Source.Building, level = Source.Level });
         if (string.IsNullOrWhiteSpace(c.Explanation) || Existing is null)
-            c.Explanation = $"{Source.Building} {Source.Level} : {CountedText} de {Source.DisplayCode} tracés → {(Target == "" ? "exclus" : Target)}.";
+            c.Explanation = Kind switch
+            {
+                TraceKind.Create => $"{Source.Building} {Source.Level} : nouvelle {Target} de {CountedText}, tracée sur le plan.",
+                TraceKind.Reshape => $"{Source.Building} {Source.Level} : emprise de la {Source.DisplayCode} redessinée, {OriginalAreaText} → {CountedText}" +
+                                     (Target != Source.DisplayCode ? $", classée {Target}." : "."),
+                _ => $"{Source.Building} {Source.Level} : {CountedText} de {Source.DisplayCode} tracés → {(Target == "" ? "exclus" : Target)}.",
+            };
         return c;
     }
 
@@ -419,6 +514,22 @@ public sealed partial class TraceSession : ObservableObject
             tris.Add(tri);
         }
         return tris.Count == 0 ? [] : Clipper.Union(tris, FillRule.NonZero);
+    }
+
+    /// <summary>Contours extérieurs d'une union Clipper : même orientation que le plus grand ; les trous, inverses, sont écartés.</summary>
+    private static IEnumerable<PathD> OuterRings(PathsD paths)
+    {
+        if (paths.Count == 0) return [];
+        var outer = Clipper.IsPositive(paths.MaxBy(p => Math.Abs(Clipper.Area(p)))!);
+        return paths.Where(p => Clipper.IsPositive(p) == outer);
+    }
+
+    /// <summary>Altitude d'une nouvelle surface : le dessus de la SP du niveau, sinon le plus haut de ses surfaces.</summary>
+    private static double LevelZ(IEnumerable<Surface> level)
+    {
+        var withMesh = level.Where(s => s.Mesh is { Vertices.Length: > 2 }).ToList();
+        var sp = withMesh.FirstOrDefault(s => s.DisplayCode == "SP");
+        return sp is not null ? TopZ(sp) : withMesh.Count > 0 ? withMesh.Max(TopZ) : 0;
     }
 
     private static double TopZ(Surface s) =>

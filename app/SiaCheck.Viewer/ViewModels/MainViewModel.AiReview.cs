@@ -193,7 +193,7 @@ public sealed partial class MainViewModel
     [ObservableProperty] private bool _aiProgressKnown;
     [ObservableProperty] private AiCostEstimate? _aiEstimate;
     [ObservableProperty] private string? _aiCostText;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasAiError))] private string? _aiError;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasAiError), nameof(HasAiErrorLog))] private string? _aiError;
 
     public bool HasAiError => !string.IsNullOrEmpty(AiError);
     public bool IsAiRunning => AiStage is not (AiStage.Idle or AiStage.Done);
@@ -248,6 +248,7 @@ public sealed partial class MainViewModel
         var ct = _aiCts.Token;
         var dir = ProjectDir!;
         var reviewDate = DateTime.Now.ToString("yyyy-MM-dd");
+        string? answer = null;   // réponse brute du modèle, gardée dans le journal d'erreur si elle est inexploitable
         try
         {
             // 1-2. Analyse fraîche + preuves, en une exécution du moteur.
@@ -313,6 +314,7 @@ public sealed partial class MainViewModel
             ticker.Start();
             try { response = await client.RunAsync(prompt, stream, ct); }
             finally { ticker.Stop(); }
+            answer = response.Text;
             if (response.StopReason == "max_tokens")
                 throw new AiReviewException($"Réponse tronquée à {AiPricing.MaxOutputTokens:N0} jetons : relancez la revue.");
             if (response.StopReason == "refusal")
@@ -348,6 +350,7 @@ public sealed partial class MainViewModel
         {
             AiStage = AiStage.Idle;
             AiError = ex.Message;
+            LogAiError(dir, ex, answer);
         }
         finally
         {
@@ -357,6 +360,30 @@ public sealed partial class MainViewModel
             OnPropertyChanged(nameof(CanStartAiReview));
         }
     }
+
+    /// <summary>
+    /// Journal de la dernière revue échouée, à côté des revues du projet : message, détail technique et réponse brute
+    /// du modèle quand il y en a une (rapport tronqué, JSON illisible). Le message affiché y renvoie.
+    /// </summary>
+    private void LogAiError(string projectDir, Exception ex, string? answer)
+    {
+        try
+        {
+            var path = Path.Combine(_paths.AiReviewDir(projectDir), "derniere-erreur.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} · {AiPricing.ModelLabel}\n{ex.Message}\n\n{ex}\n" +
+                                    (answer is null ? "" : $"\n----- réponse du modèle ({answer.Length:N0} caractères) -----\n{answer}\n"));
+            AiErrorLog = path;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { AiErrorLog = null; }
+    }
+
+    /// <summary>Journal de la dernière revue échouée (bouton « Ouvrir le journal » sous le message d'erreur).</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasAiErrorLog))] private string? _aiErrorLog;
+    public bool HasAiErrorLog => AiErrorLog is not null && AiError is not null;
+
+    [RelayCommand]
+    private void OpenAiErrorLog() { if (AiErrorLog is { } p && File.Exists(p)) _shell.OpenFile(p); else ShowLog(); }
 
     private static string EvidenceSummary(string evidenceJson)
     {

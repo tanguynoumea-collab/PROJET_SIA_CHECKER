@@ -75,8 +75,15 @@ public sealed partial class CorrectionItem : ObservableObject
     public bool IsRejected => Decision == CorrectionDecision.Rejected;
 
     /// <summary>« A01·N07 », « E09·N00 2/3 » pour un morceau de la part d'un niveau, ou les critères d'une sélection (« Gaine », « 2 ch. »).</summary>
-    public string Location => (_target is { Building: { } b, Level: { } l } ? $"{b}·{l}" : Model.TargetIds.Count > 0 ? Model.TargetIds[0] : Selection())
+    public string Location => (_target is { Building: { } b, Level: { } l } ? $"{b}·{l}"
+                               : Level() is { } nl ? nl
+                               : Model.TargetIds.Count > 0 ? Model.TargetIds[0] : Selection())
         + (Piece is { } p ? $" {p}" : "");
+
+    /// <summary>Niveau d'une surface créée (`niveau`) : « B03·N01 ».</summary>
+    private string? Level() =>
+        Model.Extra?.TryGetValue("niveau", out var n) == true && n.ValueKind == System.Text.Json.JsonValueKind.Object
+        && n.TryGetProperty("building", out var b) && n.TryGetProperty("level", out var l) ? $"{b}·{l}" : null;
 
     /// <summary>« 2/3 » : morceau d'un seul tenant de la part tracée d'un niveau (sujets.py), décidé à part.</summary>
     public string? Piece =>
@@ -110,6 +117,8 @@ public sealed partial class CorrectionItem : ObservableObject
         "découper" => $"{TargetCode} → {Model.To}".Trim(),
         "reclasser" => $"{TargetCode} → {Model.To}".Trim(),
         "ajuster" => "aire fixée",
+        "remodeler" => Model.To is { } to && to != TargetCode ? $"{TargetCode} emprise → {to}".Trim() : $"{TargetCode} emprise".Trim(),
+        "créer" => $"nouvelle {Model.To}",
         "affecter" => $"→ {Model.Assignment}",
         "renseigner" => Fields(),
         _ => Model.Op,
@@ -124,7 +133,7 @@ public sealed partial class CorrectionItem : ObservableObject
     public bool HasNoTrace => Model.Op == "découper" && !HasTrace;
     public IReadOnlyList<string> TargetIds => Model.TargetIds;
     /// <summary>Découpe ou exclusion partielle : se trace dans le plan (« Tracer… »).</summary>
-    public bool CanTrace => Model.Op == "découper" || Model.Op == "exclure" && Model.Area is not null;
+    public bool CanTrace => Model.Op is "découper" or "remodeler" or "créer" || Model.Op == "exclure" && Model.Area is not null;
 
     /// <summary>Correction retracée (module de tracé) : même identifiant, même décision.</summary>
     public void ReplaceModel(Correction c)
@@ -176,8 +185,13 @@ public sealed partial class CorrectionItem : ObservableObject
         }
     }
 
-    /// <summary>L'aire est modifiable pour les opérations qui en portent une.</summary>
+    /// <summary>L'aire est modifiable pour les opérations qui en portent une ; celle d'un contour dessiné vient du tracé.</summary>
     public bool CanEditArea => Model.Op is "découper" or "ajuster" or "exclure";
+    /// <summary>Surface créée : son niveau (`niveau`), pour la 3D.</summary>
+    public (string Building, string Level)? CreatedOn =>
+        Model.Op == "créer" && Model.Extra?.TryGetValue("niveau", out var n) == true && n.ValueKind == System.Text.Json.JsonValueKind.Object
+        && n.TryGetProperty("building", out var b) && n.TryGetProperty("level", out var l)
+            ? (b.GetString() ?? "", l.GetString() ?? "") : null;
 
     public string Tooltip => string.IsNullOrWhiteSpace(Explanation) ? StateLabel : $"{Explanation}\n\n{StateLabel}";
 

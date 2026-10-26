@@ -202,3 +202,93 @@ public class TraceViewModelTests
         _ = FixtureSurface(vm, "err-n00-sep");
     }
 }
+
+public class SurfaceEditTests
+{
+    private static readonly Tolerance Tol = new() { AbsM2 = 0.5, Rel = 0.005 };
+
+    [Fact]
+    public void Reshape_starts_from_the_outline_and_edges_reopen_the_contour()
+    {
+        var sus = Plan.Square("sus", "SUS", 0, 0, 10, 4);                // 40 m²
+        var s = new TraceSession(sus, [sus], [], "SUS", null, 0, 0, Tol, TraceKind.Reshape);
+        Assert.Equal(TraceMode.Edit, s.Mode);
+        Assert.Single(s.Polygons);
+        Assert.Equal(40, s.CountedArea, 3);
+        Assert.False(s.CanSave);                                          // rien de changé
+
+        var poly = s.Polygons[0];
+        var right = Enumerable.Range(0, poly.Count).First(i => poly[i].X == 10 && poly[(i + 1) % poly.Count].X == 10);
+        s.BeginChange();
+        s.MoveEdge(0, right, new Vector(-4, 0));                          // l'arête de droite recule de 4 m
+        Assert.Equal(24, s.CountedArea, 3);
+        Assert.True(s.CanSave);
+
+        Assert.True(s.DeleteEdge(0, right));                             // le contour s'ouvre là
+        Assert.True(s.IsDrawingOpen);
+        Assert.Equal(TraceMode.Draw, s.Mode);
+        Assert.False(s.CanSave);
+        Assert.True(s.IsFirstPoint(s.Polygons[^1][0], 0.1));
+        Assert.True(s.ClosePolygon());                                   // refermé tel quel : même aire
+        Assert.Equal(24, s.CountedArea, 3);
+
+        var c = s.BuildCorrection("m1", "manuel");
+        Assert.Equal(("remodeler", (string?)null), (c.Op, c.To));        // type inchangé
+        Assert.Equal(24, c.Area);
+        Assert.True(c.Extra!.ContainsKey("polygone") && c.Extra.ContainsKey("z"));
+    }
+
+    [Fact]
+    public void A_type_change_alone_can_be_saved()
+    {
+        var sus = Plan.Square("sus", "SUS", 0, 0, 10, 4);
+        var s = new TraceSession(sus, [sus], [], "SUS", null, 0, 0, Tol, TraceKind.Reshape) { Target = "SUP" };
+        Assert.True(s.CanSave);
+        Assert.Equal("SUP", s.BuildCorrection("m1", null).To);
+    }
+
+    [Fact]
+    public void Create_draws_a_new_surface_on_the_level()
+    {
+        var sp = Plan.Square("sp", "SP", 0, 0, 20, 10, kind: "node");
+        var source = new Surface { Id = "", Building = "A", Level = "N00", Category = "SUS", Code = "SUS", Kind = "leaf" };
+        var s = new TraceSession(source, [sp], [], "SUS", null, 0, 0, Tol, TraceKind.Create);
+        Assert.Equal(TraceMode.Draw, s.Mode);
+        Plan.Rectangle(s, 0, 0, 5, 4);
+        var c = s.BuildCorrection("c1", "manuel");
+        Assert.Equal(("créer", "SUS", 20.0), (c.Op, c.To, c.Area));
+        Assert.Equal(JsonValueKind.Undefined, c.Target.ValueKind);       // pas de cible : le niveau suffit
+        Assert.Equal("N00", c.Extra!["niveau"].GetProperty("level").GetString());
+    }
+
+    [Fact]
+    public async Task Modify_create_and_delete_from_the_viewer_are_accepted_manual_corrections()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+
+        vm.SelectSurface("err-n00-sep");
+        vm.OpenReshapeForSurfaceCommand.Execute(null);
+        Assert.True(vm.Trace!.IsReshape);
+        vm.TraceTarget = "SEU";                                          // changement de type seul
+        vm.SaveTraceCommand.Execute(null);
+        var modif = vm.SelectedCorrection!;
+        Assert.Equal(("remodeler", "SEU", CorrectionDecision.Accepted), (modif.Model.Op, modif.Model.To, modif.Decision));
+
+        vm.OpenCreateSurfaceCommand.Execute(null);
+        Assert.True(vm.IsTraceCreate);
+        Assert.Equal(("ERR", "N00"), (vm.TraceBuilding, vm.TraceLevel));   // niveau de la surface sélectionnée
+        vm.TraceTarget = "SUS";
+        Plan.Rectangle(vm.Trace!, 0, 0, 2, 3);
+        vm.SaveTraceCommand.Execute(null);
+        var created = vm.SelectedCorrection!;
+        Assert.Equal(("créer", "SUS", "ERR·N00"), (created.Model.Op, created.Model.To, created.Location));
+        Assert.Equal(CorrectionDecision.Accepted, created.Decision);
+
+        vm.SelectSurface("err-n00-sep");
+        await vm.DeleteSelectedSurfaceCommand.ExecuteAsync(null);
+        var deleted = vm.SelectedCorrection!;
+        Assert.Equal(("exclure", CorrectionDecision.Accepted), (deleted.Model.Op, deleted.Decision));
+        Assert.Equal(3, vm.PendingCorrections);                          // à appliquer par Analyser
+    }
+}

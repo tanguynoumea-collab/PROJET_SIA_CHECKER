@@ -23,6 +23,11 @@ Opérations (`op`) :
                surface est élémentaire si `vers` en a déjà au niveau (sinon elle serait masquée par elles),
                sinon de la même sorte que la cible
     ajuster    aire des cibles fixée à `aire`
+    remodeler  une seule cible : nouvelle emprise `polygone` (dessinée dans la visionneuse), aire `aire` ; `vers`
+               facultatif change aussi la catégorie. La surface prend la géométrie du tracé (`geometrie`)
+    créer      nouvelle surface `vers` sur le niveau `niveau` ({building, level}), d'aire `aire`, de géométrie
+               `polygone` à l'altitude `z` (facultatifs) ; pas de `cible`. Élémentaire si `vers` en a déjà au
+               niveau (son total suit), sinon total de niveau
     affecter   colonne `affectation` (tableau MDP) fixée à `affectation`
     renseigner champs du tableau MDP sans surface (`champs` : {colonne: valeur}), pour les lots ou les
                bâtiments visés par `selection` (`bedrooms`, `building`) : typologies, forme (propositions.py)
@@ -58,7 +63,7 @@ import pandas as pd
 from . import rules
 from .config import Config
 
-OPS = ("reclasser", "exclure", "découper", "ajuster", "affecter", "renseigner")
+OPS = ("reclasser", "exclure", "découper", "ajuster", "remodeler", "créer", "affecter", "renseigner")
 REJECTED = "rejetée"
 UNKNOWN = "Inconnu"
 ACCEPTED = "acceptée"
@@ -83,6 +88,9 @@ class Applied:
 
 
 TRACK_COLUMNS = ["excluded", "corrections", "original_category", "original_area"]
+# Géométrie dessinée d'une surface remodelée ou créée : {"polygone": GeoJSON, "z": altitude} ; la visionneuse la
+# triangule à la place du maillage du cache VWR (viewer.build).
+GEOMETRY_COLUMN = "geometrie"
 
 
 # --------------------------------------------------------------------------- journal
@@ -121,12 +129,19 @@ def _problem(c: dict) -> str | None:
     op = c.get("op")
     if op not in OPS:
         return f"opération inconnue « {op} »"
-    cible = c.get("cible")
-    if not isinstance(cible, dict) or not ({"ids", "tgm_ids", "selection"} & set(cible)):
-        return "cible manquante (ids, tgm_ids ou selection)"
-    if op in ("reclasser", "découper") and not c.get("vers"):
+    if op == "créer":
+        niveau = c.get("niveau")
+        if not isinstance(niveau, dict) or not niveau.get("building") or not niveau.get("level"):
+            return "« niveau » attendu pour créer ({building, level})"
+    else:
+        cible = c.get("cible")
+        if not isinstance(cible, dict) or not ({"ids", "tgm_ids", "selection"} & set(cible)):
+            return "cible manquante (ids, tgm_ids ou selection)"
+    if op in ("reclasser", "découper", "créer") and not c.get("vers"):
         return f"« vers » manquant pour {op}"
-    if op in ("découper", "ajuster") or (op == "exclure" and c.get("aire") is not None):
+    if op == "remodeler" and not isinstance(c.get("polygone"), dict):
+        return "« polygone » attendu pour remodeler (nouvelle emprise)"
+    if op in ("découper", "ajuster", "remodeler", "créer") or (op == "exclure" and c.get("aire") is not None):
         a = c.get("aire")
         if not isinstance(a, (int, float)) or isinstance(a, bool) or a < 0:
             return f"« aire » positive attendue pour {op}"
@@ -185,12 +200,36 @@ def _descends(cfg: Config | None, code: str, ancestor: str) -> bool:
     return False
 
 
+def _geometry(c: dict) -> dict | None:
+    return {"polygone": c["polygone"], "z": c.get("z")} if isinstance(c.get("polygone"), dict) else None
+
+
+def _create(df: pd.DataFrame, c: dict) -> tuple[pd.DataFrame, int, float]:
+    """`créer` : nouvelle surface du niveau ; elle rejoint le détail de sa catégorie s'il existe."""
+    b, lvl, code, aire = c["niveau"]["building"], c["niveau"]["level"], c["vers"], float(c["aire"])
+    same = (df.building == b) & (df.level == lvl)
+    if not same.any():
+        raise _Refuse(f"niveau {b} {lvl} inconnu")
+    leaves = same & (df.kind == "leaf") & (df.category == code) & ~df.excluded
+    new = {col: None for col in df.columns}
+    new.update(id=f"{b}_{lvl}_{code}#{c['id']}", building=b, level=lvl, category=code, area=aire,
+               kind="leaf" if leaves.any() else "node", excluded=False, corrections=c["id"])
+    if "elevation" in df:
+        new["elevation"] = df.loc[same, "elevation"].dropna().iloc[0] if df.loc[same, "elevation"].notna().any() else None
+    new[GEOMETRY_COLUMN] = _geometry(c)
+    if new["kind"] == "leaf":
+        _shift_node(df, b, lvl, code, aire)
+    return pd.concat([df, pd.DataFrame([new])], ignore_index=True), 1, aire
+
+
 def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd.DataFrame, int, float]:
     """Applique une correction ; renvoie (surfaces, nombre de surfaces touchées, m² déplacés ou modifiés)."""
     op, cid = c["op"], c["id"]
+    if op == "créer":
+        return _create(df, c)
     idx = df.index[_target(df, c["cible"])]
     partial = op == "exclure" and c.get("aire") is not None
-    if (op == "découper" or partial) and len(idx) != 1:
+    if (op in ("découper", "remodeler") or partial) and len(idx) != 1:
         raise _Refuse(f"{op} d'une partie vise une seule surface ({len(idx)} trouvées)")
     if len(idx) == 0:
         return df, 0, 0.0
@@ -220,6 +259,17 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
                 _shift_node(df, r.building, r.level, r.category, -(r.area or 0))
             moved += float(r.area or 0)
         df.loc[idx, "excluded"] = True
+    elif op == "remodeler":
+        i = idx[0]
+        r = df.loc[i]
+        aire, to = float(c["aire"]), c.get("vers") or r.category
+        if r.kind == "leaf":   # le total de niveau perd l'ancienne surface et gagne la nouvelle
+            _shift_node(df, r.building, r.level, r.category, -float(r.area or 0))
+            _shift_node(df, r.building, r.level, to, aire)
+        moved = abs(aire - float(r.area or 0))
+        df.loc[i, "area"] = aire
+        df.loc[i, "category"] = to
+        df.at[i, GEOMETRY_COLUMN] = _geometry(c)
     elif op == "ajuster":
         for i in idx:
             r = df.loc[i]
@@ -268,7 +318,14 @@ CLASSIFIED_EXTERNAL = ("SEU", "SED", "SEI")
 
 
 def _traced_area(df: pd.DataFrame, c: dict, geometry) -> float | None:
-    """Aire comptée du tracé d'une correction : polygone ∩ cible − sous-catégories externes classées du niveau."""
+    """Aire comptée du tracé d'une correction : polygone ∩ cible − sous-catégories externes classées du niveau ;
+    pour une emprise redessinée ou une surface créée, l'aire du polygone lui-même."""
+    if c.get("polygone") and c["op"] in ("remodeler", "créer"):
+        try:
+            from shapely.geometry import shape
+        except ImportError:
+            return None
+        return float(shape(c["polygone"]).buffer(0).area)
     if geometry is None or not c.get("polygone") or c["op"] not in ("découper", "exclure"):
         return None
     try:
@@ -306,6 +363,9 @@ def apply(df: pd.DataFrame, journal: dict, geometry=None, tolerance: tuple[float
     df["corrections"] = ""
     df["original_category"] = df["category"]
     df["original_area"] = df["area"]
+    if GEOMETRY_COLUMN not in df:
+        df[GEOMETRY_COLUMN] = None
+    df[GEOMETRY_COLUMN] = df[GEOMETRY_COLUMN].astype(object)
     if "affectation" not in df:
         df["affectation"] = None
     log, infos = [], []

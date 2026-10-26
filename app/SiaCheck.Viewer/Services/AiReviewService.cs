@@ -16,7 +16,8 @@ public static class AiPricing
     public const string ModelLabel = "Claude Opus 5.5";
     public const decimal InputPerMTok = 4m;
     public const decimal OutputPerMTok = 20m;
-    public const int MaxOutputTokens = 64000;
+    /// <summary>Plafond de Claude Opus 5.5 en flux : la réflexion du modèle et le rapport (ratios compris) y tiennent.</summary>
+    public const int MaxOutputTokens = 128000;
 
     /// <summary>
     /// Sortie attendue : ~4 000 jetons de rapport + ~1 500 de décisions sur les corrections + ~60 par verdict

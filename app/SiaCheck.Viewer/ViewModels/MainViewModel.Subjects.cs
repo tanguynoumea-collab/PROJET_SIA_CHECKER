@@ -381,15 +381,22 @@ public sealed partial class MainViewModel
     private void FocusSubject(SubjectItem s)
     {
         if (Scene is null || s.SurfaceIds.Count == 0) return;
-        var corrections = s.Corrections.Where(c => !c.IsOrphan && c.TargetIds.Count > 0).ToList();
+        var corrections = s.Corrections.Where(c => !c.IsOrphan && (c.TargetIds.Count > 0 || c.CreatedOn is not null)).ToList();
         var bounds = corrections.Count == 0 ? Scene.Focus(s.SurfaceIds)
             : Scene.Focus(corrections.Where(c => !c.HasTrace).SelectMany(c => c.TargetIds), Parts(corrections), _shell.AccentColor);
         SetFocused(null);
         _shell.Frame(bounds);
     }
 
-    private static List<(string, TraceMesh)> Parts(IEnumerable<CorrectionItem> corrections) =>
-        corrections.Where(c => c.HasTrace && c.TargetIds.Count == 1).Select(c => (c.TargetIds[0], c.Model.Trace!)).ToList();
+    /// <summary>Parts tracées : posées sur leur surface ; une surface créée l'est sur la SP de son niveau (ou une autre surface).</summary>
+    private List<(string, TraceMesh)> Parts(IEnumerable<CorrectionItem> corrections) =>
+        corrections.Where(c => c.HasTrace).Select(c => (Id: c.TargetIds.Count == 1 ? c.TargetIds[0] : AnchorOf(c), c.Model.Trace!))
+            .Where(p => p.Id is not null).Select(p => (p.Id!, p.Item2)).ToList();
+
+    private string? AnchorOf(CorrectionItem c) =>
+        c.CreatedOn is not { } on || Document is null ? null
+        : Document.Surfaces.Where(s => s.Building == on.Building && s.Level == on.Level && s.Mesh is not null)
+            .OrderBy(s => s.DisplayCode == "SP" ? 0 : 1).FirstOrDefault()?.Id;
 
     private void FocusCorrection(CorrectionItem c)
     {

@@ -225,3 +225,47 @@ def test_decouper_into_subcategory_joins_existing_leaves(cfg):
     assert s.loc["A_N01_SUS#total", "area"] == 15
     t = rules.level_totals(rules.classify(a.kept, cfg)[0]).loc[("A", "N01")]
     assert t["SUS"] == 15
+
+
+SQUARE = {"type": "Polygon", "coordinates": [[[0, 0], [4, 0], [4, 5], [0, 5], [0, 0]]]}   # 20 m²
+
+
+def test_remodeler_redraws_footprint_and_type(cfg):
+    # SUP sup-2 (20 m²) redessinée à 20 m² et passée en SUS : les deux totaux de niveau suivent.
+    a = corrections.apply(surfaces(), journal({"id": "c1", "op": "remodeler", "cible": {"ids": ["sup-2"]},
+                                               "polygone": SQUARE, "z": 3.0, "aire": 18.0, "vers": "SUS"}), cfg=cfg)
+    s = a.surfaces.set_index("id")
+    assert a.log.iloc[0].application == corrections.APPLIED
+    assert (s.loc["sup-2", "category"], s.loc["sup-2", "area"]) == ("SUS", 20.0)   # aire recalculée du polygone
+    assert s.loc["A_N01_SUP#total", "area"] == 40 and s.loc["A_N01_SUS#total", "area"] == 30
+    assert s.loc["sup-2", corrections.GEOMETRY_COLUMN] == {"polygone": SQUARE, "z": 3.0}
+
+
+def test_creer_adds_a_surface_to_the_level(cfg):
+    a = corrections.apply(surfaces(), journal({"id": "c1", "op": "créer", "niveau": {"building": "A", "level": "N01"},
+                                               "vers": "SUS", "aire": 20.0, "polygone": SQUARE, "z": 3.0}), cfg=cfg)
+    s = a.surfaces.set_index("id")
+    new = s.loc["A_N01_SUS#c1"]
+    assert (new.category, new.kind, new.area) == ("SUS", "leaf", 20.0)   # SUS a du détail : la nouvelle s'y joint
+    assert s.loc["A_N01_SUS#total", "area"] == 30
+    t = rules.level_totals(rules.classify(a.kept, cfg)[0]).loc[("A", "N01")]
+    assert t["SUS"] == 30
+
+
+def test_creer_refuses_unknown_level_and_missing_fields(cfg):
+    a = corrections.apply(surfaces(), journal(
+        {"id": "c1", "op": "créer", "niveau": {"building": "Z", "level": "N09"}, "vers": "SUS", "aire": 5.0},
+        {"id": "c2", "op": "créer", "vers": "SUS", "aire": 5.0},
+        {"id": "c3", "op": "remodeler", "cible": {"ids": ["sup-1"]}, "aire": 5.0}), cfg=cfg)
+    assert list(a.log.application) == [corrections.REFUSED] * 3
+
+
+def test_drawn_surfaces_get_their_mesh_in_the_viewer(synth, cfg):
+    pytest.importorskip("shapely")
+    from sia_check import geom, viewer
+    j = journal({"id": "c1", "op": "créer", "niveau": {"building": "ERR", "level": "N01"}, "vers": "SUS",
+                 "aire": 20.0, "polygone": SQUARE, "z": 6.0})
+    applied, _, after = corrections.run(synth, j, cfg)
+    doc = viewer.build(after, cfg, geom.Cache(), "Synth", ["synth.csv"], date="2026-10-26")
+    s = next(x for x in doc["surfaces"] if x["id"] == "ERR_N01_SUS#c1")
+    assert s["mesh"] and set(s["mesh"]["v"][2::3]) == {6.0} and len(s["mesh"]["i"]) == 6

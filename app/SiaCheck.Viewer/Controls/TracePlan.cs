@@ -54,8 +54,9 @@ public sealed class TracePlan : FrameworkElement
     private Point _origin;                     // m au coin haut gauche
     private Point? _cursor;                    // m
     private Point? _snap;                      // m
-    private (int Polygon, int Index)? _selected;
+    private TraceSelection? _selected;
     private (int Polygon, int Index)? _dragVertex;
+    private (int Polygon, int Index)? _dragEdge;
     private int? _dragPolygon;
     private Point _dragStart;                  // m
     private Point? _panFrom;                   // px
@@ -137,10 +138,12 @@ public sealed class TracePlan : FrameworkElement
             }
             g.Freeze();
             dc.DrawGeometry(null, edge, g);
+            if (_selected is { IsEdge: true } se && se.Polygon == k && poly.Count >= 2)
+                dc.DrawLine(Pen(Accent, 5), ToScreen(poly[se.Index]), ToScreen(poly[(se.Index + 1) % poly.Count]));
             for (var i = 0; i < poly.Count; i++)
             {
                 var p = ToScreen(poly[i]);
-                var sel = _selected == (k, i) || _dragVertex == (k, i);
+                var sel = _selected == new TraceSelection(k, i, false) || _dragVertex == (k, i);
                 var size = sel ? VertexSize + 4 : VertexSize;
                 dc.DrawRectangle(sel ? Accent : Brushes.White, Pen(Accent, 1.5), new Rect(p.X - size / 2, p.Y - size / 2, size, size));
             }
@@ -246,20 +249,29 @@ public sealed class TracePlan : FrameworkElement
         var m = ToWorld(px);
         if (s.Mode == TraceMode.Draw)
         {
-            if (e.ClickCount == 2) { s.ClosePolygon(); _snap = null; return; }
+            if (e.ClickCount == 2 || s.IsFirstPoint(m, GrabPixels / _scale)) { s.ClosePolygon(); _snap = null; return; }
             s.AddPoint(Constrained(m));
             return;
         }
         if (e.ClickCount == 2 && s.EdgeAt(m, GrabPixels / _scale) is { } edge)
         {
             s.InsertVertex(edge.Polygon, edge.Index, edge.At);
-            _selected = (edge.Polygon, edge.Index + 1);
+            _selected = new TraceSelection(edge.Polygon, edge.Index + 1, false);
             return;
         }
         if (s.VertexAt(m, GrabPixels / _scale) is { } v)
         {
             s.BeginChange();
-            _selected = _dragVertex = v;
+            _dragVertex = v;
+            _selected = new TraceSelection(v.Polygon, v.Index, false);
+            CaptureMouse();
+        }
+        else if (s.EdgeAt(m, GrabPixels / _scale) is { } ed)   // arête : sélectionnée, et glissée en entier
+        {
+            s.BeginChange();
+            _dragEdge = (ed.Polygon, ed.Index);
+            _dragStart = m;
+            _selected = new TraceSelection(ed.Polygon, ed.Index, true);
             CaptureMouse();
         }
         else if (s.PolygonAt(m) is { } k)
@@ -290,12 +302,14 @@ public sealed class TracePlan : FrameworkElement
         var m = ToWorld(px);
         _cursor = m;
         if (_dragVertex is { } v) s.MoveVertex(v.Polygon, v.Index, Constrained(m));
+        else if (_dragEdge is { } ed) { s.MoveEdge(ed.Polygon, ed.Index, m - _dragStart); _dragStart = m; _snap = null; }
         else if (_dragPolygon is { } k) { s.MovePolygon(k, m - _dragStart); _dragStart = m; _snap = null; }
         else if (s.Mode == TraceMode.Draw) Constrained(m);
         else _snap = null;
         Cursor = _spaceDown || _panFrom is not null ? Cursors.SizeAll
             : s.Mode == TraceMode.Edit && (s.VertexAt(m, GrabPixels / _scale) is not null) ? Cursors.Hand
-            : s.Mode == TraceMode.Edit && s.PolygonAt(m) is not null ? Cursors.SizeAll : Cursors.Cross;
+            : s.Mode == TraceMode.Edit && (s.EdgeAt(m, GrabPixels / _scale) is not null || s.PolygonAt(m) is not null) ? Cursors.SizeAll
+            : s.Mode == TraceMode.Draw && s.IsFirstPoint(m, GrabPixels / _scale) ? Cursors.Hand : Cursors.Cross;
         ToolTip = Hover(m);
         InvalidateVisual();
     }
@@ -305,6 +319,7 @@ public sealed class TracePlan : FrameworkElement
         base.OnMouseUp(e);
         _panFrom = null;
         _dragVertex = null;
+        _dragEdge = null;
         _dragPolygon = null;
         if (IsMouseCaptured) ReleaseMouseCapture();
         InvalidateVisual();
@@ -351,8 +366,12 @@ public sealed class TracePlan : FrameworkElement
             case Key.Space: _spaceDown = true; Cursor = Cursors.SizeAll; break;
             case Key.Enter when s.Mode == TraceMode.Draw: s.ClosePolygon(); break;
             case Key.Back when s.Mode == TraceMode.Draw: s.RemoveLastPoint(); break;
-            case Key.Delete or Key.Back when s.Mode == TraceMode.Edit && _selected is { } v:
+            case Key.Delete or Key.Back when s.Mode == TraceMode.Edit && _selected is { IsEdge: false } v:
                 s.DeleteVertex(v.Polygon, v.Index);
+                _selected = null;
+                break;
+            case Key.Delete or Key.Back when s.Mode == TraceMode.Edit && _selected is { IsEdge: true } ed:
+                s.DeleteEdge(ed.Polygon, ed.Index);   // le contour s'ouvre : on le complète en mode Tracer
                 _selected = null;
                 break;
             case Key.Z when ctrl: s.Undo(); _selected = null; break;
@@ -362,10 +381,10 @@ public sealed class TracePlan : FrameworkElement
                 if (!s.CancelOpenPolygon()) CloseRequested?.Invoke(this, EventArgs.Empty);
                 break;
             case Key.Left or Key.Right or Key.Up or Key.Down when _selected is { } v:
-                var p = s.Polygons[v.Polygon][v.Index];
                 var d = e.Key switch { Key.Left => new Vector(-step, 0), Key.Right => new Vector(step, 0), Key.Up => new Vector(0, step), _ => new Vector(0, -step) };
                 if (!e.IsRepeat) s.BeginChange();
-                s.MoveVertex(v.Polygon, v.Index, p + d);
+                if (v.IsEdge) s.MoveEdge(v.Polygon, v.Index, d);
+                else s.MoveVertex(v.Polygon, v.Index, s.Polygons[v.Polygon][v.Index] + d);
                 break;
             default: return;
         }

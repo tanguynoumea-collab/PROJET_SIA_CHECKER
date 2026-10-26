@@ -110,6 +110,23 @@ def _mesh(meshes) -> dict | None:
     return {"v": v, "i": idx}
 
 
+def _drawn_mesh(geometry, fallback_z: float | None) -> dict | None:
+    """Maillage d'une surface remodelée ou créée (corrections.GEOMETRY_COLUMN) : son tracé triangulé, à plat."""
+    if not isinstance(geometry, dict) or not isinstance(geometry.get("polygone"), dict):
+        return None
+    try:
+        from shapely.geometry import shape
+        from .sujets import _trace
+    except ImportError:
+        return None
+    z = geometry.get("z")
+    t = _trace(shape(geometry["polygone"]).buffer(0), float(z if z is not None else fallback_z or 0.0))
+    if t is None:
+        return None
+    xy = t["v"]
+    return {"v": [c for k in range(0, len(xy), 2) for c in (xy[k], xy[k + 1], t["z"])], "i": t["i"]}
+
+
 def _levels(rep: report.Report, cfg: Config) -> list[dict]:
     out = []
     for r in rep.levels.to_dict("records"):
@@ -162,11 +179,15 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
         if pd.isna(getattr(r, "element_id", None)) and "#" in str(r.id) and not str(r.id).endswith("#total"):
             created.add(str(r.id))
         eid = None if pd.isna(getattr(r, "element_id", None)) else int(r.element_id)
+        mesh = _mesh(cache.meshes.get(eid)) if eid is not None else None
+        drawn = getattr(r, "geometrie", None)
+        if isinstance(drawn, dict):   # emprise redessinée ou surface créée : le tracé remplace le maillage
+            mesh = _drawn_mesh(drawn, max(mesh["v"][2::3]) if mesh else None) or mesh
         surfaces.append({
             "id": str(r.id), "building": _text(r.building), "level": _text(r.level),
             "category": r.category, "code": _text(r.code), "kind": r.kind, "status": r.status,
             "area": _num(r.area), "room_type": _text(r.room_type), "lot": _text(r.lot),
-            "mesh": _mesh(cache.meshes.get(eid)) if eid is not None else None,
+            "mesh": mesh,
         })
 
     levels = _levels(rep, cfg)

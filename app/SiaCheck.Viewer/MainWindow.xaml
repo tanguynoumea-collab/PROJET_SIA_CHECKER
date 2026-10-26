@@ -328,6 +328,9 @@
                                        Command="{Binding FrameAllCommand}" MinHeight="{StaticResource TargetSize}" />
                             <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ArrowDown20}" Content="Vue de dessus"
                                        Click="TopView_Click" ToolTip="T" MinHeight="{StaticResource TargetSize}" />
+                            <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon AddSquare20}" Content="Nouvelle surface"
+                                       Command="{Binding OpenCreateSurfaceCommand}" MinHeight="{StaticResource TargetSize}"
+                                       ToolTip="Tracer une surface manquante : bâtiment, niveau et type, puis son contour sur le plan" />
                             <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss20}" Content="Quitter l'isolement"
                                        Command="{Binding ClearFocusCommand}" ToolTip="Échap" MinHeight="{StaticResource TargetSize}"
                                        Visibility="{Binding IsFocused, Converter={StaticResource BoolToVisibility}}" />
@@ -365,10 +368,20 @@
                                 <TextBlock Grid.Row="3" Style="{StaticResource TextCaption}" Text="Lot" />
                                 <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource TextMono}" Text="{Binding Surface.Lot}" />
                             </Grid>
-                            <ui:Button Margin="0,8,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon Cut20}" Content="Découper cette surface…"
-                                       Command="{Binding DataContext.OpenTraceForSurfaceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                       MinHeight="{StaticResource TargetSize}"
-                                       ToolTip="Tracer sur le plan du niveau la part de cette surface qui change de catégorie" />
+                            <WrapPanel Margin="0,8,0,0">
+                                <ui:Button Margin="0,0,4,4" Appearance="Secondary" Icon="{ui:SymbolIcon Edit20}" Content="Modifier…"
+                                           Command="{Binding DataContext.OpenReshapeForSurfaceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                           MinHeight="{StaticResource TargetSize}"
+                                           ToolTip="Changer le type de la surface ou redessiner son emprise sur le plan du niveau (sommets, arêtes)" />
+                                <ui:Button Margin="0,0,4,4" Appearance="Secondary" Icon="{ui:SymbolIcon Cut20}" Content="Découper…"
+                                           Command="{Binding DataContext.OpenTraceForSurfaceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                           MinHeight="{StaticResource TargetSize}"
+                                           ToolTip="Tracer sur le plan du niveau la part de cette surface qui change de catégorie" />
+                                <ui:Button Margin="0,0,0,4" Appearance="Transparent" Icon="{ui:SymbolIcon Delete20}" Content="Supprimer"
+                                           Command="{Binding DataContext.DeleteSelectedSurfaceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                           MinHeight="{StaticResource TargetSize}"
+                                           ToolTip="Retirer cette surface des sommes et des exports (correction réversible)" />
+                            </WrapPanel>
                             <TextBlock Style="{StaticResource TextSection}" Text="Points d'attention qui citent cette surface"
                                        Visibility="{Binding Issues.Count, Converter={StaticResource VisibleWhen}}" />
                             <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
@@ -550,7 +563,7 @@
                                 <DockPanel>
                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                         <ui:Button Appearance="Transparent" Content="Annuler" Command="{Binding CancelTraceCommand}" MinHeight="{StaticResource TargetSize}" />
-                                        <ui:Button Margin="8,0,0,0" Appearance="Primary" Icon="{ui:SymbolIcon Save20}" Content="Enregistrer le tracé"
+                                        <ui:Button Margin="8,0,0,0" Appearance="Primary" Icon="{ui:SymbolIcon Save20}" Content="Enregistrer"
                                                    Command="{Binding SaveTraceCommand}" IsEnabled="{Binding Trace.CanSave}" MinHeight="{StaticResource TargetSize}" />
                                         <ui:Button Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss20}" Command="{Binding CancelTraceCommand}"
                                                    ToolTip="Fermer le tracé (Échap)" AutomationProperties.Name="Fermer le tracé"
@@ -560,9 +573,18 @@
                                         <TextBlock Style="{StaticResource TextSection}" Margin="0" VerticalAlignment="Center">
                                             <Run Text="Tracé · " /><Run Text="{Binding TraceTitle, Mode=OneWay}" FontFamily="{StaticResource FontMono}" />
                                         </TextBlock>
+                                        <StackPanel Orientation="Horizontal" Visibility="{Binding IsTraceCreate, Converter={StaticResource BoolToVisibility}}">
+                                            <ComboBox Margin="12,0,0,0" MinWidth="72" ItemsSource="{Binding TraceBuildings}" SelectedItem="{Binding TraceBuilding}"
+                                                      FontFamily="{StaticResource FontMono}" AutomationProperties.Name="Bâtiment de la nouvelle surface"
+                                                      ToolTip="Bâtiment" />
+                                            <ComboBox Margin="4,0,0,0" MinWidth="72" ItemsSource="{Binding TraceLevels}" SelectedItem="{Binding TraceLevel}"
+                                                      FontFamily="{StaticResource FontMono}" AutomationProperties.Name="Niveau de la nouvelle surface"
+                                                      ToolTip="Niveau : le plan montre ses surfaces existantes" />
+                                        </StackPanel>
                                         <ComboBox Margin="8,0,0,0" MinWidth="80" ItemsSource="{Binding TraceTargets}" SelectedItem="{Binding TraceTarget}"
-                                                  FontFamily="{StaticResource FontMono}" AutomationProperties.Name="Catégorie cible"
-                                                  Visibility="{Binding IsTraceManual, Converter={StaticResource BoolToVisibility}}" />
+                                                  FontFamily="{StaticResource FontMono}" AutomationProperties.Name="Catégorie"
+                                                  ToolTip="Type SIA 416 de la surface (ou de la part découpée)"
+                                                  Visibility="{Binding ShowTraceTargets, Converter={StaticResource BoolToVisibility}}" />
                                     </StackPanel>
                                 </DockPanel>
                             </Border>
@@ -597,7 +619,15 @@
                                     <TextBlock Style="{StaticResource TextSection}" Margin="0,0,0,4" Text="Aire du tracé" />
                                     <TextBlock Style="{StaticResource TextNumber}" FontSize="{StaticResource FontSizeTitle}" FontFamily="{StaticResource FontUISemibold}"
                                                HorizontalAlignment="Left" Text="{Binding Trace.CountedText}" />
-                                    <Grid Margin="0,12,0,0">
+                                    <Grid Margin="0,12,0,0" Visibility="{Binding Trace.IsReshape, Converter={StaticResource BoolToVisibility}}">
+                                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                        <TextBlock Style="{StaticResource TextCaption}" Text="avant modification" />
+                                        <TextBlock Grid.Column="1" Style="{StaticResource TextNumber}" Text="{Binding Trace.OriginalAreaText}" />
+                                        <TextBlock Grid.Row="1" Style="{StaticResource TextCaption}" Text="écart" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource TextNumber}" Text="{Binding Trace.AreaDeltaText}" />
+                                    </Grid>
+                                    <Grid Margin="0,12,0,0" Visibility="{Binding Trace.IsCut, Converter={StaticResource BoolToVisibility}}">
                                         <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                         <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
                                         <TextBlock Style="{StaticResource TextCaption}" Text="{Binding Trace.SourceLabel}" />
@@ -613,6 +643,7 @@
                                             Visibility="{Binding Trace.HasMessage, Converter={StaticResource BoolToVisibility}}">
                                         <TextBlock x:Name="TraceMessage" Style="{StaticResource TextCaption}" TextWrapping="Wrap" Text="{Binding Trace.Message}" />
                                     </Border>
+                                    <StackPanel Visibility="{Binding Trace.IsCut, Converter={StaticResource BoolToVisibility}}">
                                     <TextBlock Style="{StaticResource TextSection}" Margin="0,20,0,4" Text="Écart R3 du niveau" />
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Style="{StaticResource TextNumber}" Foreground="{DynamicResource BrushTextSecondary}" TextDecorations="Strikethrough"
@@ -623,6 +654,10 @@
                                     </StackPanel>
                                     <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
                                                Text="si la correction est acceptée et appliquée (Analyser)" />
+                                    </StackPanel>
+                                    <TextBlock Margin="0,20,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                                               Visibility="{Binding Trace.IsCut, Converter={StaticResource HiddenWhen}}"
+                                               Text="Enregistrer ajoute une correction acceptée à « Corrections manuelles » ; elle s'applique à la prochaine analyse (Analyser)." />
                                 </StackPanel>
                             </Border>
                             <c:TracePlan x:Name="TracePlanControl" Session="{Binding Trace}"
@@ -1201,7 +1236,8 @@
                     <Border Style="{StaticResource Banner}" BorderBrush="{DynamicResource BrushVerdictError}" Margin="0,12,0,0"
                             Visibility="{Binding HasAiError, Converter={StaticResource BoolToVisibility}}">
                         <DockPanel>
-                            <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" VerticalAlignment="Top" Command="{Binding ShowLogCommand}">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" VerticalAlignment="Top" Command="{Binding OpenAiErrorLogCommand}"
+                                    ToolTip="Message, détail technique et réponse brute du modèle (derniere-erreur.log), sinon journal du moteur">
                                 <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Voir le journal" />
                             </Button>
                             <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding AiError}" />

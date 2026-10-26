@@ -360,6 +360,17 @@ public sealed partial class MainViewModel : ObservableObject
             Layers.Add(layer);
         }
 
+        // SA (abords, SIA 416 §1.2) : toujours un calque, même avant la première découpe appliquée, pour voir les
+        // abords créés par les corrections (aperçu 3D) et pouvoir les masquer.
+        if (!Layers.Any(l => l.Code == "SA"))
+        {
+            var (saTitle, saDef) = palette.Describe("SA");
+            var sa = new LayerItem("SA", "Extérieur", palette.BrushOf("SA"), 0, 0, true, true, saTitle, saDef);
+            sa.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(LayerItem.IsVisible)) UpdateLayers(); };
+            var after = Layers.Select((l, i) => (l, i)).LastOrDefault(x => x.l.Group == "Extérieur");
+            Layers.Insert(after.l is null ? Layers.Count : after.i + 1, sa);
+        }
+
         Buildings.Clear();
         foreach (var b in doc.Levels.Select(l => l.Building).Distinct().Order())
         {
@@ -462,7 +473,7 @@ public sealed partial class MainViewModel : ObservableObject
     private void UpdateLayers()
     {
         if (_suspendSceneUpdates) return;
-        Scene?.SetVisibleCodes(Layers.Where(l => l.IsVisible).Select(l => l.Code));
+        Scene?.SetVisibleCodes(Layers.Where(l => l.IsVisible).Select(l => l.Code), Layers.Select(l => l.Code));
         OnPropertyChanged(nameof(NoLayerVisible));
     }
 

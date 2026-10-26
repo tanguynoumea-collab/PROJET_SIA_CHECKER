@@ -447,3 +447,18 @@ public class DuplicateAndCloseTests
         Assert.False(vm.HasSelectedSubject);
     }
 }
+
+public class SaLayerTests
+{
+    [Fact]
+    public void Sa_layer_is_always_listed_in_its_sia_color()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        var sa = vm.Layers.Single(l => l.Code == "SA");
+        Assert.Equal("Extérieur", sa.Group);
+        Assert.True(sa.IsVisible);
+        Assert.Equal(System.Windows.Media.Color.FromRgb(0x5B, 0xA8, 0x45), vm.Palette!.ColorOf("SA"));
+        Assert.Contains("abords", sa.Title);
+    }
+}

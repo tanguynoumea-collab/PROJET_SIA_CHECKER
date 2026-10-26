@@ -307,9 +307,11 @@ public sealed class SceneController
 
     // ------------------------------------------------------------------ visibilité
 
-    public void SetVisibleCodes(IEnumerable<string> codes)
+    /// <param name="layerCodes">Codes qui ont un calque : un code sans calque (apparu par l'aperçu) reste visible.</param>
+    public void SetVisibleCodes(IEnumerable<string> codes, IEnumerable<string>? layerCodes = null)
     {
         _visibleCodes = codes.ToHashSet();
+        if (layerCodes is not null) _baseCodes = layerCodes.ToHashSet();
         Refresh();
     }
 

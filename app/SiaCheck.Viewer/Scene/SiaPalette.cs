@@ -19,13 +19,23 @@ public sealed class SiaPalette
     public SiaPalette(IEnumerable<CategoryInfo> categories) =>
         _cats = categories.ToDictionary(c => c.Code, StringComparer.Ordinal);
 
+    /// <summary>
+    /// Codes que l'analyse ouverte peut ne pas lister (aucune surface encore, ou analyse antérieure) : mêmes couleurs que
+    /// report.SIA_COLORS, aplat plein. SA : abords créés par les découpes ; SUT : catégorie Treegram comptée dans la SU.
+    /// </summary>
+    private static readonly Dictionary<string, (Color Color, string Name, string Ref)> Defaults = new(StringComparer.Ordinal)
+    {
+        ["SA"] = (Color.FromRgb(0x5B, 0xA8, 0x45), "Surface des abords", "SIA 416 §1.2"),
+        ["SUT"] = (Color.FromRgb(0xE8, 0x60, 0x1C), "Surface utile hors logement (catégorie Treegram)", "règle personnalisée P1"),
+    };
+
     public Color ColorOf(string code) =>
         _cats.TryGetValue(code, out var c) && c.Color is { } hex ? (Color)ColorConverter.ConvertFromString(hex)
-        : code == "SUT" ? Color.FromRgb(0xE8, 0x60, 0x1C)   // analyse antérieure à la couleur SUT du moteur (report.SIA_COLORS)
+        : Defaults.TryGetValue(code, out var d) ? d.Color
         : Fallback;
 
     public bool IsHatched(string code) =>
-        _cats.TryGetValue(code, out var c) ? c.Hatched || c.Status != "checked" : true;
+        _cats.TryGetValue(code, out var c) ? c.Hatched || c.Status != "checked" : !Defaults.ContainsKey(code);
 
     public CategoryInfo? Info(string code) => _cats.GetValueOrDefault(code);
 
@@ -33,8 +43,9 @@ public sealed class SiaPalette
     public (string Title, string? Definition) Describe(string code)
     {
         var c = Info(code);
-        var title = c?.Name is { } n ? $"{code} · {n}" : code;
-        if (c?.Ref is { } r) title += $" ({r})";
+        var d = Defaults.GetValueOrDefault(code);
+        var title = (c?.Name ?? d.Name) is { } n ? $"{code} · {n}" : code;
+        if ((c?.Ref ?? d.Ref) is { } r) title += $" ({r})";
         return (title, c?.Definition);
     }
 

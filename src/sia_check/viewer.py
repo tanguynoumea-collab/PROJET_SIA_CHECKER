@@ -155,6 +155,35 @@ def _cut_mesh(mesh: dict, cuts: list) -> dict | None:
     return _flat_mesh(rest, _top(mesh) or 0.0)
 
 
+def _roof_footprints(shown: pd.DataFrame, detailed: set, footprint) -> dict[tuple, object]:
+    """(bâtiment, niveau, total hôte) -> union des emprises des toitures que Treegram compte dans ce total."""
+    try:
+        from shapely import union_all
+    except ImportError:
+        return {}
+    out: dict[tuple, list] = {}
+    for r in shown[shown.category.isin(rules.COUNTED_IN.keys())].itertuples(index=False):
+        if r.kind == "node" and (r.building, r.level, r.category) in detailed:
+            continue   # total doublé par ses pièces : les pièces suffisent
+        host = (r.building, r.level, rules.COUNTED_IN[r.category])
+        if host in detailed:
+            continue   # SEP détaillée : Treegram n'y compte pas la toiture
+        g = footprint(str(r.id))
+        if g is not None:
+            out.setdefault(host, []).append(g)
+    return {k: union_all(v) for k, v in out.items()}
+
+
+def _without(mesh: dict, region) -> dict | None:
+    """Emprise d'une surface moins une région (shapely)."""
+    from .preuves import polygon_of
+    base = polygon_of(mesh)
+    if base is None:
+        return mesh
+    rest = base.difference(region)
+    return None if rest.is_empty else _flat_mesh(rest, _top(mesh) or 0.0)
+
+
 def _levels(rep: report.Report, cfg: Config) -> list[dict]:
     out = []
     for r in rep.levels.to_dict("records"):
@@ -223,6 +252,8 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
         m = read_mesh.get(sid)
         return polygon_of(m) if m else None
 
+    roofs = _roof_footprints(shown, detailed, footprint)
+
     for r in all_surf.itertuples(index=False):
         if pd.isna(getattr(r, "element_id", None)) and "#" in str(r.id) and not str(r.id).endswith("#total"):
             created.add(str(r.id))
@@ -238,10 +269,22 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
             redundant.add(str(r.id))
         if isinstance(cuts, list) and cuts and mesh:
             mesh = _cut_mesh(mesh, cuts)
+        area = r.area
+        # Total SEP de Treegram qui compte les toitures SPT (rules.COUNTED_IN) : affiché et compté sans elles, comme
+        # dans le bilan ; plus de maillage s'il n'en reste rien (toiture en double SEP + SPT).
+        key = (r.building, r.level, r.category)
+        if r.kind == "node" and r.status != "excluded" and key in roofs and str(r.id) not in redundant:
+            net = result.totals[r.category].get((r.building, r.level)) if r.category in result.totals else None
+            if net is not None and not pd.isna(net):
+                area = net
+            if mesh:
+                mesh = _without(mesh, roofs[key]) if area > cfg.abs_m2 else None
+            if mesh is None:
+                redundant.add(str(r.id))
         surfaces.append({
             "id": str(r.id), "building": _text(r.building), "level": _text(r.level),
             "category": r.category, "code": _text(r.code), "kind": r.kind, "status": r.status,
-            "area": _num(r.area), "room_type": _text(r.room_type), "lot": _text(r.lot),
+            "area": _num(area), "room_type": _text(r.room_type), "lot": _text(r.lot),
             "mesh": mesh,
         })
 

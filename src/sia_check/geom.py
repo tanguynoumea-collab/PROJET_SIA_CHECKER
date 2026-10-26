@@ -130,6 +130,14 @@ def find_vwr(project_dir: Path) -> Path | None:
     return vwr if vwr.is_dir() else None
 
 
+def sia_surfaces_modified(tgm: Path) -> dt.datetime:
+    """Date de la dernière création des surfaces SIA par Treegram (action BOOMER « Create SIA Surfaces », base
+    DB/*Create*SIA_Surfaces*.db3), à défaut celle du `.tgm`. Le `.tgm` est réenregistré pour bien d'autres raisons
+    (L'Orée : surfaces et cache du 11.06, `.tgm` du 19.06) : comparé au cache, il le dirait périmé à tort."""
+    runs = [f.stat().st_mtime for f in (tgm.parent / "DB").glob("*Create*SIA_Surfaces*.db3")]
+    return dt.datetime.fromtimestamp(max(runs) if runs else tgm.stat().st_mtime)
+
+
 def read_cache(project_dir: str | Path) -> Cache:
     """Toutes les géométries SIA du cache VWR. Un fichier en double (plusieurs dossiers H…) : le plus récent gagne."""
     cache = Cache()

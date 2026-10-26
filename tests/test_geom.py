@@ -150,3 +150,17 @@ def test_level_totals_with_detail_have_no_mesh(cfg):
     mesh = {s["id"]: s["mesh"] is not None for s in doc["surfaces"]}
     assert mesh == {"sp": True, "sus-total": False, "sus-1": True}
     assert doc["cache"]["surfaces_without_mesh"] == 0
+
+
+def test_cache_age_is_compared_to_sia_surfaces_creation(tmp_path):
+    # Le .tgm est réenregistré après la création des surfaces SIA : c'est la création qui date la géométrie.
+    import os
+    tgm = tmp_path / "P.tgm"
+    tgm.write_bytes(b"")
+    os.utime(tgm, (2_000_000_000, 2_000_000_000))
+    assert geom.sia_surfaces_modified(tgm).timestamp() == 2_000_000_000
+    db = tmp_path / "DB" / "BOOMER__Create__SIA_Surfaces.db3"
+    db.parent.mkdir()
+    db.write_bytes(b"")
+    os.utime(db, (1_900_000_000, 1_900_000_000))
+    assert geom.sia_surfaces_modified(tgm).timestamp() == 1_900_000_000

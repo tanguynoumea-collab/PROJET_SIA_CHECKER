@@ -202,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
             log.info("ÉTAPE 3/%d géométrie (cache VWR)", steps)
             if cache is None:
                 cache = geom.read_cache(models[0].parent) if models[0].suffix.lower() == ".tgm" else geom.Cache()
-            modified = dt.datetime.fromtimestamp(models[0].stat().st_mtime)
+            modified = geom.sia_surfaces_modified(models[0]) if models[0].suffix.lower() == ".tgm"                 else dt.datetime.fromtimestamp(models[0].stat().st_mtime)
             excluded = applied.surfaces[applied.surfaces.excluded] if applied is not None else None
             doc = viewer.build(result, cfg, cache, project, [str(m) for m in models], modified, before=before,
                                excluded=excluded)

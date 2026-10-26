@@ -155,6 +155,9 @@ def _cut_mesh(mesh: dict, cuts: list) -> dict | None:
     return _flat_mesh(rest, _top(mesh) or 0.0)
 
 
+CACHE_MARGIN = dt.timedelta(minutes=10)
+
+
 def _roof_footprints(shown: pd.DataFrame, detailed: set, footprint) -> dict[tuple, object]:
     """(bâtiment, niveau, total hôte) -> union des emprises des toitures que Treegram compte dans ce total."""
     try:
@@ -174,14 +177,21 @@ def _roof_footprints(shown: pd.DataFrame, detailed: set, footprint) -> dict[tupl
     return {k: union_all(v) for k, v in out.items()}
 
 
-def _without(mesh: dict, region) -> dict | None:
-    """Emprise d'une surface moins une région (shapely)."""
+# Demi-largeur des bandes gardées en 3D quand la toiture est retirée de la SEP : le contour de la SEP Treegram
+# déborde celui de la SPT de quelques centimètres (bord de dalle, acrotère), ce qui laissait un cadre autour du toit.
+ROOF_EDGE = 0.15
+
+
+def _without(mesh: dict, region, edge: float = 0.0) -> dict | None:
+    """Emprise d'une surface moins une région (shapely), sans les bandes plus étroites que 2 × `edge`."""
     from .preuves import polygon_of
     base = polygon_of(mesh)
     if base is None:
         return mesh
     rest = base.difference(region)
-    return None if rest.is_empty else _flat_mesh(rest, _top(mesh) or 0.0)
+    if edge and not rest.is_empty:
+        rest = rest.buffer(-edge, join_style="mitre").buffer(edge, join_style="mitre").intersection(rest)
+    return None if rest.is_empty or rest.area < 1e-3 else _flat_mesh(rest, _top(mesh) or 0.0)
 
 
 def _levels(rep: report.Report, cfg: Config) -> list[dict]:
@@ -278,7 +288,7 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
             if net is not None and not pd.isna(net):
                 area = net
             if mesh:
-                mesh = _without(mesh, roofs[key]) if area > cfg.abs_m2 else None
+                mesh = _without(mesh, roofs[key], ROOF_EDGE) if area > cfg.abs_m2 else None
             if mesh is None:
                 redundant.add(str(r.id))
         surfaces.append({
@@ -306,7 +316,9 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
             "surface_ids": _concerned(r, surf, result.unknown, cfg),
         })
 
-    stale = bool(source_modified and cache.newest and cache.newest < source_modified)
+    # Le cache est écrit pendant l'action Treegram qui crée les surfaces, la base de l'action une fois finie (L'Orée :
+    # 7 s plus tard) : une marge évite de le dire périmé à tort.
+    stale = bool(source_modified and cache.newest and cache.newest < source_modified - CACHE_MARGIN)
     return {
         "format": "sia-check-viewer", "version": FORMAT_VERSION, "tool_version": __version__,
         "project": project, "date": rep.date, "sources": rep.sources,

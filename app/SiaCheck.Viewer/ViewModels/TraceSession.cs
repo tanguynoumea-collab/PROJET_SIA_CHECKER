@@ -77,7 +77,8 @@ public sealed partial class TraceSession : ObservableObject
         _appliedArea = appliedArea;
         _tolerance = tolerance;
         var shapes = new List<PlanShape>();
-        foreach (var s in level.Where(s => s.Mesh is not null && !s.IsExcluded || s.Id == source.Id))
+        // La source est toujours dessinée, même absente des surfaces du niveau (surface à îlots, montrée par ses îlots).
+        foreach (var s in level.Where(s => s.Id != source.Id).Prepend(source).Where(s => s.Mesh is not null && (!s.IsExcluded || s.Id == source.Id)))
             if (Outline(s) is { Count: > 0 } p) shapes.Add(new PlanShape(s.Id, s.DisplayCode, p, s.Id == source.Id, false));
         var belowPaths = new PathsD();
         foreach (var s in below.Where(s => s.Mesh is not null && s.DisplayCode == "SP"))
@@ -721,9 +722,10 @@ public sealed partial class TraceSession : ObservableObject
     // ------------------------------------------------------------------ géométrie
 
     /// <summary>Contour d'une surface : union des triangles de son maillage (orientés positivement).</summary>
-    internal static PathsD Outline(Surface s)
+    internal static PathsD Outline(Surface s) => s.Mesh is { Vertices.Length: > 0 } m ? Outline(m) : [];
+
+    internal static PathsD Outline(MeshData m)
     {
-        if (s.Mesh is not { Vertices.Length: > 0 } m) return [];
         var tris = new PathsD();
         for (var t = 0; t + 2 < m.Indices.Length; t += 3)
         {
@@ -756,8 +758,22 @@ public sealed partial class TraceSession : ObservableObject
         return sp is not null ? TopZ(sp) : withMesh.Count > 0 ? withMesh.Max(TopZ) : 0;
     }
 
-    private static double TopZ(Surface s) =>
-        s.Mesh is { Vertices.Length: > 2 } m ? Enumerable.Range(0, m.Vertices.Length / 3).Max(k => (double)m.Vertices[3 * k + 2]) : 0;
+    private static double TopZ(Surface s) => s.Mesh is { } m ? TopZ(m) : 0;
+
+    internal static double TopZ(MeshData m) =>
+        m.Vertices.Length > 2 ? Enumerable.Range(0, m.Vertices.Length / 3).Max(k => (double)m.Vertices[3 * k + 2]) : 0;
+
+    /// <summary>Tracé d'une correction (`polygone`) en contours Clipper.</summary>
+    public static PathsD PolygonOf(Correction c) => new(ReadPolygons(c).Select(ToPath));
+
+    /// <summary>Maillage à plat d'un contour, à l'altitude z (format du fichier visionneuse).</summary>
+    public static MeshData? ToMesh(PathsD paths, double z) => Triangulate(paths, z) is { } t
+        ? new MeshData
+        {
+            Vertices = Enumerable.Range(0, t.Vertices.Length / 2).SelectMany(k => new[] { (float)t.Vertices[2 * k], (float)t.Vertices[2 * k + 1], (float)z }).ToArray(),
+            Indices = t.Indices,
+        }
+        : null;
 
     private static List<List<Point>> ReadPolygons(Correction c)
     {

@@ -65,6 +65,7 @@ public sealed class SceneController
     private readonly Dictionary<string, string> _previewRecolored = new(StringComparer.Ordinal);   // id -> code d'origine
     private readonly HashSet<string> _previewAdded = new(StringComparer.Ordinal);
     private readonly HashSet<string> _previewLifted = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SurfaceGeometry> _previewReplaced = new(StringComparer.Ordinal);   // id -> géométrie lue
     private HashSet<string>? _buildings;          // null = tous
     private string? _level;                       // null = tous
     private HashSet<string>? _focus;
@@ -169,10 +170,15 @@ public sealed class SceneController
     /// Remplace l'aperçu des corrections : rétablit l'état lu, puis masque, recolore et ajoute ce que les corrections
     /// décidées changeront à la prochaine analyse. Seuls les niveaux touchés sont reconstruits.
     /// </summary>
-    public void SetPreview(IReadOnlyList<ScenePreview> items)
+    /// <param name="replaced">Surfaces dont l'emprise change avant l'analyse (parts découpées en attente) : nouveau maillage,
+    /// ou null si rien ne reste.</param>
+    public void SetPreview(IReadOnlyList<ScenePreview> items, IReadOnlyDictionary<string, MeshData?>? replaced = null)
     {
         var touched = new HashSet<(string, string)>();
         void Touch(string id) { if (_surfaces.TryGetValue(id, out var g)) touched.Add((g.Building, g.Level)); }
+
+        foreach (var (id, original) in _previewReplaced) { Touch(id); _surfaces[id] = original; }
+        _previewReplaced.Clear();
 
         foreach (var id in _previewHidden) { Touch(id); _hidden.Remove(id); }
         _previewHidden.Clear();
@@ -182,6 +188,16 @@ public sealed class SceneController
         _previewAdded.Clear();
         _previewLifted.Clear();
 
+        foreach (var (id, mesh) in replaced ?? new Dictionary<string, MeshData?>())
+        {
+            if (!_surfaces.TryGetValue(id, out var g)) continue;
+            _previewReplaced[id] = g;
+            Touch(id);
+            if (mesh is null) { if (_hidden.Add(id)) _previewHidden.Add(id); continue; }
+            var pts = new Point3D[mesh.Vertices.Length / 3];
+            for (var k = 0; k < pts.Length; k++) pts[k] = new Point3D(mesh.Vertices[3 * k], mesh.Vertices[3 * k + 1], mesh.Vertices[3 * k + 2]);
+            _surfaces[id] = g with { Points = pts, Indices = mesh.Indices };
+        }
         foreach (var p in items)
         {
             foreach (var id in Expand(p.Hide).Where(id => _surfaces.ContainsKey(id) && !_hidden.Contains(id)))

@@ -207,14 +207,18 @@ public sealed partial class MainViewModel
                            IReadOnlyList<IReadOnlyList<Point>>? initial = null)
     {
         if (Document is null || source.Building is null || source.Level is null) return;
+        // Géométrie telle qu'elle sera : parts déjà découpées ou exclues en attente retirées (sauf celle qu'on retrace).
+        var cuts = PendingCuts();
+        if (kind != TraceKind.Create) source = Current(source, cuts, item?.Id);
         if (kind != TraceKind.Create && source.Mesh is null)
         {
             _shell.Notify("Pas de géométrie pour ce niveau dans le cache VWR : ajustez l'aire avec Modifier.");
             return;
         }
-        var level = Document.DisplaySurfaces.Where(s => s.Building == source.Building && s.Level == source.Level).ToList();
+        var level = Document.DisplaySurfaces.Where(s => s.Building == source.Building && s.Level == source.Level)
+            .Select(s => Current(s, cuts, item?.Id)).Concat(PendingParts(source.Building, source.Level, item?.Id)).ToList();
         var siblings = source.IslandOf is { } parent && Document.Islands.TryGetValue(parent, out var parts)
-            ? parts.Where(p => p.Id != source.Id).ToList() : null;
+            ? parts.Where(p => p.Id != source.Id).Select(p => Current(p, cuts, item?.Id)).Where(p => p.Mesh is not null).ToList() : null;
         var levels = Document.Levels.Where(l => l.Building == source.Building).ToList();
         var rank = levels.FirstOrDefault(l => l.Level == source.Level)?.Rank ?? 0;
         var belowLevel = levels.Where(l => (l.Rank ?? 0) < rank).OrderByDescending(l => l.Rank ?? 0).FirstOrDefault()?.Level;

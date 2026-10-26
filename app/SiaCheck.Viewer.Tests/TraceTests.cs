@@ -589,3 +589,44 @@ public class SplitTests
         Assert.False(s.CanSave);
     }
 }
+
+public class PendingSplitTests
+{
+    private static ViewerDocument Doc() => new()
+    {
+        Surfaces = [Plan.Square("sus", "SUS", 0, 0, 10, 4), Plan.Square("sp", "SP", 0, 0, 30, 10, kind: "node")],
+    };
+
+    [Fact]
+    public void After_a_split_the_original_surface_shrinks_before_the_analysis()
+    {
+        using var tmp = new TempDir();
+        var vm = new MainViewModel(new FakeShell(), new AppPaths(tmp.Path, tmp.Path), new AppSettings(), enginePath: null) { AiSearchBaseDir = tmp.Path };
+        vm.LoadDocument(tmp.Path, Doc());
+        vm.SelectSurface("sus");
+        vm.OpenReshapeForSurfaceCommand.Execute(null);
+        var t = vm.Trace!;
+        t.IsSplitMode = true;
+        t.AddSplitPoint(new Point(4, -1));
+        t.AddSplitPoint(new Point(4, 5));
+        Assert.True(t.FinishSplit());
+        t.SplitTypeB = "NC";
+        vm.SaveTraceCommand.Execute(null);
+
+        vm.SelectSurface("sus");                                          // la fiche montre la surface amputée
+        Assert.Equal(24.0, vm.SelectedSurface!.Surface.Area);
+        vm.OpenReshapeForSurfaceCommand.Execute(null);                    // l'éditeur aussi, et la partie 2 à côté
+        Assert.Equal(24.0, vm.Trace!.CountedArea, 2);
+        Assert.Contains(vm.Trace.Shapes, s => SceneController.IsPreview(s.Id) && s.Code == "NC");
+    }
+
+    [Fact]
+    public void The_source_is_drawn_even_when_the_level_shows_only_its_islands()
+    {
+        var sus = Plan.Square("sus", "SUS", 0, 0, 10, 4, kind: "node");
+        var s = new TraceSession(sus, [], [], "SA", null, 0, 0, new Tolerance { AbsM2 = 0.5, Rel = 0.005 });
+        Assert.True(s.HasGeometry);
+        Plan.Rectangle(s, 0, 0, 5, 4);
+        Assert.Equal(20, s.OnSource, 3);                                  // plus « hors de la surface »
+    }
+}

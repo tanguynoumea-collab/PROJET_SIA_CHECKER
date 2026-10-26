@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Clipper2Lib;
 using SiaCheck.Viewer.Models;
 using SiaCheck.Viewer.Scene;
 using SiaCheck.Viewer.Services;
@@ -278,6 +279,13 @@ public sealed partial class MainViewModel
         // Deux emprises redessinées pour la même surface : la plus récente l'emporte (le moteur les applique dans l'ordre).
         var lastReshape = accepted.Where(c => c.Model.Op == "remodeler" && c.TargetIds.Count == 1)
             .GroupBy(c => c.TargetIds[0]).ToDictionary(g => g.Key, g => g.Last().Id);
+        // Surfaces amputées tout de suite des parts découpées ou exclues : la 3D les montre telles qu'elles seront.
+        var cuts = PendingCuts();
+        var replaced = new Dictionary<string, MeshData?>(StringComparer.Ordinal);
+        foreach (var target in cuts.Keys)
+            foreach (var shown in Document.Islands.TryGetValue(target, out var parts) ? parts
+                     : _surfaceById.GetValueOrDefault(target) is { } t ? [t] : [])
+                if (Current(shown, cuts) is var now && !ReferenceEquals(now, shown)) replaced[shown.Id] = now.Mesh;
         foreach (var c in accepted.Where(c => c.Model.Op != "remodeler" || c.TargetIds.Count != 1 || lastReshape[c.TargetIds[0]] == c.Id))
         {
             var m = c.Model;
@@ -285,50 +293,78 @@ public sealed partial class MainViewModel
             var former = Document.Surfaces.Where(s => s.Id.EndsWith("#" + m.Id, StringComparison.Ordinal)).Select(s => s.Id).ToList();
             var targetCode = targets.Select(id => _surfaceById.GetValueOrDefault(id)?.DisplayCode).FirstOrDefault(x => x is not null);
             var on = c.CreatedOn ?? (_surfaceById.GetValueOrDefault(targets.FirstOrDefault() ?? "") is { Building: { } b, Level: { } l } ? (b, l) : null);
-            var islands = m.Trace is { } tr && m.Op is "découper" or "exclure" ? IslandsUnder(targets, tr) : [];
             ScenePreview? p = m.Op switch
             {
                 "exclure" when m.Area is null => new(m.Id, targets, [], null, null, null, null),
-                "exclure" when islands.Count > 0 => new(m.Id, islands, [], null, null, null, null),
                 "reclasser" when m.To is not null => new(m.Id, [], targets, m.To, null, null, null),
                 "remodeler" when m.Trace is not null => new(m.Id, [.. targets, .. former], [], m.To ?? targetCode, m.Trace, on?.Item1, on?.Item2),
                 "remodeler" when m.To is not null => new(m.Id, [], targets, m.To, null, null, null),
                 "créer" when m.Trace is not null => new(m.Id, former, [], m.To, m.Trace, on?.Item1, on?.Item2),
-                "découper" when m.Trace is not null => new(m.Id, [.. former, .. islands], [], m.To, m.Trace, on?.Item1, on?.Item2, Lift: true),
+                "découper" when m.Trace is not null => new(m.Id, former, [], m.To, m.Trace, on?.Item1, on?.Item2),
                 _ => null,
             };
             if (p is not null) items.Add(p);
         }
-        Scene.SetPreview(items);
+        Scene.SetPreview(items, replaced);
     }
 
-    /// <summary>Îlots des surfaces visées dont le centre est sous le tracé : ceux qu'une découpe ou une exclusion retire.</summary>
-    private List<string> IslandsUnder(IReadOnlyList<string> targets, TraceMesh trace)
+    /// <summary>
+    /// Parts tracées que les corrections acceptées, pas encore appliquées, découpent ou excluent d'une surface :
+    /// surface visée → (correction, tracé).
+    /// </summary>
+    private Dictionary<string, List<(string Id, PathsD Paths)>> PendingCuts()
     {
-        var hit = new List<string>();
-        foreach (var t in targets)
-            if (Document!.Islands.TryGetValue(t, out var parts))
-                hit.AddRange(parts.Where(p => p.Mesh is { Indices.Length: >= 3 } pm && Inside(trace, Centroid(pm))).Select(p => p.Id));
-        return hit;
+        var cuts = new Dictionary<string, List<(string, PathsD)>>(StringComparer.Ordinal);
+        foreach (var c in Subjects.SelectMany(s => s.Corrections).Where(c => c.State == CorrectionState.Accepted && !c.IsOrphan
+                     && c.TargetIds.Count == 1 && (c.Model.Op == "découper" || c.Model.Op == "exclure" && c.Model.Area is not null)))
+            if (TraceSession.PolygonOf(c.Model) is { Count: > 0 } paths)
+                (cuts.TryGetValue(c.TargetIds[0], out var list) ? list : cuts[c.TargetIds[0]] = []).Add((c.Id, paths));
+        return cuts;
+    }
 
-        static (double X, double Y) Centroid(MeshData m)
+    /// <summary>
+    /// La surface (ou l'îlot) telle qu'elle sera après la prochaine analyse : moins ses parts découpées ou exclues en
+    /// attente, sauf celle de la correction <paramref name="except"/> (en cours de retracé). Aire au prorata ; maillage
+    /// nul si rien ne reste. La même surface si rien ne la touche.
+    /// </summary>
+    internal Surface Current(Surface s, Dictionary<string, List<(string Id, PathsD Paths)>>? cuts = null, string? except = null)
+    {
+        cuts ??= PendingCuts();
+        if (s.Mesh is null || !cuts.TryGetValue(s.IslandOf ?? s.Id, out var list)) return s;
+        var removed = new PathsD(list.Where(x => x.Id != except).SelectMany(x => x.Paths));
+        if (removed.Count == 0) return s;
+        var outline = TraceSession.Outline(s.Mesh);
+        var rest = Clipper.Difference(outline, removed, FillRule.NonZero, 3);
+        var (full, left) = (Math.Abs(Clipper.Area(outline)), Math.Abs(Clipper.Area(rest)));
+        if (full - left < 0.01) return s;
+        return new Surface
         {
-            var (a, b, c) = (m.Indices[0], m.Indices[1], m.Indices[2]);
-            return ((m.Vertices[3 * a] + m.Vertices[3 * b] + m.Vertices[3 * c]) / 3, (m.Vertices[3 * a + 1] + m.Vertices[3 * b + 1] + m.Vertices[3 * c + 1]) / 3);
-        }
+            Id = s.Id, IslandOf = s.IslandOf, Building = s.Building, Level = s.Level, Category = s.Category, Code = s.Code,
+            Kind = s.Kind, Status = s.Status, RoomType = s.RoomType, Lot = s.Lot,
+            Mesh = left < 0.01 ? null : TraceSession.ToMesh(rest, TraceSession.TopZ(s.Mesh)),
+            Area = s.Area is double a && full > 0 ? Math.Round(a * left / full, 2) : Math.Round(left, 2),
+        };
+    }
 
-        static bool Inside(TraceMesh tr, (double X, double Y) p)
+    /// <summary>Parts découpées ou créées en attente sur un niveau, comme surfaces du plan (sauf la correction retracée).</summary>
+    private IEnumerable<Surface> PendingParts(string building, string level, string? except)
+    {
+        foreach (var c in Subjects.SelectMany(s => s.Corrections).Where(c => c.State == CorrectionState.Accepted && !c.IsOrphan
+                     && c.Id != except && c.Model.Op is "découper" or "créer" && c.Model.Trace is not null && c.Model.To is not null))
         {
-            for (var k = 0; k + 2 < tr.Indices.Length; k += 3)
+            var on = c.CreatedOn ?? (_surfaceById.GetValueOrDefault(c.TargetIds.FirstOrDefault() ?? "") is { Building: { } b, Level: { } l } ? (b, l) : null);
+            if (on != (building, level)) continue;
+            var t = c.Model.Trace!;
+            yield return new Surface
             {
-                double X(int i) => tr.Vertices[2 * tr.Indices[k + i]];
-                double Y(int i) => tr.Vertices[2 * tr.Indices[k + i] + 1];
-                var d1 = (p.X - X(1)) * (Y(0) - Y(1)) - (X(0) - X(1)) * (p.Y - Y(1));
-                var d2 = (p.X - X(2)) * (Y(1) - Y(2)) - (X(1) - X(2)) * (p.Y - Y(2));
-                var d3 = (p.X - X(0)) * (Y(2) - Y(0)) - (X(2) - X(0)) * (p.Y - Y(0));
-                if (!((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) return true;
-            }
-            return false;
+                Id = SiaCheck.Viewer.Scene.SceneController.PreviewPrefix + c.Id, Building = building, Level = level,
+                Category = c.Model.To!, Code = c.Model.To, Kind = "leaf", Status = "checked", Area = c.Model.Area,
+                Mesh = new MeshData
+                {
+                    Vertices = Enumerable.Range(0, t.Vertices.Length / 2).SelectMany(k => new[] { (float)t.Vertices[2 * k], (float)t.Vertices[2 * k + 1], (float)t.Z }).ToArray(),
+                    Indices = t.Indices,
+                },
+            };
         }
     }
 

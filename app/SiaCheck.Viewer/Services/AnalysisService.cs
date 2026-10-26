@@ -42,6 +42,27 @@ public sealed partial class AnalysisService(string enginePath)
 
     public string EnginePath { get; } = enginePath;
 
+    /// <summary>
+    /// Date du moteur : celle de l'exécutable, et en développement (.venv du dépôt, installation éditable) celle du
+    /// code et de la configuration du dépôt, qui changent sans que l'exécutable ou la version bougent. Une analyse
+    /// plus ancienne est refaite à l'ouverture du projet.
+    /// </summary>
+    public DateTime EngineModified { get; } = ModifiedOf(enginePath);
+
+    internal static DateTime ModifiedOf(string enginePath)
+    {
+        var newest = File.Exists(enginePath) ? File.GetLastWriteTime(enginePath) : DateTime.MinValue;
+        var scripts = Path.GetDirectoryName(enginePath);
+        if (scripts is null || !string.Equals(Path.GetFileName(Path.GetDirectoryName(scripts)), ".venv", StringComparison.OrdinalIgnoreCase))
+            return newest;
+        var repo = Path.GetDirectoryName(Path.GetDirectoryName(scripts))!;
+        var sources = Path.Combine(repo, "src", "sia_check");
+        var files = Directory.Exists(sources) ? Directory.EnumerateFiles(sources, "*", SearchOption.AllDirectories) : [];
+        foreach (var f in files.Append(Path.Combine(repo, "config.yaml")).Where(File.Exists))
+            if (!f.Contains("__pycache__") && File.GetLastWriteTime(f) is var t && t > newest) newest = t;
+        return newest;
+    }
+
     public Task<EngineRun> AnalyseAsync(string projectDir, string viewerJson, EngineInputs inputs,
                                          IProgress<AnalysisProgress>? progress, CancellationToken ct) =>
         RunAsync(["-q", projectDir, "--viewer-json", viewerJson, .. inputs.Args()], progress, ct);

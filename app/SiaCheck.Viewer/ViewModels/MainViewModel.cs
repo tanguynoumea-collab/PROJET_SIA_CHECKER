@@ -138,13 +138,18 @@ public sealed partial class MainViewModel : ObservableObject
         ProjectDir = dir;
         var cached = _paths.AnalysisFile(dir);
         // Analyse encore valable : rouverture instantanée. Le .tgm a changé, ou l'analyse vient d'un autre
-        // moteur (mise à jour de l'application : nouveaux contrôles, ratios) : on réanalyse.
+        // moteur (mise à jour de l'application : nouveaux contrôles, ratios ; en développement, code du moteur
+        // modifié depuis l'analyse) : on réanalyse.
         if (File.Exists(cached) && File.GetLastWriteTime(cached) > File.GetLastWriteTime(tgms[0]))
         {
             try
             {
                 var doc = ViewerDocument.Load(cached);
-                if (_engine is null || doc.ToolVersion == AppVersion) { Load(doc); return; }
+                if (_engine is null || doc.ToolVersion == AppVersion && File.GetLastWriteTime(cached) > _engine.EngineModified)
+                {
+                    Load(doc);
+                    return;
+                }
             }
             catch (Exception ex) when (ex is IOException or InvalidDataException or System.Text.Json.JsonException) { /* réanalyse */ }
         }

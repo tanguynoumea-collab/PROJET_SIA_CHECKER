@@ -411,3 +411,26 @@ public class RatioTests
         Assert.Empty(ViewerDocument.Load(path).Ratios);
     }
 }
+
+public class EngineStampTests
+{
+    [Fact]
+    public void Dev_engine_is_as_new_as_the_repository_sources()
+    {
+        using var tmp = new TempDir();
+        var exe = Path.Combine(tmp.Path, ".venv", "Scripts", "sia-check.exe");
+        var py = Path.Combine(tmp.Path, "src", "sia_check", "viewer.py");
+        Directory.CreateDirectory(Path.GetDirectoryName(exe)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(py)!);
+        File.WriteAllText(exe, "");
+        File.WriteAllText(py, "");
+        File.SetLastWriteTime(exe, new DateTime(2026, 10, 1));
+        File.SetLastWriteTime(py, new DateTime(2026, 10, 26, 13, 55, 0));
+        Assert.Equal(new DateTime(2026, 10, 26, 13, 55, 0), AnalysisService.ModifiedOf(exe));
+        var installed = Path.Combine(tmp.Path, "engine", "sia-check.exe");   // moteur livré : l'exécutable fait foi
+        Directory.CreateDirectory(Path.GetDirectoryName(installed)!);
+        File.WriteAllText(installed, "");
+        File.SetLastWriteTime(installed, new DateTime(2026, 10, 2));
+        Assert.Equal(new DateTime(2026, 10, 2), AnalysisService.ModifiedOf(installed));
+    }
+}

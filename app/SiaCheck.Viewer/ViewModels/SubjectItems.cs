@@ -152,12 +152,14 @@ public sealed partial class CorrectionItem : ObservableObject
     [
         new("SEU · balcons, terrasses", "SEU"), new("SED · coursives", "SED"), new("SEI · installations", "SEI"),
         new("SEC · garde-corps, murets", "SEC"), new("SA · abords (contact terrain)", "SA"),
-        new("Exclure · toiture non accessible", ExcludeChoice),
+        new("NC · non comptabilisée (toiture non accessible)", "NC"), new("Exclure · retirer du modèle", ExcludeChoice),
     ];
     private static readonly IReadOnlyList<ChoiceItem> SpDestinations =
     [
-        new("SUP · utile principale", "SUP"), new("SUS · utile secondaire", "SUS"), new("SD · dégagement", "SD"),
-        new("SI · installations", "SI"), new("SC · construction (murs)", "SC"), new("Exclure · hors SP", ExcludeChoice),
+        new("SUP · utile principale", "SUP"), new("SUT · utile hors logement (Treegram)", "SUT"),
+        new("SUS · utile secondaire", "SUS"), new("SD · dégagement", "SD"),
+        new("SI · installations", "SI"), new("SC · construction (murs)", "SC"),
+        new("NC · non comptabilisée", "NC"), new("Exclure · retirer du modèle", ExcludeChoice),
     ];
 
     /// <summary>

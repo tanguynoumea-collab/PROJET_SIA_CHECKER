@@ -175,6 +175,12 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
 
     surfaces = []
     created = set()
+    # Totaux de niveau Treegram dont les pièces sont livrées : même emprise que leur détail. Gardés pour les données
+    # (le détail fait foi dans les sommes, rules.level_totals), sans maillage : ni doublon en 3D ni surface à cliquer.
+    shown = all_surf[all_surf.status != "excluded"]
+    detailed = set(zip(shown.building[shown.kind == "leaf"], shown.level[shown.kind == "leaf"],
+                       shown.category[shown.kind == "leaf"]))
+    redundant = set()
     for r in all_surf.itertuples(index=False):
         if pd.isna(getattr(r, "element_id", None)) and "#" in str(r.id) and not str(r.id).endswith("#total"):
             created.add(str(r.id))
@@ -183,6 +189,9 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
         drawn = getattr(r, "geometrie", None)
         if isinstance(drawn, dict):   # emprise redessinée ou surface créée : le tracé remplace le maillage
             mesh = _drawn_mesh(drawn, max(mesh["v"][2::3]) if mesh else None) or mesh
+        elif r.kind == "node" and (r.building, r.level, r.category) in detailed:
+            mesh = None
+            redundant.add(str(r.id))
         surfaces.append({
             "id": str(r.id), "building": _text(r.building), "level": _text(r.level),
             "category": r.category, "code": _text(r.code), "kind": r.kind, "status": r.status,
@@ -224,11 +233,23 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
             "errors": cache.errors,
             # Les surfaces créées par une correction (découpe vers SA) n'ont pas de maillage par nature.
             "surfaces_without_mesh": sum(1 for s in surfaces if s["mesh"] is None and (s["area"] or 0) > 0
-                                         and s["id"] not in created),
+                                         and s["id"] not in created and s["id"] not in redundant),
         },
         "categories": categories, "surfaces": surfaces, "levels": levels, "issues": issues,
         "ratios": ratios_records(result),
     }
+
+
+def balance(result: rules.Result, cfg: Config, before: rules.Result | None = None) -> dict:
+    """Bilan par niveau et ratios seuls (format du fichier visionneuse), pour l'aperçu en direct des corrections."""
+    rep = report.build(result, cfg, "", [])
+    levels = _levels(rep, cfg)
+    if before is not None:
+        old = {(lv["building"], lv["level"]): lv for lv in _levels(report.build(before, cfg, "", []), cfg)}
+        for lv in levels:
+            b = old.get((lv["building"], lv["level"]))
+            lv["before"] = None if b is None else {k: b[k] for k in ("values", "r1", "r3")}
+    return {"levels": levels, "ratios": ratios_records(result), "counts": rep.counts}
 
 
 def write(doc: dict, path: str | Path) -> Path:

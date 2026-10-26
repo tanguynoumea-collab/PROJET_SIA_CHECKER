@@ -138,7 +138,8 @@ public sealed partial class IssueItem : ObservableObject
 /// <summary>Une ligne du bilan par niveau (élément signature, plan §6).</summary>
 public sealed class BalanceRow(LevelBalance level, double scale)
 {
-    public static readonly string[] FloorParts = ["SUP", "SUS", "SD", "SI"];
+    /// <summary>SUT : catégorie Treegram comptée dans la SU avec SUP et SUS (règle personnalisée P1).</summary>
+    public static readonly string[] FloorParts = ["SUP", "SUT", "SUS", "SD", "SI"];
     public static readonly string[] ExternalParts = ["SEU", "SED"];
 
     public LevelBalance Source { get; } = level;
@@ -176,13 +177,29 @@ public sealed class BalanceRow(LevelBalance level, double scale)
 }
 
 /// <summary>Surface cliquée en 3D, avec les points d'attention qui la citent.</summary>
-public sealed class SurfaceInfo(Surface surface, IReadOnlyList<IssueItem> issues)
+/// <summary>
+/// Fiche de la surface cliquée en 3D. <paramref name="pending"/> : correction acceptée, pas encore appliquée, que la 3D
+/// montre déjà (emprise redessinée, surface créée, part découpée) ; la fiche décrit alors la surface telle qu'elle sera,
+/// et ses boutons agissent sur cette correction.
+/// </summary>
+public sealed class SurfaceInfo(Surface surface, IReadOnlyList<IssueItem> issues, CorrectionItem? pending = null)
 {
     public Surface Surface { get; } = surface;
     public IReadOnlyList<IssueItem> Issues { get; } = issues;
+    public CorrectionItem? Pending { get; } = pending;
+    public bool HasPending => Pending is not null;
+    /// <summary>Découper vise une surface lue, avec son maillage : pas une surface encore en attente.</summary>
+    public bool CanCut => Pending is null;
     public bool HasNoIssue => Issues.Count == 0;
     public string Title => $"{Surface.DisplayCode} · {Surface.Building}·{Surface.Level}";
     public string Kind => Surface.IsLevelTotal ? "Total de niveau" : "Surface élémentaire";
+    public string PendingText => Pending?.Model.Op switch
+    {
+        "créer" => "Nouvelle surface : créée à la prochaine analyse (Analyser).",
+        "remodeler" => "Emprise redessinée : appliquée à la prochaine analyse (Analyser).",
+        "découper" => $"Part découpée de la {Pending.TargetCode} : appliquée à la prochaine analyse (Analyser).",
+        _ => "",
+    };
 }
 
 public sealed record ChoiceItem(string Label, string Value);

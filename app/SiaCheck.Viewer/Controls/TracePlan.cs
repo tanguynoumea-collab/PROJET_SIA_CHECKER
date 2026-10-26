@@ -44,6 +44,9 @@ public sealed class TracePlan : FrameworkElement
     public event EventHandler? CloseRequested;
 
     private const double SnapPixels = 8;      // rayon d'accrochage
+    private const double RightAnglePixels = 6; // accrochage léger aux angles droits
+    private const double MarkPixels = 10;     // côté du repère d'angle droit
+    private const byte FadedAlpha = 0x14;     // autres surfaces en transparence
     private const double GrabPixels = 12;     // rayon de saisie d'un sommet
     private const double VertexSize = 8;
     private const byte PaleAlpha = 0x73;      // ~45 % : la pâleur des surfaces externes en 3D (SceneController.ExternalTint)
@@ -54,6 +57,7 @@ public sealed class TracePlan : FrameworkElement
     private Point _origin;                     // m au coin haut gauche
     private Point? _cursor;                    // m
     private Point? _snap;                      // m
+    private IReadOnlyList<RightAngleMark> _rightAngles = [];   // repères d'angle droit sous le curseur
     private TraceSelection? _selected;
     private (int Polygon, int Index)? _dragVertex;
     private (int Polygon, int Index)? _dragEdge;
@@ -106,11 +110,14 @@ public sealed class TracePlan : FrameworkElement
         foreach (var shape in s.Shapes.OrderBy(x => x.Code == "SP" ? 0 : 1))
         {
             // Aplats en transparence sur le fond : pâles en clair comme en sombre (un éclaircissement vers le blanc
-            // ferait dominer les planchers sur fond graphite).
+            // ferait dominer les planchers sur fond graphite). « Transparence » : les autres surfaces ne gardent que
+            // leur contour et un voile, pour lire le tracé et la surface source.
             var c = shape.Code == "SP" ? SiaPalette.Fallback : pal.ColorOf(shape.Code);
-            var fill = new SolidColorBrush(Color.FromArgb(shape.Code == "SP" ? SpAlpha : PaleAlpha, c.R, c.G, c.B));
+            var faded = s.FadeOthers && !shape.IsSource;
+            var fill = new SolidColorBrush(Color.FromArgb(faded ? FadedAlpha : shape.Code == "SP" ? SpAlpha : PaleAlpha, c.R, c.G, c.B));
             fill.Freeze();
-            dc.DrawGeometry(fill, null, Geometry(shape.Paths));
+            // En transparence, les limites restent lisibles : contour neutre, plus marqué pour le plancher SP.
+            dc.DrawGeometry(fill, faded ? (shape.Code == "SP" ? Pen(Primary, 1.5) : Pen(Secondary, 1)) : null, Geometry(shape.Paths));
         }
         var below = Pen(Secondary, 1, dashed: true);
         dc.DrawGeometry(null, below, Geometry(s.BelowOutline));
@@ -160,8 +167,26 @@ public sealed class TracePlan : FrameworkElement
             d.Freeze();
             dc.DrawGeometry(null, Pen(Accent, 1.5), d);
         }
+        foreach (var mark in _rightAngles) DrawRightAngle(dc, mark);
         DrawScale(dc);
         if (_cursor is { } c2) Text(dc, $"x {c2.X:#,##0.00}   y {c2.Y:#,##0.00}", new Point(ActualWidth - 12, ActualHeight - 22), right: true, mono: true);
+    }
+
+    /// <summary>Repère d'angle droit : petit carré à l'angle, côtés le long des deux arêtes.</summary>
+    private void DrawRightAngle(DrawingContext dc, RightAngleMark m)
+    {
+        var len = MarkPixels / _scale;
+        var a = ToScreen(m.Corner + m.U * len);
+        var b = ToScreen(m.Corner + m.U * len + m.V * len);
+        var c = ToScreen(m.Corner + m.V * len);
+        var g = new StreamGeometry();
+        using (var ctx = g.Open())
+        {
+            ctx.BeginFigure(a, false, false);
+            ctx.PolyLineTo([b, c], true, true);
+        }
+        g.Freeze();
+        dc.DrawGeometry(null, Pen(Accent, 1.5), g);
     }
 
     private void DrawScale(DrawingContext dc)
@@ -212,13 +237,66 @@ public sealed class TracePlan : FrameworkElement
 
     private Point Constrained(Point m)
     {
+        _rightAngles = [];
         if (Session is not { } s) return m;
-        var snapped = (Keyboard.Modifiers & ModifierKeys.Alt) == 0 ? s.Snap(m, SnapPixels / _scale) : null;
+        Point? snapped = null;
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) == 0)
+        {
+            // Sommet existant d'abord ; sinon angle droit avec le tracé ou arête existante, le plus proche des deux
+            // (à l'intersection des deux quand elle est sous le curseur).
+            snapped = s.SnapToVertex(m, SnapPixels / _scale);
+            if (snapped is null)
+            {
+                var edge = s.SnapToEdge(m, SnapPixels / _scale);
+                var (anchors, corner) = RightAngleAnchors(s);
+                var right = s.SnapRightAngle(m, anchors, RightAnglePixels / _scale, corner);
+                if (right is { } r && edge is { } e)
+                {
+                    var onEdge = s.SnapRightAngle(e.At, anchors, RightAnglePixels / _scale, corner);
+                    if (onEdge is { } both && DistanceToLine(both.At, e.A, e.B) < 1e-3) right = both;   // angle droit sur l'arête
+                    else if ((e.At - m).Length < (r.At - m).Length) right = null;
+                }
+                if (right is { } ra) { snapped = ra.At; _rightAngles = ra.Marks; }
+                else snapped = edge?.At;
+            }
+        }
         _snap = snapped;
         var p = snapped ?? m;
         if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0 && Anchor() is { } a)   // horizontal ou vertical
             p = Math.Abs(p.X - a.X) >= Math.Abs(p.Y - a.Y) ? new Point(p.X, a.Y) : new Point(a.X, p.Y);
         return p;
+    }
+
+    /// <summary>
+    /// Droites d'angle droit du geste en cours : en dessinant, au dernier point (prolongement d'équerre) et au premier
+    /// (fermeture d'équerre) ; en glissant un sommet, chez ses deux voisins, plus l'angle au sommet lui-même.
+    /// </summary>
+    private (List<(Point, Point)> Anchors, (Point, Point)? Corner) RightAngleAnchors(TraceSession s)
+    {
+        var anchors = new List<(Point, Point)>();
+        if (_dragVertex is { } v)
+        {
+            var poly = s.Polygons[v.Polygon];
+            var n = poly.Count;
+            var open = s.IsDrawingOpen && v.Polygon == s.Polygons.Count - 1;
+            if (n < 3) return (anchors, null);
+            Point At(int k) => poly[((k % n) + n) % n];
+            if (!open || v.Index >= 2) anchors.Add((At(v.Index - 1), At(v.Index - 2)));
+            if (!open || v.Index <= n - 3) anchors.Add((At(v.Index + 1), At(v.Index + 2)));
+            return (anchors, open && (v.Index == 0 || v.Index == n - 1) ? null : (At(v.Index - 1), At(v.Index + 1)));
+        }
+        if (s.Mode == TraceMode.Draw && s.IsDrawingOpen && s.Polygons[^1] is { Count: >= 2 } pts)
+        {
+            anchors.Add((pts[^1], pts[^2]));
+            anchors.Add((pts[0], pts[1]));
+        }
+        return (anchors, null);
+    }
+
+    private static double DistanceToLine(Point p, Point a, Point b)
+    {
+        var ab = b - a;
+        return ab.LengthSquared < 1e-12 ? (p - a).Length : Math.Abs(Vector.CrossProduct(ab, p - a)) / ab.Length;
     }
 
     /// <summary>Point de référence de la contrainte Maj : dernier point posé, ou voisin du sommet glissé.</summary>
@@ -305,7 +383,7 @@ public sealed class TracePlan : FrameworkElement
         else if (_dragEdge is { } ed) { s.MoveEdge(ed.Polygon, ed.Index, m - _dragStart); _dragStart = m; _snap = null; }
         else if (_dragPolygon is { } k) { s.MovePolygon(k, m - _dragStart); _dragStart = m; _snap = null; }
         else if (s.Mode == TraceMode.Draw) Constrained(m);
-        else _snap = null;
+        else { _snap = null; _rightAngles = []; }
         Cursor = _spaceDown || _panFrom is not null ? Cursors.SizeAll
             : s.Mode == TraceMode.Edit && (s.VertexAt(m, GrabPixels / _scale) is not null) ? Cursors.Hand
             : s.Mode == TraceMode.Edit && (s.EdgeAt(m, GrabPixels / _scale) is not null || s.PolygonAt(m) is not null) ? Cursors.SizeAll
@@ -321,6 +399,7 @@ public sealed class TracePlan : FrameworkElement
         _dragVertex = null;
         _dragEdge = null;
         _dragPolygon = null;
+        _rightAngles = [];
         if (IsMouseCaptured) ReleaseMouseCapture();
         InvalidateVisual();
     }

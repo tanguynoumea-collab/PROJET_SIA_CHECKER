@@ -269,3 +269,32 @@ def test_drawn_surfaces_get_their_mesh_in_the_viewer(synth, cfg):
     doc = viewer.build(after, cfg, geom.Cache(), "Synth", ["synth.csv"], date="2026-10-26")
     s = next(x for x in doc["surfaces"] if x["id"] == "ERR_N01_SUS#c1")
     assert s["mesh"] and set(s["mesh"]["v"][2::3]) == {6.0} and len(s["mesh"]["i"]) == 6
+
+
+def test_preview_from_cache_gives_balance_and_ratios(synth, cfg, tmp_path):
+    # Aperçu en direct : surfaces gardées à l'analyse, journal réappliqué, bilan et ratios seuls.
+    cache = tmp_path / "s.pkl"
+    synth.to_pickle(cache)
+    j = tmp_path / "j.json"
+    j.write_text(json.dumps(journal({"id": "c1", "op": "ajuster", "cible": {"ids": ["err-toit-sep"]}, "aire": 10.0})),
+                 encoding="utf-8")
+    out = tmp_path / "a.json"
+    assert cli.main(["--depuis-cache", str(cache), "--corrections", str(j), "--apercu", str(out)]) in (0, 1)
+    a = json.loads(out.read_text(encoding="utf-8"))
+    toit = next(lv for lv in a["levels"] if (lv["building"], lv["level"]) == ("ERR", "Toiture"))
+    assert toit["values"]["SEP"] == 10 and toit["before"]["values"]["SEP"] == 30
+    assert a["ratios"] and a["corrections_log"][0]["application"] == corrections.APPLIED
+
+
+def test_remodeler_refuses_a_total_doubled_by_its_pieces(cfg):
+    a = corrections.apply(surfaces(), journal({"id": "c1", "op": "remodeler", "cible": {"ids": ["A_N01_SUP#total"]},
+                                               "polygone": SQUARE, "aire": 20.0}), cfg=cfg)
+    assert a.log.iloc[0].application == corrections.REFUSED and "pièces" in a.log.iloc[0].raison
+
+
+def test_nc_keeps_the_surface_out_of_the_sums(cfg):
+    # SUP sup-2 passée en NC (non comptabilisée) : elle reste, mais ne compte plus dans la SU.
+    a = corrections.apply(surfaces(), journal({"id": "c1", "op": "reclasser", "cible": {"ids": ["sup-2"]}, "vers": "NC"}), cfg=cfg)
+    surf, _ = rules.classify(a.kept, cfg)
+    assert bool(surf.set_index("id").loc["sup-2", "ignored"])
+    assert rules.level_totals(surf).loc[("A", "N01")]["SUP"] == 40

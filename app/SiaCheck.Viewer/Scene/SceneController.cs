@@ -45,7 +45,7 @@ public sealed class SceneController
     private const byte OverlayAlpha = 0x55;     // aplat du tracé : accent à ~33 %
     private const byte PartAlpha = 0xD0;        // part isolée : aplat presque opaque sur la surface en fantôme
     private const double PreviewLift = 0.03;    // m : part découpée posée sur sa surface d'origine (aperçu)
-    private const string PreviewPrefix = "aperçu:";
+    public const string PreviewPrefix = "aperçu:";
 
     public Model3DGroup Root { get; } = new();
 
@@ -117,6 +117,7 @@ public sealed class SceneController
         foreach (var s in doc.Surfaces)
         {
             if (s.Mesh is not { Vertices.Length: > 0 } m || s.Building is null || s.Level is null) continue;
+            if (doc.RedundantTotals.Contains(s.Id)) continue;   // total doublé par ses pièces : pas de doublon en 3D
             var pts = new Point3D[m.Vertices.Length / 3];
             for (var k = 0; k < pts.Length; k++)
                 pts[k] = new Point3D(m.Vertices[3 * k], m.Vertices[3 * k + 1], m.Vertices[3 * k + 2]);

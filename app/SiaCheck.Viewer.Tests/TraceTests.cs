@@ -319,3 +319,131 @@ public class ScenePreviewTests
         Assert.DoesNotContain(scene.SurfacesOfLevel("ERR", "N00"), SceneController.IsPreview);
     }
 }
+
+public class PendingSurfaceTests
+{
+    [Fact]
+    public async Task A_modified_or_created_surface_opens_its_card_and_reuses_its_correction()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        vm.SelectSurface("err-n00-sep");
+        vm.OpenReshapeForSurfaceCommand.Execute(null);
+        var t = vm.Trace!;
+        t.BeginChange();
+        t.MoveEdge(0, 0, new Vector(0, 1));                              // emprise redessinée
+        vm.SaveTraceCommand.Execute(null);
+        var modif = vm.SelectedCorrection!;
+        var preview = vm.Scene!.SurfacesOfLevel("ERR", "N00").Single(SceneController.IsPreview);
+
+        vm.SelectSurface(preview);                                       // clic sur la nouvelle emprise en 3D
+        Assert.NotNull(vm.SelectedSurface);
+        Assert.Equal(modif.Id, vm.SelectedSurface!.Pending!.Id);
+        Assert.Equal("err-n00-sep", vm.SelectedSurface.Surface.Id);
+        Assert.False(vm.SelectedSurface.CanCut);
+
+        vm.OpenReshapeForSurfaceCommand.Execute(null);                   // « Modifier… » reprend la même correction
+        Assert.True(vm.ShowTraceTargets);
+        vm.TraceTarget = "SEU";
+        vm.SaveTraceCommand.Execute(null);
+        var manual = vm.Subjects.SelectMany(s => s.Corrections).Where(c => c.Model.Op == "remodeler").ToList();
+        Assert.Single(manual);
+        Assert.Equal("SEU", manual[0].Model.To);
+
+        vm.OpenCreateSurfaceCommand.Execute(null);
+        Plan.Rectangle(vm.Trace!, 0, 0, 2, 3);
+        vm.SaveTraceCommand.Execute(null);
+        var created = vm.SelectedCorrection!;
+        vm.SelectSurface(SceneController.PreviewPrefix + created.Id);
+        Assert.Equal(("SUS", "ERR", "N00"), (vm.SelectedSurface!.Surface.DisplayCode, vm.SelectedSurface.Surface.Building, vm.SelectedSurface.Surface.Level));
+        await vm.DeleteSelectedSurfaceCommand.ExecuteAsync(null);         // supprimer une création : elle est rejetée
+        Assert.Equal(CorrectionDecision.Rejected, created.Decision);
+    }
+}
+
+public class RightAngleSnapTests
+{
+    private static TraceSession Session()
+    {
+        var sus = Plan.Square("sus", "SUS", 0, 0, 10, 5);
+        return new TraceSession(sus, [sus], [], "SUS", null, 0, 0, new Tolerance { AbsM2 = 0.5, Rel = 0.005 }, TraceKind.Reshape);
+    }
+
+    [Fact]
+    public void Snaps_lightly_to_a_square_corner_and_marks_it()
+    {
+        var s = Session();
+        var r = s.SnapRightAngle(new Point(0.05, 5), [(new Point(0, 0), new Point(10, 0))], 0.1);
+        Assert.NotNull(r);
+        Assert.Equal(new Point(0, 5), r!.Value.At);
+        Assert.Equal(new Point(0, 0), r.Value.Marks.Single().Corner);
+        Assert.Null(s.SnapRightAngle(new Point(0.5, 5), [(new Point(0, 0), new Point(10, 0))], 0.1));   // léger : hors tolérance, libre
+        s.SnapToRightAngles = false;
+        Assert.Null(s.SnapRightAngle(new Point(0.05, 5), [(new Point(0, 0), new Point(10, 0))], 0.1));
+    }
+
+    [Fact]
+    public void Dragged_corner_lands_on_both_right_angles()
+    {
+        var s = Session();
+        // Sommet (10, 5) glissé : voisins (10, 0) et (0, 5), eux-mêmes voisins de (0, 0).
+        var r = s.SnapRightAngle(new Point(10.05, 5.04), [(new Point(10, 0), new Point(0, 0)), (new Point(0, 5), new Point(0, 0))], 0.1,
+                                 (new Point(10, 0), new Point(0, 5)));
+        Assert.Equal(new Point(10, 5), r!.Value.At);
+        Assert.Equal(3, r.Value.Marks.Count);                            // aux deux voisins et au sommet lui-même
+    }
+}
+
+public class BalanceScopeTests
+{
+    [Fact]
+    public void All_buildings_shows_one_row_per_building_and_project_ratios()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        Assert.Equal(Ratio.AllBuildings, vm.BalanceChoices[0].Value);    // plusieurs bâtiments : « Tous » en tête
+        vm.BalanceBuilding = Ratio.AllBuildings;
+        Assert.Equal("Tous les bâtiments", vm.BalanceScopeLabel);
+        Assert.Equal(vm.Buildings.Select(b => b.Name).OrderDescending(), vm.BalanceRows.Select(r => r.Level));
+        var err = vm.BalanceRows.Single(r => r.Building == "ERR");
+        Assert.Equal(vm.Document!.Levels.Where(l => l.Building == "ERR").Sum(l => l.Value("SP")), err.Sp, 3);
+        Assert.All(vm.RatioRows, r => Assert.Null(r.Building));
+    }
+}
+
+public class DuplicateAndCloseTests
+{
+    [Fact]
+    public void Level_totals_doubled_by_their_pieces_are_not_shown()
+    {
+        var total = Plan.Square("sus-total", "SUS", 0, 0, 10, 4, kind: "node");
+        var piece = Plan.Square("sus-1", "SUS", 0, 0, 10, 4);
+        var sp = Plan.Square("sp", "SP", 0, 0, 20, 10, kind: "node");
+        var doc = new ViewerDocument { Surfaces = [total, piece, sp] };
+        Assert.Equal(["sus-total"], doc.RedundantTotals);                 // le SP n'a pas de pièces : gardé
+        var scene = new SceneController(doc, new SiaPalette(doc.Categories), System.Windows.Media.Colors.Gray);
+        Assert.Equal(["sus-1", "sp"], scene.SurfacesOfLevel("A", "N00").Order(StringComparer.Ordinal).Reverse());
+    }
+
+    [Fact]
+    public void Nc_is_offered_when_modifying_and_classifying()
+    {
+        Assert.Contains("NC", MainViewModel.SurfaceTypes);
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        var c = vm.Subjects.Single(s => s.Id == "S1").Corrections.Single(x => x.Id == "abords-ERR-N00");
+        Assert.Contains(c.Destinations, d => d.Value == "NC");
+        c.Destination = "NC";
+        Assert.Equal(("découper", "NC"), (c.Model.Op, c.Model.To));
+    }
+
+    [Fact]
+    public void Subject_card_closes()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        vm.SelectedSubject = vm.Subjects[0];
+        vm.CloseSubjectCommand.Execute(null);
+        Assert.False(vm.HasSelectedSubject);
+    }
+}

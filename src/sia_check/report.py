@@ -23,11 +23,12 @@ from . import __version__, rules
 from .config import Config
 
 # Légende officielle SIA 416 (figures de la norme). Surfaces externes (§3) : couleur du pendant intérieur, hachurée.
-SIA_COLORS = {"SP": "#B1005D", "SUP": "#D5003B", "SUS": "#F0A900", "SD": "#F2E900", "SI": "#0C9DDA",
+# SUT (catégorie Treegram comptée dans la SU, règle P1) : orangé, entre SUP et SUS.
+SIA_COLORS = {"SP": "#B1005D", "SUP": "#D5003B", "SUT": "#E8601C", "SUS": "#F0A900", "SD": "#F2E900", "SI": "#0C9DDA",
               "SEP": "#B1005D", "SEU": "#D5003B", "SED": "#F2E900", "SEI": "#0C9DDA",
               "SA": "#5BA845"}   # abords (§1.2) : surfaces créées par une découpe vers SA
 HATCHED = {"SEP", "SEU", "SED", "SEI", "SEN", "SEC"}
-LEVEL_COLUMNS = ["SP", "SUP", "SUS", "SD", "SI", "SEP", "SEU", "SED"]
+LEVEL_COLUMNS = ["SP", "SUP", "SUT", "SUS", "SD", "SI", "SEP", "SEU", "SED"]
 
 RESIDUAL_LABELS = {
     "building": "Bâtiment", "level": "Niveau", "lot": "Lot", "rule": "Règle", "category": "Catégorie",

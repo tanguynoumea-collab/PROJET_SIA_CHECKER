@@ -22,6 +22,12 @@ public sealed class AppPaths(string roamingRoot, string localRoot)
     /// <summary>Dernier résultat d'analyse : régénérable, reste local.</summary>
     public string AnalysisFile(string projectDir) => Path.Combine(localRoot, "analyses", $"{Slug(projectDir)}.viewer.json");
 
+    /// <summary>Surfaces lues par la dernière analyse, avant corrections : base de l'aperçu en direct (régénérable, local).</summary>
+    public string SurfacesCacheFile(string projectDir) => Path.Combine(localRoot, "analyses", $"{Slug(projectDir)}.surfaces.pkl");
+
+    /// <summary>Bilan par niveau et ratios de l'aperçu en direct des corrections.</summary>
+    public string PreviewFile(string projectDir) => Path.Combine(localRoot, "analyses", $"{Slug(projectDir)}.apercu.json");
+
     public string LogFile(string projectDir) => Path.Combine(localRoot, "analyses", $"{Slug(projectDir)}.log");
 
     /// <summary>Revues IA lancées depuis l'app (rapport, verdicts, preuves) : suivent l'utilisateur, comme les statuts.</summary>

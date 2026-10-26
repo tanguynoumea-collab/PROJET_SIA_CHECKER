@@ -130,3 +130,23 @@ def test_doc_shape(doc, synth):
     sn = next(r for r in doc["ratios"] if r["building"] == "OK" and r["id"] == "SN/SP")
     assert sn["value"] == pytest.approx(0.9) and sn["ref_min"] == 0.78
     assert doc["ratios"] == json.loads(json.dumps(doc["ratios"]))   # pas de NaN
+
+
+def test_level_totals_with_detail_have_no_mesh(cfg):
+    # Total SUS du niveau + sa pièce : même emprise, le total n'est pas montré en 3D (doublon), le détail fait foi.
+    import pandas as pd
+    from sia_check import geom, rules, viewer
+    df = pd.DataFrame([
+        {"id": "sp", "building": "A", "level": "N01", "category": "SP", "area": 20.0, "kind": "node", "element_id": 1},
+        {"id": "sus-total", "building": "A", "level": "N01", "category": "SUS", "area": 10.0, "kind": "node", "element_id": 2},
+        {"id": "sus-1", "building": "A", "level": "N01", "category": "SUS", "area": 10.0, "kind": "leaf", "element_id": 3},
+    ]).assign(room_type=None, lot=None, elevation=None)
+    cache = geom.Cache()
+    tri = [geom.Mesh(vertices=[0, 0, 0, 1, 0, 0, 1, 1, 0], indices=[0, 1, 2])] if hasattr(geom, "Mesh") else None
+    if tri is None:
+        pytest.skip("geom.Mesh absent")
+    cache.meshes.update({1: tri, 2: tri, 3: tri})
+    doc = viewer.build(rules.run(df, cfg), cfg, cache, "T", ["t"], date="2026-10-26")
+    mesh = {s["id"]: s["mesh"] is not None for s in doc["surfaces"]}
+    assert mesh == {"sp": True, "sus-total": False, "sus-1": True}
+    assert doc["cache"]["surfaces_without_mesh"] == 0

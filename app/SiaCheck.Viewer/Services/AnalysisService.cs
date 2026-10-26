@@ -18,10 +18,11 @@ public sealed record EngineRun(int ExitCode, string Log)
 }
 
 /// <summary>
-/// Ce que l'app ajoute au .tgm à chaque exécution : dernière revue IA (<c>--revue</c>, réoriente les sujets)
-/// et journal des décisions (<c>--corrections</c>, appliqué avant les contrôles et les exports).
+/// Ce que l'app ajoute au .tgm à chaque exécution : dernière revue IA (<c>--revue</c>, réoriente les sujets),
+/// journal des décisions (<c>--corrections</c>, appliqué avant les contrôles et les exports) et fichier où garder
+/// les surfaces lues (<c>--surfaces-cache</c>), base de l'aperçu en direct.
 /// </summary>
-public sealed record EngineInputs(string? Review = null, string? Journal = null)
+public sealed record EngineInputs(string? Review = null, string? Journal = null, string? SurfacesCache = null)
 {
     public static EngineInputs None { get; } = new();
 
@@ -29,6 +30,7 @@ public sealed record EngineInputs(string? Review = null, string? Journal = null)
     {
         if (Review is not null) { yield return "--revue"; yield return Review; }
         if (Journal is not null) { yield return "--corrections"; yield return Journal; }
+        if (SurfacesCache is not null) { yield return "--surfaces-cache"; yield return SurfacesCache; }
     }
 }
 
@@ -65,6 +67,17 @@ public sealed partial class AnalysisService(string enginePath)
     /// <summary>Excel de correction (treegram.write_corrections) : demande le journal (<paramref name="inputs"/>).</summary>
     public Task<EngineRun> ExportCorrectionsAsync(string projectDir, string xlsxPath, EngineInputs inputs, CancellationToken ct) =>
         RunAsync(["-q", projectDir, "--corrections-xlsx", xlsxPath, .. inputs.Args()], null, ct);
+
+    /// <summary>
+    /// Aperçu en direct : le journal réappliqué aux surfaces gardées par la dernière analyse, sans relire le .tgm ni le
+    /// cache VWR (quelques secondes) ; écrit le bilan par niveau et les ratios.
+    /// </summary>
+    public Task<EngineRun> PreviewAsync(string surfacesCache, string journal, string outJson, CancellationToken ct) =>
+        RunAsync(["--depuis-cache", surfacesCache, "--corrections", journal, "--apercu", outJson], null, ct);
+
+    /// <summary>Premier aperçu, sans surfaces gardées : le moteur lit le projet et les garde pour les suivants.</summary>
+    public Task<EngineRun> PreviewFromProjectAsync(string projectDir, string surfacesCache, string journal, string outJson, CancellationToken ct) =>
+        RunAsync([projectDir, "--surfaces-cache", surfacesCache, "--corrections", journal, "--apercu", outJson], null, ct);
 
     /// <summary>Exports au gabarit Excel Treegram (sia_check.treegram) dans un dossier.</summary>
     public Task<EngineRun> ExportTreegramAsync(string projectDir, string outDir, EngineInputs inputs, CancellationToken ct) =>

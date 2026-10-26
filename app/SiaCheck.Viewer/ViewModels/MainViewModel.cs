@@ -14,7 +14,7 @@ namespace SiaCheck.Viewer.ViewModels;
 public sealed partial class MainViewModel : ObservableObject
 {
     public const string AllLevels = "Tous les niveaux";
-    private static readonly string[] InteriorCodes = ["SP", "SN", "SU", "SUP", "SUS", "SD", "SI", "SC", "SCP", "SCN"];
+    private static readonly string[] InteriorCodes = ["SP", "SN", "SU", "SUP", "SUT", "SUS", "SD", "SI", "SC", "SCP", "SCN"];
 
     private readonly IShell _shell;
     private readonly AppPaths _paths;
@@ -348,6 +348,7 @@ public sealed partial class MainViewModel : ObservableObject
             // Totaux sans aire ni géométrie (façades SFN : données d'enveloppe pour le MDP) : rien à montrer en calque.
             if (!withGeometry.Contains(cat.Code) && counted.All(s => (s.Area ?? 0) == 0)) continue;
             var group = cat.Status == "unknown" ? "Codes inconnus"
+                : cat.Status != "ignored" && InteriorCodes.Contains(cat.Code) ? "Intérieur"   // SUT : code maison compté dans la SU
                 : cat.Status == "ignored" || cat.Family == "custom" ? "USPI · Maison"
                 : cat.Family == "uspi" ? "USPI · Maison"
                 : InteriorCodes.Contains(cat.Code) ? "Intérieur" : "Extérieur";
@@ -366,6 +367,10 @@ public sealed partial class MainViewModel : ObservableObject
             chip.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(BuildingChip.IsSelected)) OnBuildingsChanged(); };
             Buildings.Add(chip);
         }
+        BalanceChoices.Clear();
+        if (Buildings.Count > 1) BalanceChoices.Add(new ChoiceItem("Tous les bâtiments", Ratio.AllBuildings));
+        foreach (var b in Buildings) BalanceChoices.Add(new ChoiceItem(b.Name, b.Name));
+        ClearBalancePreview();
         _store = ReviewStore.Open(_paths.ReviewFile(ProjectDir!), ProjectDir!);
         LoadIssues(doc);
         LoadAiReview(doc);
@@ -569,8 +574,24 @@ public sealed partial class MainViewModel : ObservableObject
     {
         item ??= SelectedIssue;
         if (item is null) return;
-        if (ReferenceEquals(item, FocusedIssue)) ClearFocus();
+        if (ReferenceEquals(item, FocusedIssue)) CloseIssue();   // second clic : fiche fermée, isolement quitté
         else FocusIssue(item);
+    }
+
+    /// <summary>✕ de la fiche du point, ou second clic sur le point : fiche fermée, isolement quitté.</summary>
+    [RelayCommand]
+    private void CloseIssue()
+    {
+        SelectedIssue = null;
+        ClearFocus();
+    }
+
+    /// <summary>✕ de la fiche du sujet, ou second clic sur le sujet : fiche fermée, isolement quitté.</summary>
+    [RelayCommand]
+    private void CloseSubject()
+    {
+        SelectedSubject = null;
+        ClearFocus();
     }
 
     [RelayCommand]
@@ -620,6 +641,7 @@ public sealed partial class MainViewModel : ObservableObject
     public void SelectSurface(string? id)
     {
         foreach (var i in Issues.Where(i => i.IsLinked)) i.IsLinked = false;
+        if (id is not null && SiaCheck.Viewer.Scene.SceneController.IsPreview(id)) { SelectedSurface = PendingSurface(id); return; }
         if (id is null || !_surfaceById.TryGetValue(id, out var s)) { SelectedSurface = null; return; }
         var linked = Issues.Where(i => i.SurfaceIds.Contains(id)).OrderBy(i => i.SortKey).ToList();
         foreach (var i in linked) i.IsLinked = true;
@@ -641,7 +663,12 @@ public sealed partial class MainViewModel : ObservableObject
     // ------------------------------------------------------------------ bilan par niveau (signature)
 
     public ObservableCollection<BalanceRow> BalanceRows { get; } = [];
-    [ObservableProperty] private string? _balanceBuilding;
+    /// <summary>Bâtiment du bilan et des ratios ; « * » (<see cref="Ratio.AllBuildings"/>) = tous les bâtiments.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(BalanceScopeLabel))] private string? _balanceBuilding;
+    /// <summary>Choix du bilan : chaque bâtiment, et « Tous les bâtiments » quand il y en a plusieurs.</summary>
+    public ObservableCollection<ChoiceItem> BalanceChoices { get; } = [];
+    public string? BalanceScopeLabel => BalanceBuilding == Ratio.AllBuildings ? "Tous les bâtiments" : BalanceBuilding;
+    private bool IsAllBuildings => BalanceBuilding == Ratio.AllBuildings;
     [ObservableProperty] private bool _isBalanceCollapsed;
 
     partial void OnBalanceBuildingChanged(string? value) => FillBalance();
@@ -675,28 +702,67 @@ public sealed partial class MainViewModel : ObservableObject
         BalanceRows.Clear();
         FillRatios();
         if (Document is null || BalanceBuilding is null) return;
-        var levels = Document.Levels.Where(l => l.Building == BalanceBuilding).ToList();
+        // Tous les bâtiments : une ligne par bâtiment, somme de ses niveaux ; sinon les niveaux du bâtiment choisi.
+        var levels = IsAllBuildings
+            ? BalanceLevels.GroupBy(l => l.Building).OrderByDescending(g => g.Key, StringComparer.Ordinal).Select(BuildingTotal).ToList()
+            : BalanceLevels.Where(l => l.Building == BalanceBuilding).OrderByDescending(l => l.Rank ?? 0).ToList();
         var scale = levels.Select(l => Math.Max(Math.Max(l.Value("SP"), l.Value("SEP")),
                                                 Math.Max(l.Before?.Value("SP") ?? 0, l.Before?.Value("SEP") ?? 0)))
                           .DefaultIfEmpty(1).Max();
-        foreach (var l in levels.OrderByDescending(l => l.Rank ?? 0))
+        foreach (var l in levels)
             BalanceRows.Add(new BalanceRow(l, scale <= 0 ? 1 : scale));
+    }
+
+    private static readonly string[] VerdictOrder = ["OK", "INFO", "ALERTE", "ERREUR"];
+
+    /// <summary>Bilan d'un bâtiment entier : valeurs et écarts sommés sur ses niveaux, verdict le plus grave.</summary>
+    private static LevelBalance BuildingTotal(IGrouping<string, LevelBalance> levels)
+    {
+        static Dictionary<string, double> Sum(IEnumerable<Dictionary<string, double>> values) =>
+            values.SelectMany(v => v).GroupBy(kv => kv.Key).ToDictionary(g => g.Key, g => g.Sum(kv => kv.Value));
+        static CheckResult? Check(IEnumerable<CheckResult?> checks)
+        {
+            var list = checks.OfType<CheckResult>().ToList();
+            return list.Count == 0 ? null : new CheckResult
+            {
+                Diff = list.Sum(c => c.Diff ?? 0),
+                Verdict = list.Select(c => c.Verdict).MaxBy(v => Array.IndexOf(VerdictOrder, v)) ?? "",
+            };
+        }
+        var all = levels.ToList();
+        var befores = all.Select(l => l.Before).OfType<LevelBefore>().ToList();
+        return new LevelBalance
+        {
+            Building = levels.Key, Level = levels.Key,
+            Values = Sum(all.Select(l => l.Values)),
+            R1 = Check(all.Select(l => l.R1)), R3 = Check(all.Select(l => l.R3)),
+            Alerts = all.SelectMany(l => l.Alerts).Distinct().ToList(),
+            Before = befores.Count == 0 ? null : new LevelBefore
+            {
+                Values = Sum(befores.Select(b => b.Values)), R1 = Check(befores.Select(b => b.R1)), R3 = Check(befores.Select(b => b.R3)),
+            },
+        };
     }
 
     private void FillRatios()
     {
         RatioRows.Clear();
         if (Document is not null)
-            foreach (var p in Document.Ratios.Where(r => r.Building == Ratio.AllBuildings))
-                RatioRows.Add(new RatioRow(p, Document.Ratios.FirstOrDefault(r => r.Id == p.Id && r.Building == BalanceBuilding)));
+            foreach (var p in BalanceRatios.Where(r => r.Building == Ratio.AllBuildings))
+                RatioRows.Add(new RatioRow(p, IsAllBuildings ? null
+                    : BalanceRatios.FirstOrDefault(r => r.Id == p.Id && r.Building == BalanceBuilding)));
         OnPropertyChanged(nameof(HasRatios));
     }
 
     [RelayCommand]
     private void IsolateLevel(BalanceRow row)
     {
-        if (Scene is null) return;
-        var bounds = Scene.Focus(Scene.SurfacesOfLevel(row.Building, row.Level));
+        if (Scene is null || Document is null) return;
+        // Ligne d'un bâtiment entier (bilan « Tous les bâtiments ») : tous ses niveaux.
+        var ids = IsAllBuildings
+            ? Document.Levels.Where(l => l.Building == row.Building).SelectMany(l => Scene.SurfacesOfLevel(l.Building, l.Level))
+            : Scene.SurfacesOfLevel(row.Building, row.Level);
+        var bounds = Scene.Focus(ids);
         SetFocused(null);
         _shell.Frame(bounds);
     }

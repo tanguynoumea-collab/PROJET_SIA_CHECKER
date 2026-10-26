@@ -50,6 +50,7 @@ categories:
   # Codes maison Treegram — sens déduit, à confirmer (docs/ifc-schema.md §3)
   SUT:  {family: custom}                 # rattaché à SU par la règle personnalisée P1 (voir custom_rules)
   SPT:  {family: custom, ignore: true}   # toitures (Type = Toiture)
+  NC:   {family: custom, ignore: true}   # non comptabilisée : surface gardée mais hors sommes (toiture non accessible…)
   SFN:  {family: custom, ignore: true}   # façades
   SRV:  {family: custom, ignore: true}   # vitrages
 
@@ -81,6 +82,7 @@ labels:
   SVB:  {name: Surface de vente brute, ref: USPI 2014, def: "SVB = SBH + SE."}
   SUT:  {name: Surface utile hors logement (catégorie Treegram), ref: règle personnalisée P1, def: "Catégorie ajoutée par Treegram à côté de SUP et SUS. Sur L'Orée : activités, commerces, bureaux, école, UAPE et leurs WC (docs/classification/L_OREE_SUT.md). Comptée dans la SU (SU = SUP + SUS + SUT)."}
   SPT:  {name: Toitures (code Treegram), ref: code maison, def: "Sens déduit du contenu (Type = Toiture). Ignoré dans les sommes."}
+  NC:   {name: Non comptabilisée, ref: correction, def: "Surface gardée dans le modèle mais hors des sommes SIA 416 et des exports (toiture non accessible, vide…). Choisie dans la visionneuse."}
   SFN:  {name: Façades (code Treegram), ref: code maison}
   SRV:  {name: Vitrages (code Treegram), ref: code maison}
 

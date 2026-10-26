@@ -34,6 +34,24 @@ public sealed class ViewerDocument
     /// <summary>Fusion de la revue IA (analyse lancée avec <c>--revue</c>).</summary>
     [JsonPropertyName("review")] public ReviewInfo? Review { get; init; }
 
+    private HashSet<string>? _redundantTotals;
+
+    /// <summary>
+    /// Totaux de niveau Treegram dont les pièces (même catégorie, avec géométrie) sont livrées : même emprise que leur
+    /// détail, qui fait foi dans les sommes. Ni montrés en 3D ni dans le plan, ni sélectionnables : sinon doublons.
+    /// (Le moteur ne leur donne plus de maillage ; ce filtre vaut aussi pour une analyse antérieure.)
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlySet<string> RedundantTotals => _redundantTotals ??= FindRedundantTotals();
+
+    private HashSet<string> FindRedundantTotals()
+    {
+        var detailed = Surfaces.Where(s => s.Kind == "leaf" && s.Mesh is not null && !s.IsExcluded)
+            .Select(s => (s.Building, s.Level, s.Category)).ToHashSet();
+        return Surfaces.Where(s => s.Kind == "node" && detailed.Contains((s.Building, s.Level, s.Category)))
+            .Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+    }
+
     public static ViewerDocument Load(string path)
     {
         using var stream = File.OpenRead(path);
@@ -128,6 +146,14 @@ public sealed class Ratio
     [JsonPropertyName("note")] public string? Note { get; init; }
 
     public bool HasReference => RefMin is not null && RefMax is not null;
+}
+
+/// <summary>Aperçu en direct (sia-check --apercu) : bilan par niveau et ratios après les corrections du journal.</summary>
+public sealed class BalancePreview
+{
+    [JsonPropertyName("levels")] public List<LevelBalance> Levels { get; init; } = [];
+    [JsonPropertyName("ratios")] public List<Ratio> Ratios { get; init; } = [];
+    [JsonPropertyName("corrections_log")] public List<CorrectionLogEntry> CorrectionsLog { get; init; } = [];
 }
 
 public sealed class LevelBalance

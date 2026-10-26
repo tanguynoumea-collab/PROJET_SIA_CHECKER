@@ -20,7 +20,9 @@ public sealed class SiaPalette
         _cats = categories.ToDictionary(c => c.Code, StringComparer.Ordinal);
 
     public Color ColorOf(string code) =>
-        _cats.TryGetValue(code, out var c) && c.Color is { } hex ? (Color)ColorConverter.ConvertFromString(hex) : Fallback;
+        _cats.TryGetValue(code, out var c) && c.Color is { } hex ? (Color)ColorConverter.ConvertFromString(hex)
+        : code == "SUT" ? Color.FromRgb(0xE8, 0x60, 0x1C)   // analyse antérieure à la couleur SUT du moteur (report.SIA_COLORS)
+        : Fallback;
 
     public bool IsHatched(string code) =>
         _cats.TryGetValue(code, out var c) ? c.Hatched || c.Status != "checked" : true;

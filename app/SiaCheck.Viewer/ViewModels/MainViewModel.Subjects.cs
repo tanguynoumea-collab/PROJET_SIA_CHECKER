@@ -271,7 +271,14 @@ public sealed partial class MainViewModel
     {
         if (Scene is null || Document is null) return;
         var items = new List<ScenePreview>();
-        foreach (var c in Subjects.SelectMany(s => s.Corrections).Where(c => c.State == CorrectionState.Accepted && !c.IsOrphan))
+        var order = (_journal?.Decisions ?? []).Select((c, i) => (c.Id, i)).ToDictionary(x => x.Id, x => x.i);
+        var accepted = Subjects.SelectMany(s => s.Corrections)
+            .Where(c => c.State == CorrectionState.Accepted && !c.IsOrphan && !c.TargetIds.Any(Document.RedundantTotals.Contains))
+            .OrderBy(c => order.GetValueOrDefault(c.Id, -1)).ToList();
+        // Deux emprises redessinées pour la même surface : la plus récente l'emporte (le moteur les applique dans l'ordre).
+        var lastReshape = accepted.Where(c => c.Model.Op == "remodeler" && c.TargetIds.Count == 1)
+            .GroupBy(c => c.TargetIds[0]).ToDictionary(g => g.Key, g => g.Last().Id);
+        foreach (var c in accepted.Where(c => c.Model.Op != "remodeler" || c.TargetIds.Count != 1 || lastReshape[c.TargetIds[0]] == c.Id))
         {
             var m = c.Model;
             var targets = m.TargetIds;
@@ -296,6 +303,7 @@ public sealed partial class MainViewModel
     private void OnCorrectionsChanged()
     {
         UpdateScenePreview();
+        ScheduleBalancePreview();
         OnPropertyChanged(nameof(PendingCorrections));
         OnPropertyChanged(nameof(HasPendingCorrections));
         OnPropertyChanged(nameof(AnalyseLabel));
@@ -310,7 +318,7 @@ public sealed partial class MainViewModel
         var name = Document?.Project ?? Path.GetFileNameWithoutExtension(Directory.GetFiles(projectDir, "*.tgm").FirstOrDefault() ?? projectDir);
         var review = AiReviewFiles.FindLatest(name, AiReviewFiles.SearchDirs(_paths.AiReviewDir(projectDir), AiSearchBaseDir));
         var journal = _paths.CorrectionsFile(projectDir);
-        return new EngineInputs(review?.VerdictsPath, File.Exists(journal) ? journal : null);
+        return new EngineInputs(review?.VerdictsPath, File.Exists(journal) ? journal : null, _paths.SurfacesCacheFile(projectDir));
     }
 
     /// <summary>Analyse réussie avec le journal : ses décisions sont désormais appliquées.</summary>

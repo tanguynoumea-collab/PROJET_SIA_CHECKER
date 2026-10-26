@@ -13,6 +13,9 @@ avec --sujets, points regroupés par cause avec une correction de base proposée
 écrit sert aussi de journal (--corrections) une fois les corrections acceptées. Les sujets sont aussi dans
 le fichier visionneuse ; avec --revue, les décisions d'une revue IA (fichier verdicts, bloc « sujets »)
 réorientent ces sujets et leurs corrections.
+avec --surfaces-cache, les surfaces lues (avant corrections) sont gardées pour l'aperçu ; avec --depuis-cache et
+--apercu, le journal est réappliqué à ces surfaces sans relire le .tgm ni le cache VWR, et seuls le bilan par
+niveau et les ratios sont écrits (aperçu en direct de la visionneuse, quelques secondes).
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -35,8 +38,8 @@ log = logging.getLogger("sia_check")
 
 def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(prog="sia-check", description=__doc__.splitlines()[0])
-    ap.add_argument("models", nargs="+", type=Path,
-                    help="fichiers .tgm ou .ifc Treegram, ou dossier de projet Treegram")
+    ap.add_argument("models", nargs="*", type=Path,
+                    help="fichiers .tgm ou .ifc Treegram, ou dossier de projet Treegram (sauf avec --depuis-cache)")
     ap.add_argument("--config", type=Path, help="défaut : config.yaml du dossier courant, sinon celle livrée")
     ap.add_argument("--out", type=Path, help="dossier des rapports xlsx, html et json")
     ap.add_argument("--viewer-json", type=Path, help="fichier JSON pour SIA Check Viewer (un seul projet)")
@@ -51,6 +54,9 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--mdp-template", type=Path, help="gabarit MDP (défaut : gabarit vierge livré) ; ses tableaux sont remplacés")
     ap.add_argument("--project-id", help="ID projet HRS écrit dans InfosProjet (défaut : celui du gabarit)")
     ap.add_argument("--project-name", help="Nom Projet HRS écrit dans InfosProjet (défaut : nom du dossier)")
+    ap.add_argument("--surfaces-cache", type=Path, help="surfaces lues, avant corrections, gardées pour --depuis-cache")
+    ap.add_argument("--depuis-cache", type=Path, help="surfaces gardées par --surfaces-cache, au lieu de relire le projet")
+    ap.add_argument("--apercu", type=Path, help="bilan par niveau et ratios (JSON), avec --depuis-cache et --corrections")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -126,6 +132,11 @@ def main(argv: list[str] | None = None) -> int:
                         format="%(levelname)s %(message)s", stream=sys.stderr)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # console Windows cp1252 par défaut
+    if args.apercu or args.depuis_cache:
+        return _preview(args)
+    if not args.models:
+        log.error("fichier .tgm, .ifc ou dossier de projet attendu")
+        return 2
     try:
         cfg = config_mod.load(args.config or _default_config())
         models = [_resolve(m) for m in args.models]
@@ -142,6 +153,12 @@ def main(argv: list[str] | None = None) -> int:
         log.error("%s", ex)
         return 2
     df = pd.concat(frames, ignore_index=True)
+    if args.surfaces_cache:
+        try:
+            args.surfaces_cache.parent.mkdir(parents=True, exist_ok=True)
+            df.to_pickle(args.surfaces_cache)
+        except OSError as ex:   # l'aperçu en direct n'est qu'un confort : l'analyse continue
+            log.warning("surfaces non gardées pour l'aperçu : %s", ex)
     log.info("ÉTAPE 2/%d contrôles SIA 416", steps)
     applied = before = cache = None
     if journal is not None:
@@ -225,6 +242,35 @@ def main(argv: list[str] | None = None) -> int:
         log.error("écriture impossible : %s", ex)
         return 2
     return result.exit_code
+
+
+def _preview(args: argparse.Namespace) -> int:
+    """--depuis-cache + --corrections → --apercu : bilan par niveau et ratios après le journal, sans géométrie VWR.
+
+    Les tracés (découpes) gardent l'aire du journal : seul l'Analyser complet la recalcule depuis le cache VWR."""
+    if not args.apercu or not (args.depuis_cache or args.models):
+        log.error("--apercu demande --depuis-cache, ou le projet à lire (première fois)")
+        return 2
+    try:
+        cfg = config_mod.load(args.config or _default_config())
+        if args.depuis_cache:
+            df = pd.read_pickle(args.depuis_cache)
+        else:   # pas encore de surfaces gardées : lecture du projet, gardée pour les aperçus suivants
+            df = pd.concat([reader.read(_resolve(m), cfg) for m in args.models], ignore_index=True)
+            if args.surfaces_cache:
+                args.surfaces_cache.parent.mkdir(parents=True, exist_ok=True)
+                df.to_pickle(args.surfaces_cache)
+        journal = corrections.load(args.corrections) if args.corrections else {"corrections": []}
+        applied, before, after = corrections.run(df, journal, cfg)
+        out = viewer.balance(after, cfg, before=before)
+        out["corrections_log"] = json.loads(applied.log.to_json(orient="records", force_ascii=False))
+        args.apercu.parent.mkdir(parents=True, exist_ok=True)
+        args.apercu.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    except (OSError, ValueError, config_mod.ConfigError, reader.ReadError, corrections.JournalError) as ex:
+        log.error("aperçu impossible : %s", ex)
+        return 2
+    log.info("aperçu écrit : %s", args.apercu)
+    return after.exit_code
 
 
 if __name__ == "__main__":

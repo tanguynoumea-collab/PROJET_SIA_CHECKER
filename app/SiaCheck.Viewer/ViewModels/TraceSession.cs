@@ -19,6 +19,9 @@ public enum TraceKind { Cut, Reshape, Create }
 /// <summary>Élément du tracé sélectionné en mode Modifier : un sommet, ou l'arête qui part de ce sommet.</summary>
 public readonly record struct TraceSelection(int Polygon, int Index, bool IsEdge);
 
+/// <summary>Angle droit trouvé par l'accrochage : au sommet <see cref="Corner"/>, entre les directions U et V (unitaires).</summary>
+public readonly record struct RightAngleMark(Point Corner, Vector U, Vector V);
+
 /// <summary>Surface du niveau dessinée dans le plan : contours (union des triangles du maillage, en mètres).</summary>
 public sealed record PlanShape(string Id, string Code, PathsD Paths, bool IsSource, bool IsBelow);
 
@@ -91,12 +94,12 @@ public sealed partial class TraceSession : ObservableObject
                     _snapVertices.Add(a);
                     _snapEdges.Add((a, ToPoint(path[(i + 1) % path.Count])));
                 }
-        if (existing is not null) _polygons = ReadPolygons(existing);
-        else if (initial is not null)   // contour repris d'un autre niveau (nouvelle surface) : à enregistrer tel quel
+        if (initial is not null)   // contour repris d'un autre niveau (nouvelle surface) : à enregistrer tel quel
         {
             _polygons = initial.Where(p => p.Count >= 3).Select(p => p.ToList()).ToList();
             _isDirty = _polygons.Count > 0;
         }
+        else if (existing is not null) _polygons = ReadPolygons(existing);
         else if (kind == TraceKind.Reshape)   // l'emprise actuelle, prête à modifier (contours extérieurs)
             _polygons = OuterRings(_source).Select(path => path.Select(ToPoint).ToList()).Where(p => p.Count >= 3).ToList();
         _z = kind == TraceKind.Create ? LevelZ(level) : TopZ(source);
@@ -144,6 +147,10 @@ public sealed partial class TraceSession : ObservableObject
     public bool IsEditMode { get => Mode == TraceMode.Edit; set { if (value) Mode = TraceMode.Edit; } }
     [ObservableProperty] private bool _snapToVertices = true;
     [ObservableProperty] private bool _snapToEdges = true;
+    /// <summary>Accrochage léger aux angles droits avec les arêtes voisines du tracé (repère ⦜ à l'angle).</summary>
+    [ObservableProperty] private bool _snapToRightAngles = true;
+    /// <summary>Les autres surfaces du niveau en transparence (contour seul), pour voir le tracé et la source.</summary>
+    [ObservableProperty] private bool _fadeOthers;
     /// <summary>Le dernier polygone est en cours de dessin (pas encore fermé).</summary>
     [ObservableProperty] private bool _isDrawingOpen;
     [ObservableProperty] private bool _isDirty;
@@ -378,25 +385,87 @@ public sealed partial class TraceSession : ObservableObject
     // ------------------------------------------------------------------ accrochage et test d'impact
 
     /// <summary>Point d'accrochage le plus proche dans <paramref name="radius"/> (m) : sommets d'abord, puis arêtes.</summary>
-    public Point? Snap(Point p, double radius)
+    public Point? Snap(Point p, double radius) => SnapToVertex(p, radius) ?? SnapToEdge(p, radius)?.At;
+
+    /// <summary>Sommet des surfaces (ou de l'emprise du niveau inférieur) le plus proche, dans le rayon.</summary>
+    public Point? SnapToVertex(Point p, double radius)
     {
-        if (SnapToVertices)
+        if (!SnapToVertices) return null;
+        Point? best = null;
+        var d = radius;
+        foreach (var v in _snapVertices)
+            if ((v - p).Length is var l && l <= d) { d = l; best = v; }
+        return best;
+    }
+
+    /// <summary>Point le plus proche sur une arête des surfaces, avec l'arête elle-même.</summary>
+    public (Point At, Point A, Point B)? SnapToEdge(Point p, double radius)
+    {
+        if (!SnapToEdges) return null;
+        (Point, Point, Point)? best = null;
+        var d = radius;
+        foreach (var (a, b) in _snapEdges)
+            if (Project(p, a, b) is var q && (q - p).Length is var l && l <= d) { d = l; best = (q, a, b); }
+        return best;
+    }
+
+    /// <summary>
+    /// Accrochage léger aux angles droits : <paramref name="anchors"/> (sommet c, voisin o) donne la droite passant par c
+    /// perpendiculaire à (o − c), sur laquelle le point fait un angle droit en c. Le point est ramené sur la droite la
+    /// plus proche (ou à l'intersection de deux droites) s'il en est à moins de <paramref name="tolerance"/> (m).
+    /// <paramref name="corner"/> : sommet déplacé, entre ses deux voisins, pour signaler un angle droit à cet endroit.
+    /// </summary>
+    public (Point At, IReadOnlyList<RightAngleMark> Marks)? SnapRightAngle(Point p, IReadOnlyList<(Point Corner, Point Other)> anchors,
+                                                                           double tolerance, (Point Prev, Point Next)? corner = null)
+    {
+        if (!SnapToRightAngles) return null;
+        var lines = new List<(Point C, Vector Dir, Vector Edge, double D)>();
+        foreach (var (c, o) in anchors)
         {
-            Point? best = null;
-            var d = radius;
-            foreach (var v in _snapVertices)
-                if ((v - p).Length is var l && l <= d) { d = l; best = v; }
-            if (best is not null) return best;
+            var edge = o - c;
+            if (edge.LengthSquared < 1e-9 || (p - c).Length < 1e-6) continue;
+            edge.Normalize();
+            var dir = new Vector(-edge.Y, edge.X);
+            var q = c + dir * Vector.Multiply(p - c, dir);
+            var d = (q - p).Length;
+            if (d <= tolerance) lines.Add((c, dir, edge, d));
         }
-        if (SnapToEdges)
+        Point at;
+        List<RightAngleMark> marks = [];
+        if (lines.Count >= 2 && Intersect(lines[0].C, lines[0].Dir, lines[1].C, lines[1].Dir) is { } x && (x - p).Length <= tolerance * 1.5)
         {
-            Point? best = null;
-            var d = radius;
-            foreach (var (a, b) in _snapEdges)
-                if (Project(p, a, b) is var q && (q - p).Length is var l && l <= d) { d = l; best = q; }
-            return best;
+            at = x;
+            marks.AddRange(lines.Take(2).Select(l => Mark(l.C, l.Edge, at)));
         }
-        return null;
+        else if (lines.Count > 0)
+        {
+            var l = lines.MinBy(l => l.D);
+            at = l.C + l.Dir * Vector.Multiply(p - l.C, l.Dir);
+            marks.Add(Mark(l.C, l.Edge, at));
+        }
+        else at = p;
+        if (corner is { } k && (k.Prev - at).Length > 1e-6 && (k.Next - at).Length > 1e-6)
+        {
+            var u = k.Prev - at; u.Normalize();
+            var v = k.Next - at; v.Normalize();
+            if (Math.Abs(Vector.Multiply(u, v)) < Math.Sin(Math.PI / 180)) marks.Add(new RightAngleMark(at, u, v));   // ±1°
+        }
+        return marks.Count == 0 ? null : (at, marks);
+
+        static RightAngleMark Mark(Point c, Vector edge, Point at)
+        {
+            var w = at - c;
+            w.Normalize();
+            return new RightAngleMark(c, edge, w);
+        }
+    }
+
+    private static Point? Intersect(Point a, Vector u, Point b, Vector v)
+    {
+        var den = u.X * v.Y - u.Y * v.X;
+        if (Math.Abs(den) < 1e-9) return null;
+        var t = ((b.X - a.X) * v.Y - (b.Y - a.Y) * v.X) / den;
+        return a + u * t;
     }
 
     /// <summary>Sommet du tracé sous le point (rayon en m) : (polygone, indice), sinon null.</summary>

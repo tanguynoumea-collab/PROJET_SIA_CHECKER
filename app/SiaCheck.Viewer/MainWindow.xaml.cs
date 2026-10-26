@@ -197,6 +197,17 @@ public partial class MainWindow : FluentWindow, IShell
             ViewModel.ToggleFocusCommand.Execute(item);
     }
 
+    /// <summary>Clic sur le sujet déjà ouvert : sa fiche se ferme.</summary>
+    private void SubjectsList_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemsControl.ContainerFromElement(SubjectsList, (DependencyObject)e.OriginalSource) is ListBoxItem { DataContext: SubjectItem item }
+            && ReferenceEquals(item, ViewModel.SelectedSubject))
+        {
+            ViewModel.CloseSubjectCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
     private void OnLinkedIssues(IssueItem? first)
     {
         if (first is not null) IssuesList.ScrollIntoView(first);

@@ -20,7 +20,8 @@ public sealed partial class MainViewModel
     private CorrectionItem? _tracedItem;
 
     /// <summary>Catégories proposées pour une surface modifiée ou créée : la chaîne SIA 416, intérieur puis extérieur.</summary>
-    public static readonly string[] SurfaceTypes = ["SUP", "SUS", "SD", "SI", "SC", "SEU", "SED", "SEI", "SEC", "SA", "SP", "SEP"];
+    /// <summary>NC : non comptabilisée (gardée, hors sommes et exports : toiture non accessible…).</summary>
+    public static readonly string[] SurfaceTypes = ["SUP", "SUT", "SUS", "SD", "SI", "SC", "SEU", "SED", "SEI", "SEC", "SA", "SP", "SEP", "NC"];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTraceOpen), nameof(IsTraceManual), nameof(IsTraceCreate), nameof(ShowTraceTargets))]
@@ -29,8 +30,8 @@ public sealed partial class MainViewModel
     /// <summary>Découpe créée depuis une surface : la catégorie cible se choisit dans le volet.</summary>
     public bool IsTraceManual => Trace is not null && _tracedItem is null;
     public bool IsTraceCreate => Trace?.IsCreate == true;
-    /// <summary>Liste des catégories dans l'en-tête : découpe, emprise ou création depuis la 3D (pas une correction retracée).</summary>
-    public bool ShowTraceTargets => IsTraceManual;
+    /// <summary>Liste des catégories dans l'en-tête : découpe depuis la 3D, emprise et création (nouvelles ou reprises).</summary>
+    public bool ShowTraceTargets => IsTraceManual || Trace is { IsCut: false };
 
     /// <summary>Catégories cibles : abords d'abord pour une découpe de SEP, la chaîne SIA sinon.</summary>
     public IReadOnlyList<string> TraceTargets { get; private set; } = [];
@@ -61,6 +62,11 @@ public sealed partial class MainViewModel
             : c.TargetIds.Select(id => _surfaceById.GetValueOrDefault(id)).FirstOrDefault(s => s is not null);
         if (source is null) { _shell.Notify("La surface visée n'existe plus dans l'analyse."); return; }
         var target = kind switch { TraceKind.Cut => c.Model.Op == "exclure" ? "" : c.Model.To ?? "SA", _ => c.Model.To ?? source.DisplayCode };
+        if (kind != TraceKind.Cut)   // emprise ou création reprise : le type reste modifiable, et le niveau d'une création
+        {
+            SetTraceTargets(SurfaceTypes.Contains(target) ? SurfaceTypes : [target, .. SurfaceTypes], target);
+            if (kind == TraceKind.Create) SetCreatePickers(source.Building!, source.Level);
+        }
         OpenTrace(source, target, c, kind);
     }
 
@@ -73,11 +79,20 @@ public sealed partial class MainViewModel
         OpenTrace(s, TraceTarget, null, TraceKind.Cut);
     }
 
-    /// <summary>« Modifier la surface… » : son emprise sur le plan (sommets, arêtes) et son type.</summary>
+    /// <summary>
+    /// « Modifier la surface… » : son emprise sur le plan (sommets, arêtes) et son type. Une surface déjà modifiée ou
+    /// créée, en attente d'analyse, reprend sa correction : pas de seconde correction sur la même surface.
+    /// </summary>
     [RelayCommand]
     private void OpenReshapeForSurface()
     {
+        if (SelectedSurface?.Pending is { } pending)
+        {
+            ReopenCorrection(pending);
+            return;
+        }
         if (SelectedSurface?.Surface is not { } s) return;
+        if (PendingFor(s.Id, "remodeler") is { } existing) { ReopenCorrection(existing); return; }
         SetTraceTargets(SurfaceTypes.Contains(s.DisplayCode) ? SurfaceTypes : [s.DisplayCode, .. SurfaceTypes], s.DisplayCode);
         OpenTrace(s, s.DisplayCode, null, TraceKind.Reshape);
     }
@@ -91,15 +106,57 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(TraceBuildings));
         var building = SelectedSurface?.Surface.Building ?? BalanceBuilding ?? TraceBuildings.FirstOrDefault();
         if (building is null) return;
+        SetCreatePickers(building, SelectedSurface?.Surface.Level is { } l ? l : SelectedLevel != AllLevels ? SelectedLevel : null);
+        SetTraceTargets(SurfaceTypes, "SUS");
+        _tracedItem = null;
+        OpenCreate(null);
+    }
+
+    /// <summary>Bâtiment et niveau d'une création (listes de l'en-tête), sans rouvrir le volet champ par champ.</summary>
+    private void SetCreatePickers(string building, string? level)
+    {
         _creating = true;
+        if (TraceBuildings.Count == 0 && Document is not null)
+        {
+            TraceBuildings = Document.Levels.Select(x => x.Building).Distinct().OrderBy(b => b, StringComparer.Ordinal).ToList();
+            OnPropertyChanged(nameof(TraceBuildings));
+        }
         TraceBuilding = building;
         TraceLevels = LevelsOf(building);
         OnPropertyChanged(nameof(TraceLevels));
-        TraceLevel = SelectedSurface?.Surface.Level is { } l && TraceLevels.Contains(l) ? l
-            : SelectedLevel is { } f && f != AllLevels && TraceLevels.Contains(f) ? f : TraceLevels.FirstOrDefault();
-        SetTraceTargets(SurfaceTypes, "SUS");
+        TraceLevel = level is not null && TraceLevels.Contains(level) ? level : TraceLevels.FirstOrDefault();
         _creating = false;
-        OpenCreate(null);
+    }
+
+    /// <summary>Correction acceptée, pas encore appliquée, de cette opération sur cette surface.</summary>
+    private CorrectionItem? PendingFor(string surfaceId, string op) =>
+        Subjects.SelectMany(s => s.Corrections).FirstOrDefault(c =>
+            c.Model.Op == op && c.State == CorrectionState.Accepted && c.TargetIds.Contains(surfaceId));
+
+    private void ReopenCorrection(CorrectionItem c)
+    {
+        var keep = SelectedCorrection;
+        SelectedCorrection = c;
+        OpenTraceForCorrection();
+        if (!IsTraceOpen) SelectedCorrection = keep;
+    }
+
+    /// <summary>Fiche d'une surface de l'aperçu 3D : telle qu'elle sera après la prochaine analyse.</summary>
+    private SurfaceInfo? PendingSurface(string previewId)
+    {
+        var cid = previewId[SiaCheck.Viewer.Scene.SceneController.PreviewPrefix.Length..];
+        if (Subjects.SelectMany(s => s.Corrections).FirstOrDefault(c => c.Id == cid) is not { } c) return null;
+        var target = c.TargetIds.Select(id => _surfaceById.GetValueOrDefault(id)).FirstOrDefault(s => s is not null);
+        var place = c.CreatedOn ?? (target is { Building: { } b, Level: { } l } ? (b, l) : null);
+        var code = c.Model.To ?? target?.DisplayCode ?? "";
+        var surface = new Surface
+        {
+            Id = target is not null && c.Model.Op == "remodeler" ? target.Id : c.Id,
+            Building = place?.Item1, Level = place?.Item2, Category = code, Code = code, Kind = "leaf",
+            Area = c.Model.Area, RoomType = target?.RoomType, Lot = target?.Lot,
+        };
+        var linked = target is null ? [] : Issues.Where(i => i.SurfaceIds.Contains(target.Id)).OrderBy(i => i.SortKey).ToList();
+        return new SurfaceInfo(surface, linked, c);
     }
 
     private bool _creating;   // pickers remplis par le code : ne pas rouvrir le volet à chaque champ
@@ -128,7 +185,7 @@ public sealed partial class MainViewModel
     {
         if (TraceBuilding is not { } b || TraceLevel is not { } l) return;
         var source = new Surface { Id = "", Building = b, Level = l, Category = TraceTarget, Code = TraceTarget, Kind = "leaf" };
-        OpenTrace(source, TraceTarget, null, TraceKind.Create, polygons);
+        OpenTrace(source, TraceTarget, _tracedItem, TraceKind.Create, polygons);   // une création reprise garde sa correction
     }
 
     private void SetTraceTargets(IReadOnlyList<string> targets, string? selected = null)
@@ -155,7 +212,8 @@ public sealed partial class MainViewModel
             _shell.Notify("Pas de géométrie pour ce niveau dans le cache VWR : ajustez l'aire avec Modifier.");
             return;
         }
-        var level = Document.Surfaces.Where(s => s.Building == source.Building && s.Level == source.Level).ToList();
+        var level = Document.Surfaces.Where(s => s.Building == source.Building && s.Level == source.Level
+                                                && !Document.RedundantTotals.Contains(s.Id)).ToList();
         var levels = Document.Levels.Where(l => l.Building == source.Building).ToList();
         var rank = levels.FirstOrDefault(l => l.Level == source.Level)?.Rank ?? 0;
         var belowLevel = levels.Where(l => (l.Rank ?? 0) < rank).OrderByDescending(l => l.Rank ?? 0).FirstOrDefault()?.Level;
@@ -171,7 +229,7 @@ public sealed partial class MainViewModel
 
     partial void OnTraceTargetChanged(string value)
     {
-        if (Trace is not null && IsTraceManual) Trace.Target = value;
+        if (Trace is not null && ShowTraceTargets) Trace.Target = value;
         OnPropertyChanged(nameof(TraceTitle));
     }
 
@@ -196,6 +254,7 @@ public sealed partial class MainViewModel
             CloseTrace();
             OnCorrectionsChanged();
             RefreshSubjects();
+            SelectedSurface = null;
             SelectedCorrection = item;
             FocusCorrection(item);
             _shell.Notify($"Tracé enregistré : {c.Area:#,##0.00} m². Il s'appliquera à la prochaine analyse.");
@@ -218,13 +277,36 @@ public sealed partial class MainViewModel
             : $"{message} ({created.Area:#,##0.00} m²) : elle s'appliquera à la prochaine analyse (Analyser).");
     }
 
-    /// <summary>« Supprimer » sur la fiche d'une surface : exclusion acceptée d'emblée, après confirmation.</summary>
+    /// <summary>
+    /// « Supprimer » sur la fiche d'une surface : exclusion acceptée d'emblée, après confirmation. Sur une surface créée
+    /// ou une part découpée en attente, c'est la correction qui est rejetée ; une emprise redessinée est rejetée et la
+    /// surface d'origine exclue.
+    /// </summary>
     [RelayCommand]
     private async Task DeleteSelectedSurfaceAsync()
     {
-        if (SelectedSurface?.Surface is not { } s || _journal is null) return;
+        if (SelectedSurface?.Pending is { } pending)
+        {
+            if (!await _shell.ConfirmAsync($"Supprimer la {SelectedSurface.Surface.DisplayCode} ?",
+                    pending.Model.Op == "remodeler"
+                        ? "L'emprise redessinée est abandonnée et la surface d'origine retirée des sommes à la prochaine analyse."
+                        : "La correction qui la crée est rejetée : la surface ne sera pas ajoutée.", "Supprimer", "Annuler"))
+                return;
+            pending.Decision = CorrectionDecision.Rejected;
+            var original = pending.Model.Op == "remodeler" ? pending.TargetIds.Select(id => _surfaceById.GetValueOrDefault(id)).FirstOrDefault() : null;
+            SelectedSurface = null;
+            RefreshSubjects();
+            if (original is not null) await DeleteSurfaceAsync(original, confirm: false);
+            return;
+        }
+        if (SelectedSurface?.Surface is { } s) await DeleteSurfaceAsync(s, confirm: true);
+    }
+
+    private async Task DeleteSurfaceAsync(Surface s, bool confirm)
+    {
+        if (_journal is null) return;
         var area = s.Area is double a ? $" ({a:#,##0.00} m²)" : "";
-        if (!await _shell.ConfirmAsync($"Supprimer la {s.DisplayCode} ?",
+        if (confirm && !await _shell.ConfirmAsync($"Supprimer la {s.DisplayCode} ?",
                 $"{s.Building} {s.Level} · {s.Id}{area} sera retirée des sommes et des exports à la prochaine analyse. " +
                 "La correction reste dans le journal : vous pourrez la rejeter pour revenir en arrière.", "Supprimer", "Annuler"))
             return;

@@ -24,7 +24,8 @@ Opérations (`op`) :
                sinon de la même sorte que la cible
     ajuster    aire des cibles fixée à `aire`
     remodeler  une seule cible : nouvelle emprise `polygone` (dessinée dans la visionneuse), aire `aire` ; `vers`
-               facultatif change aussi la catégorie. La surface prend la géométrie du tracé (`geometrie`)
+               facultatif change aussi la catégorie (NC : non comptabilisée). La surface prend la géométrie du tracé
+               (`geometrie`). Refusé sur un total de niveau Treegram dont les pièces sont livrées (sans effet)
     créer      nouvelle surface `vers` sur le niveau `niveau` ({building, level}), d'aire `aire`, de géométrie
                `polygone` à l'altitude `z` (facultatifs) ; pas de `cible`. Élémentaire si `vers` en a déjà au
                niveau (son total suit), sinon total de niveau
@@ -262,6 +263,10 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
     elif op == "remodeler":
         i = idx[0]
         r = df.loc[i]
+        if r.kind == "node" and ((df.kind == "leaf") & (df.building == r.building) & (df.level == r.level)
+                                 & (df.category == r.category) & ~df.excluded).any():
+            raise _Refuse(f"total de niveau Treegram {r.category} doublé par ses pièces (le détail fait foi) : "
+                          f"modifiez les pièces")
         aire, to = float(c["aire"]), c.get("vers") or r.category
         if r.kind == "leaf":   # le total de niveau perd l'ancienne surface et gagne la nouvelle
             _shift_node(df, r.building, r.level, r.category, -float(r.area or 0))

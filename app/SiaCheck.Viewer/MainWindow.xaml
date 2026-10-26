@@ -349,6 +349,10 @@
                             <TextBox Margin="0,4,0,0" IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0"
                                      FontFamily="{StaticResource FontMono}" FontSize="{StaticResource FontSizeCaption}"
                                      Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding Surface.Id, Mode=OneWay}" TextWrapping="Wrap" />
+                            <Border Margin="0,8,0,0" Style="{StaticResource Banner}" Padding="8,4"
+                                    Visibility="{Binding HasPending, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Style="{StaticResource TextCaption}" TextWrapping="Wrap" Text="{Binding PendingText}" />
+                            </Border>
                             <Grid Margin="0,8,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="96" />
@@ -375,6 +379,7 @@
                                            ToolTip="Changer le type de la surface ou redessiner son emprise sur le plan du niveau (sommets, arêtes)" />
                                 <ui:Button Margin="0,0,4,4" Appearance="Secondary" Icon="{ui:SymbolIcon Cut20}" Content="Découper…"
                                            Command="{Binding DataContext.OpenTraceForSurfaceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                           Visibility="{Binding CanCut, Converter={StaticResource BoolToVisibility}}"
                                            MinHeight="{StaticResource TargetSize}"
                                            ToolTip="Tracer sur le plan du niveau la part de cette surface qui change de catégorie" />
                                 <ui:Button Margin="0,0,0,4" Appearance="Transparent" Icon="{ui:SymbolIcon Delete20}" Content="Supprimer"
@@ -415,9 +420,14 @@
                                               ToolTip="Replier / déplier le bilan">
                                     <ui:SymbolIcon Symbol="ChevronDown16" />
                                 </ToggleButton>
-                                <ComboBox DockPanel.Dock="Right" Margin="0,0,8,0" MinWidth="90" ItemsSource="{Binding Buildings}"
-                                          DisplayMemberPath="Name" SelectedValuePath="Name" SelectedValue="{Binding BalanceBuilding}"
+                                <ComboBox DockPanel.Dock="Right" Margin="0,0,8,0" MinWidth="90" ItemsSource="{Binding BalanceChoices}"
+                                          DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding BalanceBuilding}"
                                           FontFamily="{StaticResource FontMono}" AutomationProperties.Name="Bâtiment du bilan" />
+                                <Border DockPanel.Dock="Right" Margin="0,0,8,0" Style="{StaticResource Banner}" Padding="6,1" VerticalAlignment="Center"
+                                        Visibility="{Binding IsBalancePreview, Converter={StaticResource BoolToVisibility}}"
+                                        ToolTip="Bilan et ratios recalculés avec les corrections acceptées, avant l'analyse complète (Analyser recalcule aussi les tracés et les points)">
+                                    <TextBlock Style="{StaticResource TextCaption}" Text="{Binding BalancePreviewText}" />
+                                </Border>
                                 <StackPanel Orientation="Horizontal">
                                     <!-- Deux onglets : bilan par niveau (signature) et ratios informatifs -->
                                     <RadioButton Style="{StaticResource Chip}" Margin="0,0,4,0" GroupName="BalanceTab"
@@ -430,7 +440,7 @@
                                         <TextBlock Style="{StaticResource TextSection}" Margin="0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Text="Ratios" />
                                     </RadioButton>
                                     <TextBlock Style="{StaticResource TextSection}" Margin="0" VerticalAlignment="Center" FontFamily="{StaticResource FontMono}"
-                                               Text="{Binding BalanceBuilding, Mode=OneWay}" />
+                                               Text="{Binding BalanceScopeLabel, Mode=OneWay}" />
                                 </StackPanel>
                             </DockPanel>
                             <Grid Height="{StaticResource BalanceHeight}" Visibility="{Binding IsBalanceCollapsed, Converter={StaticResource HiddenWhen}}">
@@ -492,7 +502,7 @@
                                     <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}" Text="○ projet   ● bâtiment" HorizontalAlignment="Center" />
                                     <TextBlock Grid.Column="3" Style="{StaticResource TextCaption}" Text="Projet" HorizontalAlignment="Right" />
                                     <TextBlock Grid.Column="4" Style="{StaticResource TextCaption}" HorizontalAlignment="Right" FontFamily="{StaticResource FontMono}"
-                                               Text="{Binding BalanceBuilding, Mode=OneWay}" />
+                                               Text="{Binding BalanceScopeLabel, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
                                     <TextBlock Grid.Column="5" Style="{StaticResource TextCaption}" Text="Repère" HorizontalAlignment="Right" />
                                 </Grid>
                                 <TextBlock DockPanel.Dock="Top" Margin="4,8" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
@@ -604,6 +614,11 @@
                                                   ToolTip="Accrocher aux sommets des surfaces (Alt : sans accrochage pour ce clic)" />
                                     <ToggleButton Style="{StaticResource Chip}" FontFamily="{StaticResource FontUI}" Content="Arêtes" IsChecked="{Binding Trace.SnapToEdges}"
                                                   ToolTip="Accrocher aux arêtes des surfaces et de l'emprise du niveau inférieur" />
+                                    <ToggleButton Style="{StaticResource Chip}" FontFamily="{StaticResource FontUI}" Content="Angles droits" IsChecked="{Binding Trace.SnapToRightAngles}"
+                                                  ToolTip="Accrochage léger à l'équerre des arêtes voisines du tracé, avec un repère à l'angle (Alt : sans accrochage)" />
+                                    <ToggleButton Margin="16,0,0,0" Style="{StaticResource Chip}" FontFamily="{StaticResource FontUI}" Content="Autres surfaces en transparence"
+                                                  IsChecked="{Binding Trace.FadeOthers}"
+                                                  ToolTip="Ne garder que le contour des autres surfaces du niveau, pour bien voir le tracé" />
                                     <ui:Button Margin="16,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon ArrowUndo20}" Content="Annuler le geste"
                                                Command="{Binding TraceUndoCommand}" ToolTip="Ctrl+Z (Ctrl+Y : rétablir)" MinHeight="{StaticResource TargetSize}" />
                                     <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon Eraser20}" Content="Effacer"
@@ -717,6 +732,9 @@
                                 Visibility="{Binding HasSelectedSubject, Converter={StaticResource BoolToVisibility}}">
                             <StackPanel>
                                 <DockPanel DataContext="{Binding SelectedSubject}">
+                                    <ui:Button DockPanel.Dock="Left" Margin="-4,-2,6,0" Padding="4" Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss16}"
+                                               VerticalAlignment="Top" Command="{Binding DataContext.CloseSubjectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                               ToolTip="Fermer le sujet (ou cliquer à nouveau sur le sujet)" AutomationProperties.Name="Fermer le sujet" />
                                     <c:AiVerdictTag DockPanel.Dock="Right" Margin="8,0,0,0" Kind="{Binding ActionKind}" Text="{Binding OriginTag}" />
                                     <TextBlock Style="{StaticResource TextSubtitle}" TextWrapping="Wrap">
                                         <Run Text="{Binding Id, Mode=OneWay}" FontFamily="{StaticResource FontMono}" /><Run Text=" · " /><Run Text="{Binding Title, Mode=OneWay}" />
@@ -885,6 +903,7 @@
 
                         <Grid>
                             <ListBox x:Name="SubjectsList" ItemsSource="{Binding SubjectsView}" SelectedItem="{Binding SelectedSubject}"
+                                     PreviewMouseLeftButtonDown="SubjectsList_PreviewMouseDown"
                                      ItemContainerStyle="{StaticResource IssueItem}" Background="Transparent" BorderThickness="0"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Sujets">
                                 <ListBox.ItemTemplate>
@@ -996,6 +1015,9 @@
                                 Visibility="{Binding HasSelectedIssue, Converter={StaticResource BoolToVisibility}}">
                             <StackPanel DataContext="{Binding SelectedIssue}">
                                 <StackPanel Orientation="Horizontal">
+                                    <ui:Button Margin="-4,-2,6,0" Padding="4" Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss16}"
+                                               VerticalAlignment="Top" Command="{Binding DataContext.CloseIssueCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                               ToolTip="Fermer le point (ou cliquer à nouveau sur le point)" AutomationProperties.Name="Fermer le point" />
                                     <c:VerdictGlyph Verdict="{Binding Verdict}" />
                                     <TextBlock Margin="8,0,0,0" Style="{StaticResource TextMono}" FontSize="{StaticResource FontSizeSubtitle}">
                                         <Run Text="{Binding Rule, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Location, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Category, Mode=OneWay}" />

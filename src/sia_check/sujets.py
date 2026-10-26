@@ -10,9 +10,9 @@ implicite, agrégats), « à vérifier » (pas de correction automatique). Les c
 de corrections.py ; la revue IA (phase 4) et l'utilisateur les acceptent, les modifient ou les rejettent.
 
 Causes reconnues (L'Orée, revue IA du 22.10.2026) :
-- toitures : SEP d'un niveau Toiture ou au-dessus du dernier plancher (A2), ou part de SEP recouverte
-  par la toiture Treegram (SPT) sur un attique ; une toiture non accessible n'est ni SP ni SEP
-  (SIA 416 §3) -> `exclure` la SEP du niveau, ou la seule part de toiture ;
+- toitures : SEP d'un niveau Toiture ou au-dessus du dernier plancher (A2), une fois retirées les toitures
+  que Treegram classe en SPT (rules.COUNTED_IN) ; une toiture non accessible n'est ni SP ni SEP
+  (SIA 416 §3) -> `exclure` la SEP du niveau, ou sa part hors terrasses classées ;
 - abords : SEP non classée du niveau du terrain (A1), dalle au contact du terrain -> `découper` vers SA
   (SIA 416 §1.2) ; le tracé pré-calculé est la SEP hors plancher du niveau et hors SEU/SED ;
 - sc-implicite : résidu R1 (SC) ou R3 (SEC) compatible avec la surface de construction, que Treegram ne crée
@@ -173,18 +173,8 @@ def build(doc: dict, cfg: Config) -> dict:
     a1 = {(i["building"], i["level"]) for i in issues if i["rule"] == "A1"}
     r3 = {(i["building"], i["level"]) for i in issues if i["rule"] == "R3" and i["level"] != rules.ALL}
 
-    # Part de toiture (SPT) dans la SEP des niveaux à plancher : attiques.
-    roof_part: dict[tuple, object] = {}
-    if geo.ok:
-        for key in r3 - a2:
-            sep = geo.union(key, ["SEP"])
-            spt = geo.union(key, ["SPT"])
-            if sep is None or spt is None:
-                continue
-            part = geo.minus(geo.minus(sep.intersection(spt), key, EXTERNAL_CLASSIFIED), key, ["SP"])
-            if part.area > tol:
-                roof_part[key] = part
-    roofs = a2 | set(roof_part)
+    # Les toits d'attique classés SPT sont déjà retirés de la SEP (rules.COUNTED_IN) : seul A2 désigne une toiture.
+    roofs = set(a2)
     grounds = a1 - roofs
 
     subjects: dict[str, dict] = {}
@@ -233,17 +223,15 @@ def build(doc: dict, cfg: Config) -> dict:
         classified = sum(val(key, c) for c in EXTERNAL_CLASSIFIED)
         base = {"id": f"{TOITURES}-{b}-{lvl}", "op": "exclure", "cible": {"ids": [sep_id]}}
         z = _top_z(by_id.get(sep_id))
-        if key in roof_part:
-            split(TOITURES, base, roof_part[key], z, lambda a, m: f"{b} {lvl}{m} : {_m2(a)} m² de SEP sous la toiture "
-                  f"Treegram (SPT), hors terrasses classées SEU/SED.", 0)
-        elif classified <= tol:
+        roof = [c for c, host in rules.COUNTED_IN.items() if host == "SEP"]
+        if classified <= tol and val(key, "SEP") >= node_area.get((b, lvl, "SEP"), 0) - tol:
             _propose(subjects[TOITURES], {**base, "explication": f"{b} {lvl} : niveau de toiture sans plancher ni "
                                                                  f"terrasse classée, SEP entière exclue."},
-                     node_area.get((b, lvl, "SEP"), 0))
-        else:
-            region = geo.minus(geo.union(key, ["SEP"]), key, EXTERNAL_CLASSIFIED) if geo.ok else None
+                     val(key, "SEP"))
+        else:   # SEP hors terrasses classées et hors toitures déjà en SPT (retirées de la SEP)
+            region = geo.minus(geo.union(key, ["SEP"]), key, EXTERNAL_CLASSIFIED + roof) if geo.ok else None
             split(TOITURES, base, region, z, lambda a, m: f"{b} {lvl}{m} : {_m2(a)} m² de SEP hors terrasses classées "
-                  f"({_m2(classified)} m² de SEU/SED gardés).", node_area.get((b, lvl, "SEP"), 0) - classified)
+                  f"et toitures SPT ({_m2(classified)} m² de SEU/SED gardés).", val(key, "SEP") - classified)
 
     for key in sorted(grounds, key=lambda k: (k[0], rules.level_rank(k[1], cfg) or 0)):
         sep_id = _node_id(nodes, key, "SEP")

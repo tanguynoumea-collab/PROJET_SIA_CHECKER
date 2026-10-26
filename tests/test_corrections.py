@@ -327,3 +327,37 @@ def test_split_part_keeps_metadata_and_level_totals(cfg):
     assert (s.loc["sup-1", "area"], s.loc["sup-1#c1", "area"]) == (25.0, 15.0)
     assert s.loc["sup-1#c1", "room_type"] == "Chambre" and s.loc["sup-1#c1", "kind"] == "leaf"
     assert rules.level_totals(rules.classify(a.kept, cfg)[0]).loc[("A", "N01")]["SUP"] == 60
+
+
+# --------------------------------------------------------------------------- toitures SPT comptées dans la SEP
+
+def roof_surfaces() -> pd.DataFrame:
+    """SEP Treegram 40 = SEU 10 (terrasse) + SPT 30 (toiture classée, comptée par Treegram dans la SEP)."""
+    df = surfaces()
+    more = [("A_N01_SEU#total", "SEU", 10.0, "node", None), ("seu-1", "SEU", 10.0, "leaf", "Terrasse"),
+            ("A_N01_SPT#total", "SPT", 30.0, "node", None), ("spt-1", "SPT", 30.0, "leaf", "Toiture")]
+    return pd.concat([df, pd.DataFrame([{"id": i, "building": "A", "level": "N01", "category": c, "area": a,
+                                         "kind": k, "room_type": t, "lot": None} for i, c, a, k, t in more])],
+                     ignore_index=True)
+
+
+def sep_of(df, cfg) -> float:
+    return rules.level_totals(rules.classify(df, cfg)[0]).at[("A", "N01"), "SEP"]
+
+
+@pytest.mark.parametrize("c, sep", [
+    (None, 10.0),                                                              # SEP = 40 − toiture 30
+    ({"op": "reclasser", "cible": {"ids": ["spt-1"]}, "vers": "SEU"}, 40.0),    # toiture accessible : revient en SEP
+    ({"op": "reclasser", "cible": {"ids": ["spt-1"]}, "vers": "NC"}, 10.0),     # toujours hors SEP
+    ({"op": "exclure", "cible": {"ids": ["spt-1"]}}, 10.0),
+    ({"op": "reclasser", "cible": {"ids": ["seu-1"]}, "vers": "SPT"}, 0.0),     # terrasse devenue toiture
+    ({"op": "découper", "cible": {"ids": ["A_N01_SEP#total"]}, "vers": "SPT", "aire": 5.0}, 5.0),
+    ({"op": "découper", "cible": {"ids": ["spt-1"]}, "vers": "NC", "aire": 5.0}, 10.0),
+])
+def test_roof_spt_leaves_sep(cfg, c, sep):
+    df = roof_surfaces()
+    if c is not None:
+        a = corrections.apply(df, journal({"id": "c1", **c}), cfg=cfg)
+        assert a.log.iloc[0].application == corrections.APPLIED
+        df = a.kept
+    assert sep_of(df, cfg) == pytest.approx(sep)

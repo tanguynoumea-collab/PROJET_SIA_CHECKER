@@ -20,6 +20,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly AppPaths _paths;
     private readonly AppSettings _settings;
     private readonly AnalysisService? _engine;
+    private readonly ProjectRegistry _registry;
     private readonly DispatcherTimer _commentSave;
     private ReviewStore? _store;
     private CancellationTokenSource? _cts;
@@ -34,7 +35,8 @@ public sealed partial class MainViewModel : ObservableObject
         _engine = enginePath is null ? null : new AnalysisService(enginePath);
         _isBalanceCollapsed = settings.BalanceCollapsed;
         _showRatios = settings.ShowRatios;
-        Recents = new ObservableCollection<RecentProject>(settings.Recents.Where(r => Directory.Exists(r.Path)));
+        _registry = new ProjectRegistry(paths.ProjectsFile);
+        FillRecents();
         LayersView = new ListCollectionView(Layers);
         LayersView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(LayerItem.Group)));
         IssuesView = CollectionViewSource.GetDefaultView(Issues);
@@ -49,7 +51,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     // ------------------------------------------------------------------ état général
 
-    public ObservableCollection<RecentProject> Recents { get; }
+    public ObservableCollection<RecentItem> Recents { get; } = [];
     [ObservableProperty] private string? _projectDir;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasDocument), nameof(IsHome))] private ViewerDocument? _document;
     [ObservableProperty] private SceneController? _scene;
@@ -93,15 +95,15 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private Task OpenRecentAsync(RecentProject recent) => OpenAsync(recent.Path);
+    private Task OpenRecentAsync(RecentItem recent) => OpenAsync(recent.Path);
 
     /// <summary>Supprime un projet de l'application (récents, statuts, corrections, analyse, revues IA, ID MDP) : repartir de zéro.</summary>
     [RelayCommand]
-    private async Task DeleteRecentAsync(RecentProject recent)
+    private async Task DeleteRecentAsync(RecentItem recent)
     {
         var ok = await _shell.ConfirmAsync($"Supprimer « {recent.Name} » ?",
             "Les statuts et commentaires des points, les décisions sur les corrections, la dernière analyse, les revues IA " +
-            "lancées depuis l'app et l'ID MDP de ce projet seront effacés.\n\n" +
+            "lancées depuis l'app, l'ID MDP et le statut (en traitement / traité) de ce projet seront effacés.\n\n" +
             "Le dossier Treegram (.tgm, VWR) et les fichiers exportés ne sont pas touchés : le projet pourra être rouvert et " +
             "réanalysé de zéro.",
             "Supprimer", "Annuler");
@@ -109,6 +111,7 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             _paths.DeleteProject(recent.Path);
+            _registry.Forget(recent.Path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -317,8 +320,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         Document = null;
         Scene = null;
-        Recents.Clear();
-        foreach (var r in _settings.Recents.Where(r => Directory.Exists(r.Path))) Recents.Add(r);
+        FillRecents();
     }
 
     // ------------------------------------------------------------------ chargement
@@ -393,6 +395,14 @@ public sealed partial class MainViewModel : ObservableObject
         Explode = 0;
         _settings.Touch(ProjectDir!, doc.Project, DateTime.Now, doc.Issues.Count);
         _settings.Save(_paths);
+        try
+        {
+            LoadProjectStatus(ProjectDir!, doc.Project, doc.Issues.Count);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _shell.Notify($"Registre des projets illisible : {ex.Message}", isError: true);
+        }
         OnPropertyChanged(string.Empty);   // en-têtes, bandeaux, barre d'état
         _shell.Frame(null);
     }

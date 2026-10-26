@@ -168,6 +168,9 @@ La version vient de `<Version>` dans `SiaCheck.Viewer.csproj` et de `pyproject.t
   - le bouton **Revue IA** enchaîne analyse, preuves géométriques (`sia-check --preuves`, ratios compris), estimation du coût, puis, après accord, l'appel à Claude Opus 5.5 par l'API Anthropic. Le rapport s'ouvre dans un volet sur la 3D. Le bouton **Rapport IA** (ou Ctrl+I) le rouvre à tout moment sans relancer la revue ;
   - la clé API est saisie dans l'app et chiffrée avec DPAPI pour le compte Windows (`%LOCALAPPDATA%\SiaCheckViewer\anthropic-key.bin`), jamais en clair ;
   - revues lancées depuis l'app : `%APPDATA%\SiaCheckViewer\revue-ia\<projet>\` ; revues faites dans Claude Code : `docs/revue-ia/` (lu quand l'app tourne depuis le dépôt).
+- **Statut du projet** : « En traitement » à la première analyse, « Traité » quand la vérification et les corrections sont finies. La pastille à côté du nom du projet bascule le statut ; passer en traité demande confirmation s'il reste des décisions à appliquer, des corrections proposées ou des points à traiter. L'accueil affiche le statut de chaque projet récent.
+  Le registre `%APPDATA%\SiaCheckViewer\projets.json` liste tous les projets ouverts (pas seulement les récents), pour les automatisations (n8n) et le suivi :
+  `Path`, `Name`, `Status` (`en_traitement` | `traite`), `StatusLabel`, `StatusChanged`, `ChangedBy`, `LastAnalysis`, `IssueCount`, et l'historique des changements (`History`). Supprimer un projet de l'accueil l'en retire.
 - **Limite** : si le projet a été modifié après la dernière ouverture dans le viewer Treegram, le cache 3D est périmé. La visionneuse l'indique.
 
 Développement : `dotnet test app/SiaCheckViewer.sln`.
@@ -188,6 +191,8 @@ Développement : `dotnet test app/SiaCheckViewer.sln`.
 | U1–U4 | chaîne USPI par lot : SH ≥ SNH, SBH ≥ SH, SVB ≥ SVN, SVB − SVN = SBH − SH (MEM) | USPI 2014 p. 4 |
 
 Tolérance : un écart est signalé si **à la fois** 0,5 m² et 0,5 % sont dépassés (`config.yaml > tolerance`).
+
+Toitures : Treegram compte les toitures classées SPT dans le total SEP du niveau. Le moteur les en retire (`rules.COUNTED_IN`) : une toiture passée en SPT ne pèse plus dans la SEP, le bilan, R3/A2, les ratios ni la feuille des surfaces brutes du MDP. Un reste sous 0,5 % de la SEP Treegram (écart de contour) est ramené à 0. Une toiture reclassée en SEU (toiture accessible) revient dans la SEP.
 
 ## Structure
 

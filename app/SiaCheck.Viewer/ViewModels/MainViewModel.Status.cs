@@ -1,0 +1,88 @@
+using CommunityToolkit.Mvvm.Input;
+using SiaCheck.Viewer.Services;
+
+namespace SiaCheck.Viewer.ViewModels;
+
+/// <summary>Projet récent sur l'accueil, avec son statut (registre des projets).</summary>
+public sealed class RecentItem(RecentProject project, ProjectStatus status)
+{
+    public RecentProject Project { get; } = project;
+    public string Name => Project.Name;
+    public string Path => Project.Path;
+    public int IssueCount => Project.IssueCount;
+    public DateTime LastAnalysis => Project.LastAnalysis;
+    public bool IsDone { get; } = status == ProjectStatus.Done;
+    public string StatusLabel { get; } = ProjectRecord.Label(status);
+}
+
+/// <summary>
+/// Statut du projet ouvert : « en traitement » à la première analyse, « traité » quand la vérification et les
+/// corrections sont finies. Écrit dans le registre des projets (projets.json), que lisent les automatisations (n8n).
+/// </summary>
+public sealed partial class MainViewModel
+{
+    private ProjectStatus _projectStatus;
+    private string _projectStatusChanged = "";
+
+    public bool IsProjectDone => _projectStatus == ProjectStatus.Done;
+    public string ProjectStatusLabel => ProjectRecord.Label(_projectStatus);
+    public string ProjectStatusTooltip => (IsProjectDone
+        ? "Projet vérifié et corrigé. Cliquer pour le remettre en traitement."
+        : "Vérification en cours. Cliquer pour passer le projet en traité.") + _projectStatusChanged;
+
+    /// <summary>Points ouverts encore « à traiter », hors agrégats.</summary>
+    internal int OpenIssuesToReview => Issues.Count(i => !i.IsResolved && !i.IsAggregate && i.Status == ReviewStatus.ToReview);
+    internal int UndecidedCorrections => Subjects.Where(s => s.CanDecide).Sum(s => s.ProposedCount);
+
+    private void LoadProjectStatus(string projectDir, string name, int issueCount)
+    {
+        ShowProjectStatus(_registry.Touch(projectDir, name, DateTime.Now, issueCount));
+    }
+
+    private void ShowProjectStatus(ProjectRecord r)
+    {
+        _projectStatus = r.Status;
+        _projectStatusChanged = $"\n{r.StatusLabel} depuis le {r.StatusChanged:dd.MM.yyyy HH:mm}" +
+                                (string.IsNullOrEmpty(r.ChangedBy) ? "" : $" ({r.ChangedBy})");
+        OnPropertyChanged(nameof(IsProjectDone));
+        OnPropertyChanged(nameof(ProjectStatusLabel));
+        OnPropertyChanged(nameof(ProjectStatusTooltip));
+    }
+
+    [RelayCommand]
+    private async Task ToggleProjectStatusAsync()
+    {
+        if (ProjectDir is null || Document is null) return;
+        var next = IsProjectDone ? ProjectStatus.InProgress : ProjectStatus.Done;
+        if (next == ProjectStatus.Done)
+        {
+            var left = new List<string>();
+            if (PendingCorrections > 0) left.Add($"{PendingCorrections} décision{S(PendingCorrections)} sur les corrections pas encore appliquée{S(PendingCorrections)} (Analyser)");
+            if (UndecidedCorrections is > 0 and var u) left.Add($"{u} correction{S(u)} proposée{S(u)} sans décision");
+            if (OpenIssuesToReview is > 0 and var n) left.Add($"{n} point{S(n)} d'attention encore à traiter");
+            if (left.Count > 0 && !await _shell.ConfirmAsync("Passer le projet en traité ?",
+                    "Il reste :\n• " + string.Join("\n• ", left) + "\n\nLe projet peut être passé en traité quand même.",
+                    "Passer en traité", "Annuler"))
+                return;
+        }
+        try
+        {
+            ShowProjectStatus(_registry.SetStatus(ProjectDir, next));
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        {
+            _shell.Notify($"Statut non enregistré : {ex.Message}", isError: true);
+            return;
+        }
+        _shell.Notify(next == ProjectStatus.Done ? $"« {ProjectName} » passé en traité." : $"« {ProjectName} » remis en traitement.");
+    }
+
+    private void FillRecents()
+    {
+        Recents.Clear();
+        foreach (var r in _settings.Recents.Where(r => System.IO.Directory.Exists(r.Path)))
+            Recents.Add(new RecentItem(r, _registry.StatusOf(r.Path)));
+    }
+
+    private static string S(int n) => n > 1 ? "s" : "";
+}

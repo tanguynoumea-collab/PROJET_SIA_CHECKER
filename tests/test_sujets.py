@@ -97,8 +97,8 @@ def test_cli_writes_subjects_usable_as_journal(tmp_path):
     from sia_check import cli
     from test_tgm import leaf, node
     tgm = tmp_path / "mini.tgm"
-    tgm.write_bytes(b"".join([node("SP", 0.0), node("SEP", 30.0),
-                              leaf("A_Toiture_ShellByTgm-1_SpaceByTgm-1_SPT", "SPT", 30.0)]))
+    tgm.write_bytes(b"".join([node("SP", 0.0), node("SEP", 30.0),      # 20 m² de SEP hors toiture SPT
+                              leaf("A_Toiture_ShellByTgm-1_SpaceByTgm-1_SPT", "SPT", 10.0)]))
     out = tmp_path / "sujets.json"
     cli.main([str(tgm), "-q", "--sujets", str(out), "--config", str(cli._default_config())])
     data = json.loads(out.read_text(encoding="utf-8"))

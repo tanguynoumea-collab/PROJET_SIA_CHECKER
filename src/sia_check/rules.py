@@ -50,6 +50,13 @@ ALL = "*"  # niveau ou bâtiment agrégé
 
 # Codes portés par les règles de niveau (SIA 416).
 SP, SU, SEP = "SP", "SU", "SEP"          # §2, §2.1.1, §3
+# Codes que Treegram compte dans le total de niveau d'une autre catégorie sans en faire partie : les toitures (SPT)
+# sont dans la SEP du niveau, alors qu'une toiture non accessible n'est ni SP ni SEP (SIA 416 §3). Leur aire est
+# retirée de ce total quand il vient de Treegram (pas de détail) : classer une toiture en SPT la sort de la SEP.
+COUNTED_IN = {"SPT": SEP}
+# Reste d'un total après déduction, sous cette part du total Treegram : écart de contour entre la SEP et la toiture
+# (G12 Toiture sur L'Orée : 304,28 − 303,45 m²), pas une surface. Ramené à 0.
+COUNTED_IN_SNAP_REL = 0.005
 # Chaîne USPI 2014 p. 4 : SH = SNH + SCI ; SBH = SH + MEM ; SVB = SBH + SE ; SVN = SH + SE.
 SNH, SH, SBH, SVN, SVB = "SNH", "SH", "SBH", "SVN", "SVB"
 
@@ -92,17 +99,36 @@ def level_totals(surf: pd.DataFrame, include_ignored: bool = False) -> pd.DataFr
     Une catégorie peut être fournie deux fois par Treegram : surfaces élémentaires et
     total de niveau. Les surfaces élémentaires font foi quand il y en a (elles sont
     plus fines et le total n'est pas toujours recalculé après modification) ; le total
-    de niveau n'est utilisé que pour les catégories sans détail (ex. SP, SEP).
+    de niveau n'est utilisé que pour les catégories sans détail (ex. SP, SEP). Les toitures
+    SPT sont retirées du total SEP de Treegram, qui les compte (COUNTED_IN).
     `include_ignored` sert aux synthèses : les règles ne voient jamais les codes ignorés.
     """
     s = surf if include_ignored else surf[~surf["ignored"]]
     if s.empty:
         return pd.DataFrame(index=pd.MultiIndex.from_tuples([], names=["building", "level"]))
+    totals = _detail_first(s).unstack("code")
+    # Toitures (COUNTED_IN) : retirées du total Treegram qui les contient, jamais d'un total fait de surfaces élémentaires.
+    from_node = s[s.code.isin(COUNTED_IN.values())].groupby(["building", "level", "code"])["kind"]         .agg(lambda k: not (k == "leaf").any())
+    inner = surf[surf.code.isin(COUNTED_IN.keys())]
+    if not inner.empty:
+        for (bld, lvl, code), area in _detail_first(inner).items():
+            host = COUNTED_IN[code]
+            if pd.isna(area) or host not in totals or not from_node.get((bld, lvl, host), False):
+                continue
+            v = totals.at[(bld, lvl), host]
+            if not pd.isna(v):
+                rest = float(v) - float(area)
+                totals.at[(bld, lvl), host] = 0.0 if rest <= COUNTED_IN_SNAP_REL * float(v) else rest
+    return totals
+
+
+def _detail_first(s: pd.DataFrame) -> pd.Series:
+    """Aire par (building, level, code) : somme des surfaces élémentaires, sinon total de niveau."""
     g = s.groupby(["building", "level", "code", "kind"])["area"].sum(min_count=1).unstack("kind")
     val = g["leaf"] if "leaf" in g else pd.Series(float("nan"), index=g.index)
     if "node" in g:
         val = val.where(val.notna(), g["node"])
-    return val.unstack("code")
+    return val
 
 
 def _exceeds(diff: float, ref: float, cfg: Config) -> bool:

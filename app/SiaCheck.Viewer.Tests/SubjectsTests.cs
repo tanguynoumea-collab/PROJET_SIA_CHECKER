@@ -348,3 +348,55 @@ public class CorrectionPieceTests
         Assert.Contains("morceau", JsonSerializer.Serialize(c));                 // rendu tel quel au moteur
     }
 }
+
+public class ProjectStatusTests
+{
+    [Fact]
+    public void Registry_creates_projects_in_progress_and_keeps_the_history()
+    {
+        using var tmp = new TempDir();
+        var reg = new ProjectRegistry(Path.Combine(tmp.Path, "projets.json"));
+        var r = reg.Touch(tmp.Path + "\\", "L OREE", DateTime.Today, 135);
+        Assert.Equal(ProjectStatus.InProgress, r.Status);
+        reg.SetStatus(tmp.Path, ProjectStatus.Done, "td");
+        Assert.Equal(ProjectStatus.Done, reg.StatusOf(tmp.Path.ToUpperInvariant()));     // même dossier, autre écriture
+        reg.Touch(tmp.Path, "L OREE", DateTime.Today, 12);                                // réanalyse : le statut reste
+        var saved = reg.Find(tmp.Path)!;
+        Assert.Equal(ProjectStatus.Done, saved.Status);
+        Assert.Equal(12, saved.IssueCount);
+        Assert.Equal([ProjectStatus.InProgress, ProjectStatus.Done], saved.History.Select(h => h.Status));
+        // Format lu par n8n : codes stables et libellé
+        var p = System.Text.Json.JsonDocument.Parse(File.ReadAllText(reg.FilePath)).RootElement.GetProperty("Projects")[0];
+        Assert.Equal("traite", p.GetProperty("Status").GetString());
+        Assert.Equal("Traité", p.GetProperty("StatusLabel").GetString());
+        reg.Forget(tmp.Path);
+        Assert.Null(reg.Find(tmp.Path));
+    }
+
+    [Fact]
+    public async Task Toggle_asks_before_marking_done_with_work_left()
+    {
+        using var tmp = new TempDir();
+        var shell = new FakeShell();
+        var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), new AppSettings(), enginePath: null)
+        {
+            AiSearchBaseDir = tmp.Path,
+        };
+        vm.LoadDocument(tmp.Path, SubjectFixture.Doc());
+        Assert.False(vm.IsProjectDone);
+        Assert.Equal("En traitement", vm.ProjectStatusLabel);
+        Assert.True(vm.OpenIssuesToReview + vm.UndecidedCorrections > 0);
+
+        shell.ConfirmAnswer = false;
+        await vm.ToggleProjectStatusCommand.ExecuteAsync(null);
+        Assert.False(vm.IsProjectDone);                                                   // annulé
+
+        shell.ConfirmAnswer = true;
+        await vm.ToggleProjectStatusCommand.ExecuteAsync(null);
+        Assert.True(vm.IsProjectDone);
+        Assert.Equal(ProjectStatus.Done, new ProjectRegistry(new AppPaths(tmp.Path, tmp.Path).ProjectsFile).StatusOf(tmp.Path));
+
+        await vm.ToggleProjectStatusCommand.ExecuteAsync(null);                           // retour sans question
+        Assert.False(vm.IsProjectDone);
+    }
+}

@@ -71,12 +71,26 @@
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="160" />
+                                                <ColumnDefinition Width="104" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Style="{StaticResource TextSubtitle}" Text="{Binding Name}" />
-                                            <TextBlock Grid.Column="1" Style="{StaticResource TextCaption}" Margin="8,0" Text="{Binding Path}" />
-                                            <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}">
+                                            <TextBlock Grid.Column="1" Margin="8,0" Text="{Binding StatusLabel}" ToolTip="Statut du projet">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource TextCaption}">
+                                                        <Setter Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsDone}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource BrushStatusSeen}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}" Margin="8,0" Text="{Binding Path}"
+                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" />
+                                            <TextBlock Grid.Column="3" Style="{StaticResource TextCaption}">
                                                 <Run Text="{Binding IssueCount, Mode=OneWay}" /><Run Text=" points · " /><Run Text="{Binding LastAnalysis, StringFormat=dd.MM.yyyy, Mode=OneWay}" />
                                             </TextBlock>
                                         </Grid>
@@ -140,6 +154,52 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Style="{StaticResource TextTitle}" Text="{Binding ProjectName}" VerticalAlignment="Center" />
+                        <!-- Statut du projet (registre projets.json, lu par n8n) : un clic bascule en traitement / traité -->
+                        <Button Style="{StaticResource RowButton}" Padding="0" Margin="12,0,0,0" VerticalAlignment="Center"
+                                Command="{Binding ToggleProjectStatusCommand}" ToolTip="{Binding ProjectStatusTooltip}"
+                                AutomationProperties.Name="{Binding ProjectStatusLabel}">
+                            <Border CornerRadius="10" BorderThickness="1" Padding="8,2">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource BrushVerdictWarning}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsProjectDone}" Value="True">
+                                                <Setter Property="BorderBrush" Value="{DynamicResource BrushStatusSeen}" />
+                                                <Setter Property="Background" Value="{DynamicResource BrushStatusSeen}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon FontSize="12">
+                                        <ui:SymbolIcon.Style>
+                                            <Style TargetType="ui:SymbolIcon">
+                                                <Setter Property="Symbol" Value="ArrowSync16" />
+                                                <Setter Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsProjectDone}" Value="True">
+                                                        <Setter Property="Symbol" Value="Checkmark16" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource BrushOnAccent}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ui:SymbolIcon.Style>
+                                    </ui:SymbolIcon>
+                                    <TextBlock Margin="4,0,0,0" FontSize="12" Text="{Binding ProjectStatusLabel}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsProjectDone}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource BrushOnAccent}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+                        </Button>
                         <TextBlock Style="{StaticResource TextCaption}" Margin="16,0,0,0" VerticalAlignment="Center" MaxWidth="240" TextTrimming="CharacterEllipsis"
                                    Text="{Binding ProjectDir}" ToolTip="{Binding ProjectDir}" />
                         <TextBlock Style="{StaticResource TextCaption}" Margin="16,0,0,0" VerticalAlignment="Center" Text="{Binding AnalysedAt}" />

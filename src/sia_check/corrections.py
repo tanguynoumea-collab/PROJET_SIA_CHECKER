@@ -205,6 +205,27 @@ def _descends(cfg: Config | None, code: str, ancestor: str) -> bool:
     return False
 
 
+def _counted_in(cfg: Config | None, code, host) -> bool:
+    """`code` est-il dans le total de niveau Treegram de `host` (sous-catégorie, ou toiture SPT dans la SEP) ?"""
+    return code == host or _descends(cfg, code, host) or rules.COUNTED_IN.get(code) == host
+
+
+def _shift_host(df: pd.DataFrame, r, before, after, area: float, cfg: Config | None) -> None:
+    """Une surface élémentaire passe de `before` à `after` (None : exclue) : le total Treegram qui comptait une toiture
+    (rules.COUNTED_IN) garde son aire tant qu'elle y reste, la perd quand elle sort de sa famille, et inversement."""
+    for host in set(rules.COUNTED_IN.values()):
+        was = before is not None and _counted_in(cfg, before, host)
+        now = after is not None and _counted_in(cfg, after, host)
+        roof = next((c for c in (before, after) if rules.COUNTED_IN.get(c) == host), None)
+        if roof is None or was == now:
+            continue
+        # un total de niveau doublé par ses pièces ne compte pas dans la déduction (le détail fait foi)
+        if r.kind == "node" and ((df.kind == "leaf") & (df.building == r.building) & (df.level == r.level)
+                                 & (df.category == roof) & ~df.excluded).any():
+            continue
+        _shift_node(df, r.building, r.level, host, area if now else -area)
+
+
 def _geometry(c: dict) -> dict | None:
     return {"polygone": c["polygone"], "z": c.get("z")} if isinstance(c.get("polygone"), dict) else None
 
@@ -215,7 +236,7 @@ def _cut(df: pd.DataFrame, i, c: dict) -> None:
         df.at[i, CUTS_COLUMN] = [*(df.at[i, CUTS_COLUMN] or []), c["polygone"]]
 
 
-def _create(df: pd.DataFrame, c: dict) -> tuple[pd.DataFrame, int, float]:
+def _create(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd.DataFrame, int, float]:
     """`créer` : nouvelle surface du niveau ; elle rejoint le détail de sa catégorie s'il existe."""
     b, lvl, code, aire = c["niveau"]["building"], c["niveau"]["level"], c["vers"], float(c["aire"])
     same = (df.building == b) & (df.level == lvl)
@@ -230,6 +251,7 @@ def _create(df: pd.DataFrame, c: dict) -> tuple[pd.DataFrame, int, float]:
     new[GEOMETRY_COLUMN] = _geometry(c)
     if new["kind"] == "leaf":
         _shift_node(df, b, lvl, code, aire)
+    _shift_host(df, pd.Series(new), None, code, aire, cfg)
     return pd.concat([df, pd.DataFrame([new])], ignore_index=True), 1, aire
 
 
@@ -237,7 +259,7 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
     """Applique une correction ; renvoie (surfaces, nombre de surfaces touchées, m² déplacés ou modifiés)."""
     op, cid = c["op"], c["id"]
     if op == "créer":
-        return _create(df, c)
+        return _create(df, c, cfg)
     idx = df.index[_target(df, c["cible"])]
     partial = op == "exclure" and c.get("aire") is not None
     if (op in ("découper", "remodeler") or partial) and len(idx) != 1:
@@ -253,6 +275,7 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
             raise _Refuse(f"aire exclue {aire:.2f} m² > aire de la surface {float(r.area or 0):.2f} m²")
         if r.kind == "leaf":
             _shift_node(df, r.building, r.level, r.category, -aire)
+        _shift_host(df, r, r.category, None, aire, cfg)
         df.loc[i, "area"] = float(r.area or 0) - aire
         _cut(df, i, c)
         moved = aire
@@ -262,6 +285,8 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
             if r.kind == "leaf" and r.category != c["vers"]:
                 _shift_node(df, r.building, r.level, r.category, -(r.area or 0))
                 _shift_node(df, r.building, r.level, c["vers"], r.area or 0)
+            if r.category != c["vers"]:
+                _shift_host(df, r, r.category, c["vers"], float(r.area or 0), cfg)
             moved += float(r.area or 0)
         df.loc[idx, "category"] = c["vers"]
     elif op == "exclure":
@@ -269,6 +294,7 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
             r = df.loc[i]
             if r.kind == "leaf":
                 _shift_node(df, r.building, r.level, r.category, -(r.area or 0))
+            _shift_host(df, r, r.category, None, float(r.area or 0), cfg)
             moved += float(r.area or 0)
         df.loc[idx, "excluded"] = True
     elif op == "remodeler":
@@ -282,6 +308,8 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
         if r.kind == "leaf":   # le total de niveau perd l'ancienne surface et gagne la nouvelle
             _shift_node(df, r.building, r.level, r.category, -float(r.area or 0))
             _shift_node(df, r.building, r.level, to, aire)
+        _shift_host(df, r, r.category, None, float(r.area or 0), cfg)
+        _shift_host(df, r, None, to, aire, cfg)
         moved = abs(aire - float(r.area or 0))
         df.loc[i, "area"] = aire
         df.loc[i, "category"] = to
@@ -292,6 +320,8 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
             delta = float(c["aire"]) - float(r.area or 0)
             if r.kind == "leaf":
                 _shift_node(df, r.building, r.level, r.category, delta)
+            _shift_host(df, r, r.category, None, float(r.area or 0), cfg)
+            _shift_host(df, r, None, r.category, float(c["aire"]), cfg)
             moved += abs(delta)
         df.loc[idx, "area"] = float(c["aire"])
     elif op == "découper":
@@ -300,7 +330,8 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
         aire = float(c["aire"])
         if aire > float(r.area or 0) + 1e-6:
             raise _Refuse(f"aire découpée {aire:.2f} m² > aire de la surface {float(r.area or 0):.2f} m²")
-        inside = _descends(cfg, c["vers"], r.category)   # classée dans la cible : la cible garde son aire
+        # classée dans la cible (ou toiture SPT prise sur la SEP, que Treegram y compte) : la cible garde son aire
+        inside = _descends(cfg, c["vers"], r.category) or rules.COUNTED_IN.get(c["vers"]) == r.category
         if not inside:
             df.loc[i, "area"] = float(r.area or 0) - aire
         new = r.copy()
@@ -316,6 +347,8 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
         if (geo := _geometry(c)) is not None:
             new[GEOMETRY_COLUMN] = {**geo, "dans": str(r["id"])}
         _cut(df, i, c)
+        if not inside:
+            _shift_host(df, r, r.category, c["vers"], aire, cfg)
         if r.kind == "leaf" and not inside:   # l'aire quitte le total de niveau de la cible
             _shift_node(df, r.building, r.level, r.category, -aire)
         if new["kind"] == "leaf":   # et rejoint celui de sa nouvelle catégorie

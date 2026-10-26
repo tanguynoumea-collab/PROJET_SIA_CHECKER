@@ -13,6 +13,9 @@ public sealed class AppPaths(string roamingRoot, string localRoot)
 
     public string SettingsFile => Path.Combine(roamingRoot, "settings.json");
 
+    /// <summary>Registre des projets et de leur statut (en traitement / traité) : lu par les automatisations (n8n).</summary>
+    public string ProjectsFile => Path.Combine(roamingRoot, "projets.json");
+
     /// <summary>Statuts et commentaires : suivent l'utilisateur (profil itinérant).</summary>
     public string ReviewFile(string projectDir) => Path.Combine(roamingRoot, "reviews", $"{Slug(projectDir)}.review.json");
 

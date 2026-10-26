@@ -71,11 +71,15 @@ def test_known_anomaly_ground_sep(loree):
 
 
 @needs_tgm
-def test_known_anomaly_roof_sep(loree):
+def test_roof_sep_counted_as_spt(loree):
+    # Treegram compte les toitures (SPT) dans la SEP du niveau : retirées, il ne reste ni SEP de toiture ni toit
+    # d'attique en R3 (E09 N04 : 367,40 − 200,55 = SEU 125,22 + SED 41,35).
     _, res = loree
     roofs = {(b, "Toiture") for b in BUILDINGS}
-    assert failing(res, "A2") == roofs
-    assert roofs <= failing(res, "R3")
+    assert not failing(res, "A2")
+    assert not roofs & failing(res, "R3")
+    assert res.totals.at[("E09", "Toiture"), "SEP"] == 0
+    assert abs(res.totals.at[("E09", "N04"), "SEP"] - 166.85) < 0.01
 
 
 @needs_tgm
@@ -142,7 +146,8 @@ def test_mdp_from_blank_template(loree, tmp_path):
 
 @needs_tgm
 def test_corrections_s1_s2(loree):
-    # S2 : SEP des niveaux Toiture exclues ; S1 : 1 800 m² de la SEP B03 N00 (dalle sur sous-sol) découpés en SA.
+    # S2 : SEP des niveaux Toiture exclues (déjà sans effet : la SPT les retire) ; S1 : 1 800 m² de la SEP B03 N00
+    # (dalle sur sous-sol) découpés en SA.
     from sia_check import config, corrections
     cfg = config.load(Path(__file__).resolve().parents[1] / "config.yaml")
     df, _ = loree
@@ -155,7 +160,7 @@ def test_corrections_s1_s2(loree):
     applied, before, after = corrections.run(df, journal, cfg)
     assert applied.log.set_index("id").loc["s2", "surfaces"] == 9
     toit = lambda r: {x.rule for x in r.failing.itertuples() if x.level == "Toiture"}  # noqa: E731
-    assert {"R3", "A2"} <= toit(before) and not toit(after) & {"R3", "A2"}
+    assert not toit(before) & {"R3", "A2"} and not toit(after) & {"R3", "A2"}
     r3 = lambda r: r.residuals.query("rule == 'R3' and building == 'B03' and level == 'N00'").diff_m2.iloc[0]  # noqa: E731
     assert r3(before) - r3(after) == pytest.approx(1800.0)
     assert not (after.residuals.query("rule == 'R4' and category == 'ST'")).size
@@ -170,7 +175,7 @@ def test_subjects_without_ai(loree):
     df, res = loree
     doc = viewer.build(res, cfg, geom.read_cache(LOREE), "L OREE", [str(TGM)])
     sj = {s["id"]: s for s in sujets.build(doc, cfg)["subjects"]}
-    assert sj["toitures"]["m2"] == pytest.approx(7279, abs=5)
+    assert "toitures" not in sj                       # SEP de toiture retirée par la SPT : plus de sujet
     b03 = next(c for c in sj["abords"]["corrections"] if c["id"] == "abords-B03-N00")   # miettes fondues : un morceau
     assert b03["aire"] == pytest.approx(1812.6, abs=1) and b03["polygone"]
     e09 = [c for c in sj["abords"]["corrections"] if c.get("groupe") == "abords-E09-N00"]
@@ -182,7 +187,7 @@ def test_subjects_without_ai(loree):
     applied, before, after = corrections.run(df, journal, cfg)
     assert set(applied.log.application) == {corrections.APPLIED}
     sep = lambda r: r.residuals.query("rule == 'R3' and building == '*'").diff_m2.iloc[0]  # noqa: E731
-    assert sep(before) > 15000 and sep(after) < 300          # restent les petits écarts d'étage (S4, S5)
+    assert sep(before) > 7000 and sep(after) < 300          # restent les petits écarts d'étage (S4, S5)
 
 
 @needs_tgm
@@ -195,13 +200,15 @@ def test_review_v2_reorients_subjects(loree):
     doc = viewer.build(res, cfg, geom.read_cache(LOREE), "L OREE", [str(TGM)])
     rv = sujets.load_review(Path(__file__).resolve().parents[1] / "docs/revue-ia/L_OREE_2026-10-22.verdicts.json")
     out = sujets.apply_review(sujets.build(doc, cfg), rv, {s["id"] for s in doc["surfaces"]})
-    # 31 décisions de la revue ; celles d'un niveau découpé en morceaux valent pour chaque morceau.
-    assert out["revue"]["problemes"] == [] and out["revue"]["decisions"] >= 31
+    # 31 décisions de la revue ; celles d'un niveau découpé en morceaux valent pour chaque morceau. Les toits d'attique
+    # de S2 sont depuis retirés de la SEP par leur SPT : leurs propositions n'existent plus.
+    assert {p["sujet"] for p in out["revue"]["problemes"]} <= {"S2"}
     # Seuls les agrégats de la revue, que les niveaux détaillent, ne sont plus des points (rules.covered_aggregates).
-    assert all("|*||" in k for k in out["revue"]["points_inconnus"])
+    # Les points de toiture (A2, R3 des niveaux Toiture et des attiques) sont résolus par la SPT.
+    assert all("|*||" in k or k.endswith("||SEP") for k in out["revue"]["points_inconnus"])
     by = {s["id"]: s for s in out["subjects"]}
     levels = lambda sid: {c.get("groupe") or c["id"] for c in by[sid]["corrections"]}   # noqa: E731
-    assert len(levels("S1")) == 9 and len(levels("S2")) == 22
+    assert len(levels("S1")) == 9 and not by.get("S2", {}).get("corrections")
     assert len(by["S1"]["corrections"]) == 12                     # E09 N00 en trois morceaux, I14 N00 en deux
     assert len(by["S6"]["points"]) == 71 and not by["S6"]["corrections"]
     j = sujets.journal(out)

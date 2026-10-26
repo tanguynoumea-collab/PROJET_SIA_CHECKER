@@ -5,6 +5,7 @@ using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SiaCheck.Viewer.Models;
+using SiaCheck.Viewer.Scene;
 using SiaCheck.Viewer.Services;
 
 namespace SiaCheck.Viewer.ViewModels;
@@ -261,8 +262,40 @@ public sealed partial class MainViewModel
         _shell.Notify($"{targets.Count} point{(targets.Count > 1 ? "s" : "")} du sujet passé{(targets.Count > 1 ? "s" : "")} {label}.");
     }
 
+    /// <summary>
+    /// 3D à jour sans attendre l'analyse : chaque correction acceptée, pas encore appliquée telle quelle, est montrée
+    /// comme elle s'appliquera. Une surface déjà produite par une version antérieure de la correction (id « …#id »)
+    /// est masquée, son nouveau tracé la remplace.
+    /// </summary>
+    private void UpdateScenePreview()
+    {
+        if (Scene is null || Document is null) return;
+        var items = new List<ScenePreview>();
+        foreach (var c in Subjects.SelectMany(s => s.Corrections).Where(c => c.State == CorrectionState.Accepted && !c.IsOrphan))
+        {
+            var m = c.Model;
+            var targets = m.TargetIds;
+            var former = Document.Surfaces.Where(s => s.Id.EndsWith("#" + m.Id, StringComparison.Ordinal)).Select(s => s.Id).ToList();
+            var targetCode = targets.Select(id => _surfaceById.GetValueOrDefault(id)?.DisplayCode).FirstOrDefault(x => x is not null);
+            var on = c.CreatedOn ?? (_surfaceById.GetValueOrDefault(targets.FirstOrDefault() ?? "") is { Building: { } b, Level: { } l } ? (b, l) : null);
+            ScenePreview? p = m.Op switch
+            {
+                "exclure" when m.Area is null => new(m.Id, targets, [], null, null, null, null),
+                "reclasser" when m.To is not null => new(m.Id, [], targets, m.To, null, null, null),
+                "remodeler" when m.Trace is not null => new(m.Id, [.. targets, .. former], [], m.To ?? targetCode, m.Trace, on?.Item1, on?.Item2),
+                "remodeler" when m.To is not null => new(m.Id, [], targets, m.To, null, null, null),
+                "créer" when m.Trace is not null => new(m.Id, former, [], m.To, m.Trace, on?.Item1, on?.Item2),
+                "découper" when m.Trace is not null => new(m.Id, former, [], m.To, m.Trace, on?.Item1, on?.Item2, Lift: true),
+                _ => null,
+            };
+            if (p is not null) items.Add(p);
+        }
+        Scene.SetPreview(items);
+    }
+
     private void OnCorrectionsChanged()
     {
+        UpdateScenePreview();
         OnPropertyChanged(nameof(PendingCorrections));
         OnPropertyChanged(nameof(HasPendingCorrections));
         OnPropertyChanged(nameof(AnalyseLabel));

@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using SiaCheck.Viewer.Models;
+using SiaCheck.Viewer.Scene;
 using SiaCheck.Viewer.Services;
 using SiaCheck.Viewer.ViewModels;
 
@@ -290,5 +291,31 @@ public class SurfaceEditTests
         var deleted = vm.SelectedCorrection!;
         Assert.Equal(("exclure", CorrectionDecision.Accepted), (deleted.Model.Op, deleted.Decision));
         Assert.Equal(3, vm.PendingCorrections);                          // à appliquer par Analyser
+    }
+}
+
+public class ScenePreviewTests
+{
+    [Fact]
+    public async Task Decided_edits_show_in_the_3D_before_the_analysis()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        var scene = vm.Scene!;
+        var before = scene.SurfacesOfLevel("ERR", "N00").ToHashSet();
+        Assert.Contains("err-n00-sep", before);
+
+        vm.SelectSurface("err-n00-sep");
+        await vm.DeleteSelectedSurfaceCommand.ExecuteAsync(null);         // acceptée : masquée tout de suite
+        Assert.DoesNotContain("err-n00-sep", scene.SurfacesOfLevel("ERR", "N00"));
+
+        vm.OpenCreateSurfaceCommand.Execute(null);
+        vm.TraceTarget = "SUS";
+        Plan.Rectangle(vm.Trace!, 0, 0, 2, 3);
+        vm.SaveTraceCommand.Execute(null);                                 // nouvelle surface : ajoutée à son niveau
+        Assert.Contains(scene.SurfacesOfLevel("ERR", "N00"), SceneController.IsPreview);
+
+        vm.SelectedCorrection!.Decision = CorrectionDecision.Rejected;    // rejetée : l'aperçu disparaît
+        Assert.DoesNotContain(scene.SurfacesOfLevel("ERR", "N00"), SceneController.IsPreview);
     }
 }

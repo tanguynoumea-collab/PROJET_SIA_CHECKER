@@ -23,6 +23,13 @@ namespace SiaCheck.Viewer.Scene;
 /// (sélection de sa correction). Le tracé d'une correction se dessine en surimpression, à l'accent :
 /// aplat translucide et liseré, posés sur la surface visée.
 /// </summary>
+/// <summary>
+/// Aperçu d'une correction décidée que l'analyse n'a pas encore appliquée : surfaces masquées (exclusion, emprise
+/// remplacée), recolorées (reclassement) et surface ajoutée (tracé d'une emprise, d'une création ou d'une découpe).
+/// </summary>
+public sealed record ScenePreview(string Id, IReadOnlyList<string> Hide, IReadOnlyList<string> Recolor, string? Code,
+                                  TraceMesh? Mesh, string? Building, string? Level, bool Lift = false);
+
 public sealed class SceneController
 {
     private const double SlabThickness = 0.15;  // m : dalle d'une surface élémentaire
@@ -37,6 +44,8 @@ public sealed class SceneController
     private const double OverlayEdge = 0.35;    // m : hauteur du liseré du tracé
     private const byte OverlayAlpha = 0x55;     // aplat du tracé : accent à ~33 %
     private const byte PartAlpha = 0xD0;        // part isolée : aplat presque opaque sur la surface en fantôme
+    private const double PreviewLift = 0.03;    // m : part découpée posée sur sa surface d'origine (aperçu)
+    private const string PreviewPrefix = "aperçu:";
 
     public Model3DGroup Root { get; } = new();
 
@@ -50,6 +59,12 @@ public sealed class SceneController
     private readonly HashSet<string> _hidden = new(StringComparer.Ordinal);
 
     private HashSet<string> _visibleCodes = [];
+    /// <summary>Codes des surfaces lues : un code apparu par l'aperçu (SA d'une découpe…) n'a pas de calque, il reste visible.</summary>
+    private HashSet<string> _baseCodes = [];
+    private readonly HashSet<string> _previewHidden = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _previewRecolored = new(StringComparer.Ordinal);   // id -> code d'origine
+    private readonly HashSet<string> _previewAdded = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _previewLifted = new(StringComparer.Ordinal);
     private HashSet<string>? _buildings;          // null = tous
     private string? _level;                       // null = tous
     private HashSet<string>? _focus;
@@ -115,9 +130,8 @@ public sealed class SceneController
         {
             var node = new LevelNode(grp.Key.Building, grp.Key.Level) { MinZ = grp.Min(s => s.Points.Min(p => p.Z)) };
             node.Group.Transform = node.Translate;
-            foreach (var byCode in grp.Where(s => !_hidden.Contains(s.Id)).GroupBy(s => s.Code).OrderBy(g => g.Key))
-                node.Batches.Add(MakeBatch(byCode.Key, byCode, lift: 0));
             _levels[grp.Key] = node;
+            RebuildBatches(node);
         }
         foreach (var bld in _levels.Values.GroupBy(n => n.Building))
         {
@@ -126,8 +140,72 @@ public sealed class SceneController
                 n.Ordinal = ordinal++;
         }
         _visibleCodes = Shown.Select(s => s.Code).ToHashSet();
+        _baseCodes = _surfaces.Values.Select(s => s.Code).ToHashSet();
         Refresh();
     }
+
+    /// <summary>Lots de rendu d'un niveau : une catégorie par lot, les parts découpées de l'aperçu à part (surélevées).</summary>
+    private void RebuildBatches(LevelNode node)
+    {
+        foreach (var b in node.Batches) _byModel.Remove(b.Top);
+        node.Batches.Clear();
+        var shown = _surfaces.Values.Where(s => s.Building == node.Building && s.Level == node.Level && !_hidden.Contains(s.Id));
+        foreach (var grp in shown.GroupBy(s => (s.Code, Lifted: _previewLifted.Contains(s.Id))).OrderBy(g => g.Key.Code))
+            node.Batches.Add(MakeBatch(grp.Key.Code, grp, lift: grp.Key.Lifted ? PreviewLift : 0));
+    }
+
+    // ------------------------------------------------------------------ aperçu des corrections
+
+    /// <summary>
+    /// Remplace l'aperçu des corrections : rétablit l'état lu, puis masque, recolore et ajoute ce que les corrections
+    /// décidées changeront à la prochaine analyse. Seuls les niveaux touchés sont reconstruits.
+    /// </summary>
+    public void SetPreview(IReadOnlyList<ScenePreview> items)
+    {
+        var touched = new HashSet<(string, string)>();
+        void Touch(string id) { if (_surfaces.TryGetValue(id, out var g)) touched.Add((g.Building, g.Level)); }
+
+        foreach (var id in _previewHidden) { Touch(id); _hidden.Remove(id); }
+        _previewHidden.Clear();
+        foreach (var (id, code) in _previewRecolored) { Touch(id); _surfaces[id] = _surfaces[id] with { Code = code }; }
+        _previewRecolored.Clear();
+        foreach (var id in _previewAdded) { Touch(id); _surfaces.Remove(id); }
+        _previewAdded.Clear();
+        _previewLifted.Clear();
+
+        foreach (var p in items)
+        {
+            foreach (var id in p.Hide.Where(id => _surfaces.ContainsKey(id) && !_hidden.Contains(id)))
+            {
+                _hidden.Add(id);
+                _previewHidden.Add(id);
+                Touch(id);
+            }
+            if (p.Code is { } code)
+                foreach (var id in p.Recolor.Where(id => _surfaces.ContainsKey(id) && !_previewRecolored.ContainsKey(id)))
+                {
+                    _previewRecolored[id] = _surfaces[id].Code;
+                    _surfaces[id] = _surfaces[id] with { Code = code };
+                    Touch(id);
+                }
+            if (p is { Mesh: { Indices.Length: >= 3 } m, Code: { } c, Building: { } b, Level: { } l } && _levels.ContainsKey((b, l)))
+            {
+                var pts = new Point3D[m.Vertices.Length / 2];
+                for (var k = 0; k < pts.Length; k++) pts[k] = new Point3D(m.Vertices[2 * k], m.Vertices[2 * k + 1], m.Z);
+                var id = PreviewPrefix + p.Id;
+                _surfaces[id] = new SurfaceGeometry(id, b, l, c, pts, m.Indices);
+                _previewAdded.Add(id);
+                if (p.Lift) _previewLifted.Add(id);
+                touched.Add((b, l));
+            }
+        }
+        foreach (var key in touched)
+            if (_levels.TryGetValue(key, out var node)) RebuildBatches(node);
+        if (touched.Count > 0) Refresh();
+    }
+
+    /// <summary>Surface de l'aperçu (tracé d'une correction) : pas de fiche, ce n'est pas une surface lue.</summary>
+    public static bool IsPreview(string id) => id.StartsWith(PreviewPrefix, StringComparison.Ordinal);
 
     private Batch MakeBatch(string code, IEnumerable<SurfaceGeometry> surfaces, double lift)
     {
@@ -263,7 +341,7 @@ public sealed class SceneController
             foreach (var f in n.FocusBatches) { n.Group.Children.Add(f.Top); n.Group.Children.Add(f.Edges); }
             foreach (var o in n.Overlay) n.Group.Children.Add(o);
             if (FilterShows(n))
-                foreach (var b in n.Batches.Where(b => _visibleCodes.Contains(b.Code)))
+                foreach (var b in n.Batches.Where(b => _visibleCodes.Contains(b.Code) || !_baseCodes.Contains(b.Code)))
                 {
                     var top = _focus is null ? MaterialOf(b.Code, false) : _ghost;
                     var edge = _focus is null ? MaterialOf(b.Code, true) : _ghost;

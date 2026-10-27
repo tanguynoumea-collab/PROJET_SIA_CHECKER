@@ -54,7 +54,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<RecentItem> Recents { get; } = [];
     [ObservableProperty] private string? _projectDir;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasDocument), nameof(IsHome), nameof(IsReviewing))] private ViewerDocument? _document;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasDocument), nameof(IsHome), nameof(IsReviewing), nameof(ProjectName))] private ViewerDocument? _document;
     [ObservableProperty] private SceneController? _scene;
     [ObservableProperty] private SiaPalette? _palette;
     [ObservableProperty] private string? _homeError;
@@ -66,7 +66,9 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Espace de revue visible : un projet est ouvert et le dashboard n'est pas affiché par-dessus.</summary>
     public bool IsReviewing => HasDocument && !IsDashboard;
     public bool IsHome => Document is null && !IsDashboard;
-    public string ProjectName => Document?.Project ?? "";
+    /// <summary>Nom de la fiche projet, sinon celui du dossier Treegram.</summary>
+    public string ProjectName => Document is null ? ""
+        : ProjectDir is not null && _settings.FindMdpProject(ProjectDir)?.Name is { Length: > 0 } n ? n : Document.Project;
     public string AnalysedAt => Document is null ? "" : $"analysé le {File.GetLastWriteTime(_paths.AnalysisFile(ProjectDir!)):dd.MM HH:mm}";
     public bool CacheIsStale => Document?.Cache.Stale ?? false;
     public string CacheWarning => Document?.Cache is { } c && c.Stale
@@ -90,11 +92,114 @@ public sealed partial class MainViewModel : ObservableObject
     public bool IsBusy => IsAnalysing;
     public string[] AnalysisSteps { get; } = ["Lecture du .tgm", "Contrôles SIA 416", "Géométrie (cache VWR)"];
 
+    /// <summary>
+    /// Nouveau projet (Évolution 3.8) : l'explorateur pour choisir le dossier Treegram, comme avant, puis la fiche
+    /// (dossier prérempli, identité), puis l'analyse.
+    /// </summary>
     [RelayCommand]
-    private async Task OpenProjectAsync()
+    private async Task NewProjectAsync()
     {
         var dir = _shell.PickFolder("Dossier du projet Treegram (contient le fichier .tgm et le dossier VWR)", ProjectDir);
-        if (dir is not null) await OpenAsync(dir);
+        if (dir is null) return;
+        var initial = new ProjectSheet(ProjectFolder.Normalize(dir), new MdpProject { Name = Path.GetFileName(ProjectFolder.Normalize(dir)) });
+        var sheet = await _shell.AskProjectSheetAsync(initial, IdentityLists, creating: true, s => CheckSheet(s, null));
+        if (sheet is null || Refused(CheckSheet(sheet, null))) return;
+        var folderName = Path.GetFileName(ProjectFolder.Normalize(sheet.Folder));
+        if (sheet.Identity.Name.Length == 0) sheet.Identity.Name = folderName;
+        _settings.SetMdpProject(sheet.Folder, sheet.Identity);
+        _settings.AddIfMissing(sheet.Folder, folderName);
+        _settings.Save(_paths);
+        await OpenAsync(sheet.Folder);
+    }
+
+    /// <summary>Fiche d'un projet actif (✎) ou, sans paramètre, du projet ouvert (clic sur son nom).</summary>
+    [RelayCommand]
+    private Task EditProjectSheetAsync(RecentItem? recent) =>
+        recent is not null ? EditSheetAsync(recent.Path, recent.Name)
+        : ProjectDir is not null ? EditSheetAsync(ProjectDir, Document?.Project ?? Path.GetFileName(ProjectDir))
+        : Task.CompletedTask;
+
+    /// <summary>
+    /// Édite la fiche d'un projet ; un nouveau dossier emporte statuts, commentaires, corrections et revues IA, et le
+    /// projet ouvert est rouvert dessus (réanalyse). Renvoie la fiche enregistrée, null si annulée ou refusée.
+    /// </summary>
+    internal async Task<ProjectSheet?> EditSheetAsync(string path, string folderName)
+    {
+        var known = KnownIdentity(path, folderName);
+        var sheet = await _shell.AskProjectSheetAsync(new ProjectSheet(ProjectFolder.Normalize(path), known), IdentityLists,
+                                                      creating: false, s => CheckSheet(s, path));
+        if (sheet is null || Refused(CheckSheet(sheet, path))) return null;
+        if (sheet.Identity.Name.Length == 0) sheet.Identity.Name = known.Name;
+        var moved = !ProjectFolder.Same(path, sheet.Folder);
+        if (moved)
+        {
+            if (!await _shell.ConfirmAsync($"Changer le dossier de « {sheet.Identity.Name} » ?",
+                    "Les statuts, commentaires et décisions de corrections suivent le projet. Le projet sera réanalysé : " +
+                    "une correction qui vise une surface absente du nouveau .tgm le signalera.", "Changer de dossier", "Annuler"))
+                return null;
+            try
+            {
+                _paths.MoveProject(path, sheet.Folder);
+                _registry.Move(path, sheet.Folder);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _shell.Notify($"Changement de dossier impossible : {ex.Message}", isError: true);
+                return null;
+            }
+            _settings.Move(path, sheet.Folder);
+        }
+        _settings.SetMdpProject(sheet.Folder, sheet.Identity);
+        _settings.Save(_paths);
+        var isOpen = HasDocument && ProjectDir is not null && ProjectFolder.Same(ProjectDir, path);
+        if (isOpen && moved)
+        {
+            GoHome();
+            await OpenAsync(sheet.Folder);
+        }
+        else if (isOpen) OnPropertyChanged(nameof(ProjectName));
+        else FillRecents();
+        _shell.Notify(moved ? $"« {sheet.Identity.Name} » pointe sur son nouveau dossier." : $"Fiche de « {sheet.Identity.Name} » enregistrée.");
+        return sheet;
+    }
+
+    /// <summary>
+    /// Ce que la fiche affiche sous ses champs : dossier Treegram valide et libre (<paramref name="current"/> = dossier
+    /// actuel du projet édité, qu'il garde le droit d'occuper), ID déjà porté par un autre projet actif.
+    /// </summary>
+    internal SheetCheck CheckSheet(ProjectSheet s, string? current)
+    {
+        bool Mine(string p) => current is not null && ProjectFolder.Same(p, current);
+        var c = ProjectFolder.Check(s.Folder);
+        if (c.FolderOk && !Mine(s.Folder) && _settings.Recents.FirstOrDefault(r => ProjectFolder.Same(r.Path, s.Folder)) is { } taken)
+            c = c with { FolderMessage = $"Ce dossier est déjà celui de « {DisplayName(taken)} ».", FolderOk = false };
+        var id = s.Identity.Id.Trim();
+        if (id.Length > 0 && _settings.Recents.FirstOrDefault(r => !Mine(r.Path) && !ProjectFolder.Same(r.Path, s.Folder)
+                                                                    && _settings.FindMdpProject(r.Path)?.Id.Trim() == id) is { } twin)
+            c = c with { IdWarning = $"L'ID {id} est aussi celui de « {DisplayName(twin)} »." };
+        return c;
+    }
+
+    /// <summary>Fiche validée avec un dossier refusé (sans .tgm, déjà pris) : rien n'est enregistré, la raison est dite.</summary>
+    private bool Refused(SheetCheck c)
+    {
+        if (c.CanSave) return false;
+        _shell.Notify($"Fiche non enregistrée : {c.FolderMessage}", isError: true);
+        return true;
+    }
+
+    private string DisplayName(RecentProject r) => _settings.FindMdpProject(r.Path)?.Name is { Length: > 0 } n ? n : r.Name;
+
+    /// <summary>Identité connue d'un projet : sa fiche, complétée par le MDP de la base de même ID.</summary>
+    private MdpProject KnownIdentity(string path, string folderName)
+    {
+        var known = _settings.FindMdpProject(path) is { } f
+            ? new MdpProject { Id = f.Id, Name = f.Name, Canton = f.Canton, Commune = f.Commune, Typologie = f.Typologie,
+                               Intervention = f.Intervention, Phase = f.Phase }
+            : new MdpProject { Name = folderName };
+        if (BaseProject(known.Id) is { } inBase) FillFromBase(known, inBase);
+        if (known.Name.Length == 0) known.Name = folderName;
+        return known;
     }
 
     [RelayCommand]
@@ -130,7 +235,12 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task OpenAsync(string dir)
     {
         HomeError = null;
-        var tgms = Directory.Exists(dir) ? Directory.GetFiles(dir, "*.tgm") : [];
+        if (!Directory.Exists(dir))
+        {
+            HomeError = $"Dossier introuvable : {dir}. Repointez le projet sur son dossier avec ✎ (fiche projet).";
+            return;
+        }
+        var tgms = ProjectFolder.Tgms(dir);
         if (tgms.Length != 1)
         {
             HomeError = tgms.Length == 0
@@ -258,25 +368,26 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Fiche « Identité du projet » (ID, nom, typologie, canton…) : l'ID relie toutes les tables du MDP, la typologie et
-    /// le canton rangent le projet dans le benchmark. Demandée à chaque export, préremplie avec la dernière réponse pour
-    /// ce dossier, complétée par le MDP de la base de même ID ; null si annulée ou incomplète pour cet usage.
+    /// Identité du MDP (ID, nom, typologie, canton…), prise dans la fiche projet sans rien redemander (Évolution 3.8).
+    /// S'il manque un champ pour cet usage (l'ID pour un MDP, les champs * pour la base), la fiche s'ouvre ; null si
+    /// elle est annulée, reste incomplète ou change de dossier (le projet est alors rouvert).
     /// </summary>
     internal async Task<MdpProject?> AskMdpProjectAsync(string projectDir, string folderName, IdentityMode mode)
     {
-        var known = _settings.FindMdpProject(projectDir) ?? new MdpProject { Name = folderName };
-        if (BaseProject(known.Id) is { } inBase) FillFromBase(known, inBase);
-        if (known.Name.Length == 0) known.Name = folderName;
-        var hrs = await _shell.AskIdentityAsync(known, IdentityLists, mode, mode == IdentityMode.Base ? "Exporter dans la base" : "Continuer");
-        if (hrs is null) return null;
-        if (ProjectIdentity.Missing(hrs, mode == IdentityMode.Base) is { Count: > 0 } missing)
+        var forBase = mode == IdentityMode.Base;
+        var hrs = KnownIdentity(projectDir, folderName);
+        if (ProjectIdentity.Missing(hrs, forBase).Count > 0)
         {
-            _shell.Notify($"Identité incomplète ({string.Join(", ", missing)}) : le MDP n'a pas été exporté.", isError: true);
+            var sheet = await EditSheetAsync(projectDir, folderName);
+            if (sheet is null || !ProjectFolder.Same(sheet.Folder, projectDir)) return null;
+            hrs = sheet.Identity;
+        }
+        if (ProjectIdentity.Missing(hrs, forBase) is { Count: > 0 } missing)
+        {
+            _shell.Notify($"Identité incomplète ({string.Join(", ", missing)}) : le MDP n'a pas été exporté. " +
+                          "Complétez la fiche projet (✎).", isError: true);
             return null;
         }
-        if (hrs.Name.Length == 0) hrs.Name = folderName;
-        _settings.SetMdpProject(projectDir, hrs);
-        _settings.Save(_paths);
         return hrs;
     }
 

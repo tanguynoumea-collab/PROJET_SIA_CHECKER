@@ -231,7 +231,8 @@ public class ExtrusionTests
 internal sealed class FakeShell : IShell
 {
     public List<string> Notes { get; } = [];
-    public string? PickFolder(string title, string? initial) => null;
+    public string? FolderAnswer { get; set; }
+    public string? PickFolder(string title, string? initial) => FolderAnswer;
     public string? PickSaveFile(string title, string fileName, string filter) => null;
     public string? PickOpenFile(string title, string filter) => null;
     public void Notify(string message, bool isError = false) => Notes.Add(message);
@@ -246,6 +247,19 @@ internal sealed class FakeShell : IShell
     {
         IdentityMode = mode;
         return Task.FromResult(IdentityAnswer);
+    }
+    /// <summary>Réponse de la fiche projet : appelée avec la fiche proposée (null = annuler).</summary>
+    public Func<ProjectSheet, ProjectSheet?> SheetAnswer { get; set; } = _ => null;
+    public ProjectSheet? SheetShown { get; private set; }
+    public SheetCheck? LastCheck { get; private set; }
+    public int SheetCount { get; private set; }
+    public Task<ProjectSheet?> AskProjectSheetAsync(ProjectSheet initial, IdentityLists lists, bool creating, Func<ProjectSheet, SheetCheck> check)
+    {
+        SheetShown = initial;
+        SheetCount++;
+        var answer = SheetAnswer(initial);
+        LastCheck = answer is null ? null : check(answer);
+        return Task.FromResult(answer);
     }
     public void OpenFile(string path) { }
     public void Frame(Rect3D? bounds) { }

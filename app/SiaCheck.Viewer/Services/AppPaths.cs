@@ -53,6 +53,28 @@ public sealed class AppPaths(string roamingRoot, string localRoot)
         if (Directory.Exists(AiReviewDir(projectDir))) Directory.Delete(AiReviewDir(projectDir), recursive: true);
     }
 
+    /// <summary>
+    /// Nouveau dossier Treegram d'un projet (fiche projet, Évolution 3.8) : statuts, commentaires, corrections et revues IA
+    /// suivent le projet ; l'analyse et ses caches sont jetés (le .tgm a changé : réanalyse).
+    /// </summary>
+    public void MoveProject(string oldDir, string newDir)
+    {
+        foreach (var (from, to) in new[] { (ReviewFile(oldDir), ReviewFile(newDir)), (CorrectionsFile(oldDir), CorrectionsFile(newDir)) })
+            if (File.Exists(from))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+                File.Move(from, to, overwrite: true);
+            }
+        if (Directory.Exists(AiReviewDir(oldDir)))
+        {
+            if (Directory.Exists(AiReviewDir(newDir))) Directory.Delete(AiReviewDir(newDir), recursive: true);
+            Directory.CreateDirectory(Path.GetDirectoryName(AiReviewDir(newDir))!);
+            Directory.Move(AiReviewDir(oldDir), AiReviewDir(newDir));
+        }
+        foreach (var f in new[] { AnalysisFile(oldDir), LogFile(oldDir), SurfacesCacheFile(oldDir), PreviewFile(oldDir) })
+            if (File.Exists(f)) File.Delete(f);
+    }
+
     /// <summary>Clé API Anthropic chiffrée (DPAPI, utilisateur courant) : locale, jamais dans le dépôt.</summary>
     public string ApiKeyFile => Path.Combine(localRoot, "anthropic-key.bin");
 

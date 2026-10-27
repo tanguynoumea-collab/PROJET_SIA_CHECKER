@@ -4,10 +4,22 @@ using SiaCheck.Viewer.Services;
 namespace SiaCheck.Viewer.ViewModels;
 
 /// <summary>Projet récent sur l'accueil, avec son statut (registre des projets).</summary>
-public sealed class RecentItem(RecentProject project, ProjectStatus status)
+public sealed class RecentItem(RecentProject project, ProjectStatus status, MdpProject? identity = null, bool exists = true)
 {
     public RecentProject Project { get; } = project;
+    /// <summary>Nom du dossier (repli du nom de la fiche, nommage des fichiers).</summary>
     public string Name => Project.Name;
+    public MdpProject? Identity { get; } = identity;
+    /// <summary>Nom de la fiche projet, sinon celui du dossier.</summary>
+    public string DisplayName => Identity?.Name is { Length: > 0 } n ? n : Project.Name;
+    public string IdText => Identity?.Id is { Length: > 0 } id ? id : "—";
+    public string TypologieText => ProjectIdentity.Short(Identity?.Typologie);
+    public string CantonText => Identity?.Canton is { Length: > 0 } c ? c : "—";
+    public bool FolderMissing { get; } = !exists;
+    /// <summary>Ce qui manque au projet : son dossier, sinon une partie de l'identité nécessaire au benchmark.</summary>
+    public string? Warning => FolderMissing ? "Dossier introuvable"
+        : Identity is null || ProjectIdentity.Missing(Identity, forBase: true).Count > 0 ? "Infos à compléter" : null;
+    public bool HasWarning => Warning is not null;
     public string Path => Project.Path;
     public int IssueCount => Project.IssueCount;
     public DateTime LastAnalysis => Project.LastAnalysis;
@@ -81,8 +93,11 @@ public sealed partial class MainViewModel
     private void FillRecents()
     {
         Recents.Clear();
-        foreach (var r in _settings.Recents.Where(r => System.IO.Directory.Exists(r.Path))
-                     .Select(r => new RecentItem(r, _registry.StatusOf(r.Path))).OrderBy(r => r.IsDone))
+        // Un dossier introuvable reste listé (signalé) : la fiche projet permet de le repointer
+        foreach (var r in _settings.Recents
+                     .Select(r => new RecentItem(r, _registry.StatusOf(r.Path), _settings.FindMdpProject(r.Path),
+                                                 System.IO.Directory.Exists(r.Path)))
+                     .OrderBy(r => r.IsDone))
             Recents.Add(r);
     }
 

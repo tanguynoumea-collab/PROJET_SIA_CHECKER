@@ -62,6 +62,26 @@ public sealed class AppSettings
         if (Recents.Count > MaxRecents) Recents.RemoveRange(MaxRecents, Recents.Count - MaxRecents);
     }
 
+    /// <summary>Nouveau dossier du projet (fiche projet) : il garde sa place dans les récents et son identité.</summary>
+    public void Move(string oldPath, string newPath)
+    {
+        oldPath = Normalize(oldPath);
+        newPath = Normalize(newPath);
+        Recents.RemoveAll(r => string.Equals(Normalize(r.Path), newPath, StringComparison.OrdinalIgnoreCase));
+        foreach (var r in Recents.Where(r => string.Equals(Normalize(r.Path), oldPath, StringComparison.OrdinalIgnoreCase)))
+            r.Path = newPath;
+        if (MdpProjects.Remove(oldPath, out var identity)) MdpProjects[newPath] = identity;
+    }
+
+    /// <summary>Projet créé avant sa première analyse : il apparaît dans les projets actifs dès sa création.</summary>
+    public void AddIfMissing(string path, string name)
+    {
+        path = Normalize(path);
+        if (Recents.Any(r => string.Equals(Normalize(r.Path), path, StringComparison.OrdinalIgnoreCase))) return;
+        Recents.Insert(0, new RecentProject { Path = path, Name = name });
+        if (Recents.Count > MaxRecents) Recents.RemoveRange(MaxRecents, Recents.Count - MaxRecents);
+    }
+
     /// <summary>Retire le projet des récents et oublie son identité MDP.</summary>
     public void Forget(string path)
     {

@@ -288,31 +288,153 @@ public class SubjectPointsTests
         Assert.Equal("1 faux positif", sc.PointsState);
     }
 
+    /// <summary>Dossier Treegram minimal : un .tgm (et, au choix, un cache VWR).</summary>
+    private static string TreegramFolder(TempDir tmp, string name, bool vwr = true)
+    {
+        var dir = Path.Combine(tmp.Path, name);
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, $"{name}.tgm"), "");
+        if (vwr) Directory.CreateDirectory(Path.Combine(dir, "VWR"));
+        return dir;
+    }
+
     [Fact]
-    public async Task Mdp_project_is_asked_and_remembered_per_folder()
+    public async Task Mdp_identity_comes_from_the_sheet_without_asking()
     {
         using var tmp = new TempDir();
-        var shell = new FakeShell { IdentityAnswer = new MdpProject { Id = "1778", Name = "L'Orée", Canton = "VD" } };
+        var dir = TreegramFolder(tmp, "L OREE");
+        var shell = new FakeShell();
+        var settings = new AppSettings();
+        settings.SetMdpProject(dir, new MdpProject { Id = "1778", Name = "L'Orée", Canton = "VD" });
+        var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
+        var hrs = await vm.AskMdpProjectAsync(dir + "/", "L OREE", IdentityMode.Export);
+        Assert.Equal(("1778", "L'Orée", "VD"), (hrs!.Id, hrs.Name, hrs.Canton));
+        Assert.Equal(0, shell.SheetCount);                                    // fiche connue : rien n'est redemandé
+    }
+
+    [Fact]
+    public async Task Missing_id_opens_the_sheet_and_is_remembered()
+    {
+        using var tmp = new TempDir();
+        var dir = TreegramFolder(tmp, "L OREE");
+        var shell = new FakeShell { SheetAnswer = s => s with { Identity = new MdpProject { Id = "1778", Name = "L'Orée" } } };
         var settings = new AppSettings();
         var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
-        var hrs = await vm.AskMdpProjectAsync(tmp.Path + "/", "L OREE", IdentityMode.Export);
-        Assert.Equal(("1778", "L'Orée", "VD"), (hrs!.Id, hrs.Name, hrs.Canton));
-        Assert.Equal("VD", settings.FindMdpProject(tmp.Path)!.Canton);       // même dossier, autre écriture
-        shell.IdentityAnswer = new MdpProject { Name = "x" };
-        Assert.Null(await vm.AskMdpProjectAsync(tmp.Path, "L OREE", IdentityMode.Export));   // ID obligatoire : pas d'export
+        Assert.Equal("1778", (await vm.AskMdpProjectAsync(dir, "L OREE", IdentityMode.Export))!.Id);
+        Assert.Equal(("L OREE", 1), (shell.SheetShown!.Identity.Name, shell.SheetCount));   // nom proposé : le dossier
+        Assert.Equal("1778", settings.FindMdpProject(dir)!.Id);
+        shell.SheetAnswer = _ => null;
+        settings.SetMdpProject(dir, new MdpProject { Name = "x" });
+        Assert.Null(await vm.AskMdpProjectAsync(dir, "L OREE", IdentityMode.Export));       // fiche annulée : pas d'export
     }
 
     [Fact]
     public async Task Adding_to_the_base_needs_the_full_identity()
     {
         using var tmp = new TempDir();
-        var shell = new FakeShell { IdentityAnswer = new MdpProject { Id = "1778", Name = "L'Orée", Canton = "VD" } };
+        var dir = TreegramFolder(tmp, "L OREE");
+        var shell = new FakeShell { SheetAnswer = s => s with { Identity = new MdpProject { Id = "1778", Name = "L'Orée", Canton = "VD" } } };
         var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), new AppSettings(), enginePath: null);
-        Assert.Null(await vm.AskMdpProjectAsync(tmp.Path, "L OREE", IdentityMode.Base));     // ni typologie ni intervention
+        Assert.Null(await vm.AskMdpProjectAsync(dir, "L OREE", IdentityMode.Base));     // ni typologie ni intervention
         Assert.Contains(shell.Notes, n => n.Contains("typologie") && n.Contains("type d'intervention"));
-        shell.IdentityAnswer = new MdpProject { Id = "1778", Name = "L'Orée", Canton = "VD", Typologie = "Santé",
-                                                Intervention = "Nouvelle construction" };
-        Assert.NotNull(await vm.AskMdpProjectAsync(tmp.Path, "L OREE", IdentityMode.Base));
+        shell.SheetAnswer = s => s with { Identity = new MdpProject { Id = "1778", Name = "L'Orée", Canton = "VD", Typologie = "Santé",
+                                                                      Intervention = "Nouvelle construction" } };
+        Assert.NotNull(await vm.AskMdpProjectAsync(dir, "L OREE", IdentityMode.Base));
+    }
+
+    [Fact]
+    public void Project_folder_is_checked()
+    {
+        using var tmp = new TempDir();
+        Assert.False(ProjectFolder.Check("").FolderOk);
+        Assert.Contains("introuvable", ProjectFolder.Check(Path.Combine(tmp.Path, "absent")).FolderMessage);
+        Directory.CreateDirectory(Path.Combine(tmp.Path, "vide"));
+        Assert.Contains("Aucun fichier .tgm", ProjectFolder.Check(Path.Combine(tmp.Path, "vide")).FolderMessage);
+        var sans = TreegramFolder(tmp, "SANS", vwr: false);
+        Assert.True(ProjectFolder.Check(sans) is { FolderOk: true, FolderWarning: true });       // sans VWR : sans 3D
+        File.WriteAllText(Path.Combine(sans, "b.tgm"), "");
+        Assert.Contains("2 fichiers .tgm", ProjectFolder.Check(sans).FolderMessage);
+        Assert.True(ProjectFolder.Check(TreegramFolder(tmp, "OK")) is { FolderOk: true, FolderWarning: false });
+    }
+
+    [Fact]
+    public void Sheet_refuses_a_folder_taken_and_warns_on_a_shared_id()
+    {
+        using var tmp = new TempDir();
+        var (a, b) = (TreegramFolder(tmp, "A"), TreegramFolder(tmp, "B"));
+        var settings = new AppSettings();
+        settings.Touch(a, "A", DateTime.Now, 0);
+        settings.SetMdpProject(a, new MdpProject { Id = "1778", Name = "L'Orée" });
+        var vm = new MainViewModel(new FakeShell(), new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
+        Assert.Contains("déjà celui de « L'Orée »", vm.CheckSheet(new ProjectSheet(a, new MdpProject()), null).FolderMessage);
+        Assert.True(vm.CheckSheet(new ProjectSheet(a, new MdpProject()), a).CanSave);           // son propre dossier
+        var twin = vm.CheckSheet(new ProjectSheet(b, new MdpProject { Id = "1778" }), null);
+        Assert.True(twin.CanSave);
+        Assert.Contains("L'ID 1778 est aussi celui de « L'Orée »", twin.IdWarning);
+    }
+
+    [Fact]
+    public async Task Changing_the_folder_moves_the_project_data()
+    {
+        using var tmp = new TempDir();
+        var (old, nouveau) = (TreegramFolder(tmp, "LIVRAISON 1"), TreegramFolder(tmp, "LIVRAISON 2"));
+        var paths = new AppPaths(Path.Combine(tmp.Path, "roaming"), Path.Combine(tmp.Path, "local"));
+        var settings = new AppSettings();
+        settings.Touch(old, "LIVRAISON 1", DateTime.Now, 3);
+        settings.SetMdpProject(old, new MdpProject { Id = "1778", Name = "L'Orée" });
+        foreach (var f in new[] { paths.ReviewFile(old), paths.CorrectionsFile(old), paths.AnalysisFile(old) })
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(f)!);
+            File.WriteAllText(f, "{}");
+        }
+        var shell = new FakeShell { SheetAnswer = s => s with { Folder = nouveau } };
+        var vm = new MainViewModel(shell, paths, settings, enginePath: null);
+        Assert.NotNull(await vm.EditSheetAsync(old, "LIVRAISON 1"));
+        Assert.True(File.Exists(paths.ReviewFile(nouveau)) && File.Exists(paths.CorrectionsFile(nouveau)));
+        Assert.False(File.Exists(paths.ReviewFile(old)) || File.Exists(paths.AnalysisFile(old)));   // analyse jetée : réanalyse
+        Assert.Equal("1778", settings.FindMdpProject(nouveau)!.Id);
+        Assert.Null(settings.FindMdpProject(old));
+        Assert.Equal(ProjectFolder.Normalize(nouveau), settings.Recents.Single().Path);
+        var row = vm.Recents.Single();
+        Assert.Equal(("1778", "L'Orée", "Infos à compléter"), (row.IdText, row.DisplayName, row.Warning));
+    }
+
+    [Fact]
+    public async Task Changing_the_folder_can_be_refused()
+    {
+        using var tmp = new TempDir();
+        var (old, nouveau) = (TreegramFolder(tmp, "A"), TreegramFolder(tmp, "B"));
+        var settings = new AppSettings();
+        settings.SetMdpProject(old, new MdpProject { Id = "1" });
+        var shell = new FakeShell { ConfirmAnswer = false, SheetAnswer = s => s with { Folder = nouveau } };
+        var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
+        Assert.Null(await vm.EditSheetAsync(old, "A"));
+        Assert.NotNull(settings.FindMdpProject(old));
+        Assert.Null(settings.FindMdpProject(nouveau));
+    }
+
+    [Fact]
+    public async Task New_project_saves_its_sheet_before_the_analysis()
+    {
+        using var tmp = new TempDir();
+        var dir = TreegramFolder(tmp, "OUCHY B");
+        var settings = new AppSettings();
+        var shell = new FakeShell { FolderAnswer = dir, SheetAnswer = s => s with { Identity = new MdpProject { Id = "1900", Typologie = "Santé" } } };
+        var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
+        await vm.NewProjectCommand.ExecuteAsync(null);
+        Assert.Equal(("1900", "OUCHY B", "Santé"), (settings.FindMdpProject(dir)!.Id, settings.FindMdpProject(dir)!.Name,
+                                                      settings.FindMdpProject(dir)!.Typologie));   // nom : celui du dossier
+        Assert.Single(settings.Recents);
+    }
+
+    [Fact]
+    public void Missing_folder_stays_listed_with_a_warning()
+    {
+        using var tmp = new TempDir();
+        var settings = new AppSettings();
+        settings.Touch(Path.Combine(tmp.Path, "DISPARU"), "DISPARU", DateTime.Now, 0);
+        var vm = new MainViewModel(new FakeShell(), new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
+        Assert.Equal("Dossier introuvable", vm.Recents.Single().Warning);
     }
 
     [Fact]

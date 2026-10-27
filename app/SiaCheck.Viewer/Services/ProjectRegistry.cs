@@ -79,6 +79,17 @@ public sealed class ProjectRegistry(string path)
         if (data.Projects.RemoveAll(p => Same(p.Path, Normalize(projectDir))) > 0) Write(data);
     }
 
+    /// <summary>Nouveau dossier du projet (fiche projet) : statut et historique le suivent.</summary>
+    public void Move(string oldDir, string newDir)
+    {
+        var data = Read();
+        var record = data.Projects.FirstOrDefault(p => Same(p.Path, Normalize(oldDir)));
+        if (record is null) return;
+        data.Projects.RemoveAll(p => p != record && Same(p.Path, Normalize(newDir)));
+        record.Path = Normalize(newDir);
+        Write(data);
+    }
+
     private ProjectRecord Update(string projectDir, Action<ProjectRecord> change)
     {
         var data = Read();

@@ -225,3 +225,11 @@ Un second jeu de 80 SRV (5 271 m²) existe dans un autre arbre de quantités Tre
 |---|---|
 | 17a ✓ | **Fiabilisation de l'enveloppe.** Lecture de la SRV de l'arbre SIA ; SFN et SRV dans une famille « Enveloppe » (surfaces verticales), hors des sommes horizontales ; calques et rendu 3D propres ; contrôles : brute = nette + réservations, SRV ≈ réservations, façade ≈ périmètre × hauteur brute, vitres ≤ façade, niveau hors-sol sans façade ; ratios d'enveloppe dans l'espace de revue ; MDP : « Surface vitrée » = SRV |
 | 17b ✓ | **Enveloppe dans le benchmark.** KPI « Vitrée / pleine » et « Part vitrée » à la place du ratio provisoire ; KPI clés mis à jour ; coefficient de forme dès que sa définition est connue ; ratios propres au logement réservés au logement (reste de la phase 17) |
+
+## 11. Fiche projet à la création — 27.10.2026
+
+Les MDP de la base ne sont identifiés que si quelqu'un remplit la fiche Identité au moment de l'export ; 4 sur 10 ne le sont pas. Décision : l'identité se renseigne **à la création du projet de fiabilisation**, avec son dossier Treegram, et se modifie à tout moment ; l'export MDP la reprend sans rien redemander.
+
+| Phase | Contenu |
+|---|---|
+| 18 ✓ | **Fiche projet.** « Nouveau projet… » ouvre une fiche (dossier Treegram + identité) ; ✎ sur chaque projet actif et clic sur le nom dans l'espace de revue pour l'éditer ; changement de dossier qui déplace statuts, corrections et revues IA ; export MDP et « Ajouter à la base » sans dialogue (la fiche s'ouvre seulement s'il manque un champ requis). Détail : DESIGN_PLAN, Évolution 3.8 |

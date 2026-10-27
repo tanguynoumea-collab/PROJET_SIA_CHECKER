@@ -1532,3 +1532,114 @@ Toujours en attente de la définition de l'équipe. Dès qu'elle est connue, il 
 - Sélection non logement : KPI par logement retirés de Ratios, Comparer et Base ; mix du Programmer masqué.
 - **Écart au plan** : vitrée / pleine et part vitrée n'ont pas d'« objet » (pas d'écart traduit en m² dans Comparer), comme tout KPI neutre.
 - Mon projet : une vitrée saisie sans façade est ignorée (aucun ratio d'enveloppe sans les deux).
+
+---
+
+## Évolution 3.8 — Fiche projet : identité et dossier dès la création (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (27.10.2026) ☑ Implémenté
+> Version : 3.8 — 27.10.2026 · Phase 18 de `docs/V3_PLAN.md` (§11)
+
+### Ancrage
+
+Aujourd'hui, un projet de fiabilisation n'est qu'un **dossier Treegram** ouvert depuis l'accueil ; son identité (ID HRS, typologie, canton…) n'est demandée qu'au moment d'exporter le MDP, dans un dialogue qui revient à chaque export. Résultat : 4 MDP sur 10 de la base sont « Non identifié ». La demande : **renseigner l'identité à la création du projet**, avec son dossier, et pouvoir la modifier à tout moment ; le MDP produit la reprend telle quelle.
+
+Le projet devient donc une **fiche** (identité + dossier), et non plus un simple dossier.
+
+### La fiche projet
+
+Un seul dialogue, à la création comme à l'édition :
+
+```
+┌ Nouveau projet ──────────────────────────────────────────────────────────┐
+│ DOSSIER TREEGRAM                                                          │
+│ [C:\…\Projets\L OREE\Treegram                         ] [Parcourir…]      │
+│ ✓ L OREE.tgm · cache VWR présent                                          │
+│                                                                           │
+│ IDENTITÉ                                                                  │
+│ ID projet HRS *   [1778      ]      Nom du projet *  [L'Orée          ]   │
+│ Typologie *       [Logement (100-90% SU)                            ▾]    │
+│ Canton *          [VD ▾]            Commune          [Lausanne        ]   │
+│ Type d'intervention * [Nouvelle construction                        ▾]    │
+│ Phase SIA         [53 ▾]                                                  │
+│                                                                           │
+│ * nécessaire pour entrer dans le benchmark. Il manque : canton.           │
+│                                             [Annuler] [Créer et analyser] │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Dossier** en tête : c'est lui qui rend le projet analysable. Vérifié à la sélection : un seul `.tgm`, cache VWR présent ou non (même contrôle qu'à l'ouverture aujourd'hui), message sous le champ.
+- **Identité** : les champs et les listes de la fiche Identité (Évolution 3.4), inchangés. Le nom est prérempli avec le nom du dossier.
+- **Obligatoire pour créer** : le dossier valide seulement. Les champs * restent un rappel (comme aujourd'hui) : on peut fiabiliser un projet dont on ne connaît pas encore le canton. Ils deviennent obligatoires pour « Ajouter à la base ».
+- Bouton primaire : **Créer et analyser** à la création, **Enregistrer** à l'édition.
+
+### Où elle apparaît
+
+| Point d'entrée | Rôle |
+|---|---|
+| Accueil, Fiabilisation : **[▸ Nouveau projet…]** (remplace « Ouvrir un dossier projet… ») | Fiche vide ; Créer → analyse et ouvre l'espace de revue |
+| Accueil, Projets actifs : action **✎ Fiche** sur chaque ligne (à côté de 🗑) | Édite identité et dossier sans ouvrir le projet |
+| Espace de revue : clic sur le **nom du projet** dans la barre du haut | Édite la fiche du projet ouvert |
+| Exporter → Tableau MDP / ⇥ Ajouter à la base | **Ne demandent plus rien** : l'identité de la fiche part dans `InfosProjet`. Seule exception : un champ manquant pour l'usage (ID pour un MDP, champs * pour la base) ouvre la fiche, avec ce qui manque |
+
+### Projets actifs (delta)
+
+```
+PROJETS ACTIFS                                                     3
+1778  L'Orée          Logement   VD   En traitement  156 pts · 21.10  ✎ 🗑
+1784  Sauvabelines    Logement   VD   Traité  ⇥base   12 pts · 20.10  ✎ 🗑
+ —    OUCHY B         Infos à compléter  En traitement  40 pts · 18.10  ✎ 🗑   ← VerdictWarning, clic ✎
+```
+
+- La ligne affiche le **nom du projet** de la fiche (plus le nom du dossier), précédé de l'ID en mono, puis la typologie courte et le canton, comme la liste de la base : les deux colonnes de l'accueil parlent la même langue.
+- Un projet sans fiche complète (projets existants, créés avant cette évolution) : « Infos à compléter » en VerdictWarning à la place de typologie / canton.
+
+### Changer de dossier
+
+Cas réel : Treegram livre une nouvelle version dans un autre dossier. Changer le dossier dans la fiche **déplace tout ce que l'app garde du projet** vers le nouveau dossier : statuts et commentaires des points, décisions de corrections, revues IA, statut (en traitement / traité), identité. La dernière analyse est jetée : le projet est **réanalysé** à l'ouverture suivante (le .tgm a changé).
+
+Avant d'enregistrer, une confirmation :
+
+```
+Changer le dossier de « L'Orée » ?
+Les statuts, commentaires et décisions de corrections suivent le projet. Le projet
+sera réanalysé : une correction qui vise une surface absente du nouveau .tgm le signalera.
+                                                         [Annuler] [Changer de dossier]
+```
+
+### États non-nominaux
+
+| État | Rendu |
+|---|---|
+| Dossier sans .tgm, ou plusieurs | Sous le champ, en VerdictError : « Aucun fichier .tgm » / « 3 fichiers .tgm : un seul attendu » ; bouton primaire désactivé |
+| Cache VWR absent | Avertissement (VerdictWarning) : « Pas de cache VWR : l'analyse se fera sans 3D. » ; création possible |
+| Dossier déjà utilisé par un autre projet actif | « Ce dossier est déjà celui de « Sauvabelines ». » ; bouton désactivé |
+| ID déjà utilisé par un autre projet actif | Avertissement non bloquant : « L'ID 1778 est aussi celui de « L'Orée (ancienne livraison) ». » |
+| Dossier d'un projet devenu introuvable (déplacé, réseau absent) | Ligne de projets actifs en VerdictWarning « Dossier introuvable » ; ✎ permet de le repointer |
+| Projet ouvert dont on change le dossier | Enregistrer ferme l'espace de revue et rouvre le projet sur le nouveau dossier (analyse) |
+
+### Passe B — auto-critique
+
+- **Premier jet** : rendre toute l'identité obligatoire à la création. Rejeté : le coordinateur BIM n'a pas toujours le canton ou le type d'intervention au premier jour ; bloquer la fiabilisation pour ça serait contre-productif. La contrainte reste là où elle compte : l'entrée dans la base.
+- **Friction** : le dialogue d'identité à chaque export disparaît ; la fiche est remplie une fois.
+- **Risque** : changer de dossier pourrait faire perdre le travail de vérification. D'où le déplacement des données, la confirmation explicite et la réanalyse (les corrections orphelines sont déjà signalées par le moteur).
+- **Accessoire retiré** : un historique des dossiers successifs d'un projet. Utile pour la traçabilité, mais rien ne le demande aujourd'hui.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Identité entièrement obligatoire à la création | Bloque la fiabilisation pour des infos administratives | 27.10.2026 |
+| Écrire la fiche dans le dossier Treegram (fichier à côté du .tgm) | Le dossier change d'une livraison à l'autre ; la fiche doit lui survivre | 27.10.2026 |
+| Garder le dialogue d'identité à chaque export MDP | Redemande ce qui est déjà connu | 27.10.2026 |
+| Historique des dossiers successifs | Pas demandé | 27.10.2026 |
+
+### Mise en œuvre et vérifications (27.10.2026)
+
+- Fiche projet et fiche Identité partagent les mêmes champs (un seul formulaire dans le code) ; le nom du projet suit le nom du dossier choisi tant qu'il n'a pas été saisi à la main.
+- Raccourci : **Ctrl+N** (Nouveau projet) remplace Ctrl+O.
+- **Retour utilisateur** : « Nouveau projet… » ouvre d'abord l'explorateur de dossiers, comme avant, puis la fiche préremplie (dossier, nom) ; dans la fiche, le champ du dossier rouvre l'explorateur au clic. Fiches élargies à 680 px (la boîte WPF-UI coupait les champs) ; le bouton principal reste toujours visible (WPF-UI masque un bouton désactivé) et un dossier refusé est signalé à la validation.
+- Changer de dossier déplace statuts et commentaires, décisions de corrections, revues IA, statut du registre (`projets.json`, lu par n8n) et identité ; l'analyse, son journal et les caches de l'aperçu sont supprimés (réanalyse).
+- Un projet créé apparaît dans les projets actifs dès sa création, même si l'analyse échoue.
+- Tests : contrôle du dossier, dossier déjà pris, ID en double, déplacement des données, refus du changement, création, identité reprise sans dialogue, fiche ouverte quand l'ID manque, dossier introuvable listé.
+- **Non vérifié à l'écran** : rendu du dialogue et de la liste des projets actifs ; à regarder dans l'application.

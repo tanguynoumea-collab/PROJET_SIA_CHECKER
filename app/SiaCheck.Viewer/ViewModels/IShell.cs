@@ -18,6 +18,11 @@ public interface IShell
     Task<string[]?> AskAsync(string title, string message, IReadOnlyList<(string Label, string Value)> fields, string ok);
     /// <summary>Fiche « Identité du projet » (docs/DESIGN_PLAN.md, Évolution 3.4) ; null si annulée.</summary>
     Task<MdpProject?> AskIdentityAsync(MdpProject initial, IdentityLists lists, IdentityMode mode, string ok);
+    /// <summary>
+    /// Fiche projet (Évolution 3.8) : dossier Treegram et identité ; <paramref name="check"/> contrôle la saisie à chaque
+    /// changement (dossier valide, déjà pris, ID en double). null si annulée.
+    /// </summary>
+    Task<ProjectSheet?> AskProjectSheetAsync(ProjectSheet initial, IdentityLists lists, bool creating, Func<ProjectSheet, SheetCheck> check);
     void OpenFile(string path);
     /// <summary>Cadre la caméra sur ces bornes (null = tout le modèle visible).</summary>
     void Frame(Rect3D? bounds);

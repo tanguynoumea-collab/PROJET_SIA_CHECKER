@@ -119,24 +119,150 @@ public partial class MainWindow : FluentWindow, IShell
     /// </summary>
     public async Task<MdpProject?> AskIdentityAsync(MdpProject initial, IdentityLists lists, IdentityMode mode, string ok)
     {
-        var grid = new Grid { MinWidth = 560 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var row = 0;
-        T Add<T>(string label, T control) where T : FrameworkElement
+        var form = new IdentityForm(initial, lists, idReadOnly: mode == IdentityMode.EditBase);
+        var dlg = new Wpf.Ui.Controls.MessageBox
         {
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Title = "Identité du projet", Content = form.Grid, PrimaryButtonText = ok, CloseButtonText = "Annuler", Owner = this,
+            Width = DialogWidth, MaxWidth = DialogWidth,
+        };
+        form.Changed += () =>
+        {
+            var current = form.Read();
+            var forBase = form.ShowReminder();
+            dlg.IsPrimaryButtonEnabled = mode switch
+            {
+                IdentityMode.Base => forBase.Count == 0,
+                IdentityMode.Export => current.Id.Length > 0,
+                _ => true,
+            };
+        };
+        form.Refresh();
+        dlg.Loaded += (_, _) => form.Focus(mode == IdentityMode.EditBase);
+        return await dlg.ShowDialogAsync() == Wpf.Ui.Controls.MessageBoxResult.Primary ? form.Read() : null;
+    }
+
+    /// <summary>Largeur des fiches : la boîte WPF-UI est plus étroite par défaut et coupait les champs.</summary>
+    private const double DialogWidth = 680;
+
+    /// <summary>
+    /// Fiche projet (docs/DESIGN_PLAN.md, Évolution 3.8) : dossier Treegram en tête, contrôlé à chaque choix, puis
+    /// l'identité. Seul un dossier valide est obligatoire ; les champs * restent un rappel pour le benchmark.
+    /// </summary>
+    public async Task<ProjectSheet?> AskProjectSheetAsync(ProjectSheet initial, IdentityLists lists, bool creating,
+                                                         Func<ProjectSheet, SheetCheck> check)
+    {
+        // Le dossier se choisit dans l'explorateur (champ ou bouton), jamais au clavier
+        var folder = new System.Windows.Controls.TextBox { Text = initial.Folder, IsReadOnly = true, Cursor = Cursors.Hand,
+                                                           ToolTip = "Cliquer pour choisir le dossier dans l'explorateur" };
+        var browse = new Wpf.Ui.Controls.Button { Content = "Parcourir…", Margin = new Thickness(8, 0, 0, 0) };
+        var folderState = new System.Windows.Controls.TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+        var idWarning = new System.Windows.Controls.TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+        idWarning.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "BrushVerdictWarning");
+        var form = new IdentityForm(initial.Identity, lists, idReadOnly: false);
+
+        var row = new DockPanel();
+        DockPanel.SetDock(browse, Dock.Right);
+        row.Children.Add(browse);
+        row.Children.Add(folder);
+        System.Windows.Controls.TextBlock Section(string text, double top)
+        {
+            var s = new System.Windows.Controls.TextBlock { Text = text, Margin = new Thickness(0, top, 0, 6) };
+            s.SetResourceReference(StyleProperty, "TextSection");
+            return s;
+        }
+        var panel = new StackPanel { MinWidth = 560 };
+        panel.Children.Add(Section("Dossier Treegram", 0));
+        panel.Children.Add(row);
+        panel.Children.Add(folderState);
+        panel.Children.Add(Section("Identité", 20));
+        panel.Children.Add(form.Grid);
+        panel.Children.Add(idWarning);
+
+        var dlg = new Wpf.Ui.Controls.MessageBox
+        {
+            Title = creating ? "Nouveau projet" : "Fiche projet", Content = panel, Owner = this,
+            PrimaryButtonText = creating ? "Créer et analyser" : "Enregistrer", CloseButtonText = "Annuler",
+            Width = DialogWidth, MaxWidth = DialogWidth,
+        };
+        ProjectSheet Read() => new(folder.Text.Trim(), form.Read());
+        form.Changed += () =>
+        {
+            var c = check(Read());
+            folderState.Text = c.FolderMessage;
+            folderState.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,
+                !c.FolderOk ? "BrushVerdictError" : c.FolderWarning ? "BrushVerdictWarning" : "BrushTextSecondary");
+            idWarning.Text = c.IdWarning ?? "";
+            idWarning.Visibility = c.IdWarning is null ? Visibility.Collapsed : Visibility.Visible;
+            form.ShowReminder();
+            // Bouton toujours visible (WPF-UI masque un bouton désactivé) : un dossier refusé est signalé à la validation
+        };
+        void Browse()
+        {
+            var dir = PickFolder("Dossier du projet Treegram (contient le fichier .tgm et le dossier VWR)",
+                                 folder.Text.Length > 0 ? folder.Text : null);
+            if (dir is null) return;
+            folder.Text = dir;
+            form.SuggestName(System.IO.Path.GetFileName(System.IO.Path.TrimEndingDirectorySeparator(dir)));
+            form.Refresh();
+        }
+        browse.Click += (_, _) => Browse();
+        folder.PreviewMouseLeftButtonUp += (_, e) => { e.Handled = true; Browse(); };
+        form.Refresh();
+        dlg.Loaded += (_, _) => form.Focus(false);
+        return await dlg.ShowDialogAsync() == Wpf.Ui.Controls.MessageBoxResult.Primary ? Read() : null;
+    }
+
+    /// <summary>Champs d'identité communs à la fiche Identité et à la fiche projet, avec le rappel des champs *.</summary>
+    private sealed class IdentityForm
+    {
+        public Grid Grid { get; } = new() { MinWidth = 560 };
+        public event Action? Changed;
+        private readonly System.Windows.Controls.TextBox _id, _nom, _commune;
+        private readonly System.Windows.Controls.ComboBox _typologie, _canton, _intervention, _phase;
+        private readonly System.Windows.Controls.TextBlock _rappel;
+        private bool _nameTouched;
+
+        public IdentityForm(MdpProject initial, IdentityLists lists, bool idReadOnly)
+        {
+            Grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            _id = Add("ID projet HRS *", new System.Windows.Controls.TextBox { Text = initial.Id, IsReadOnly = idReadOnly });
+            _nom = Add("Nom du projet *", new System.Windows.Controls.TextBox { Text = initial.Name });
+            _typologie = Add("Typologie *", Liste(lists.Typologies, initial.Typologie, false));
+            _canton = Add("Canton *", Liste(lists.Cantons, initial.Canton, false));
+            _commune = Add("Commune", new System.Windows.Controls.TextBox { Text = initial.Commune });
+            _intervention = Add("Type d'intervention *", Liste(lists.Interventions, initial.Intervention, false));
+            _phase = Add("Phase SIA", Liste(lists.Phases, initial.Phase, true));
+            if (idReadOnly) _id.ToolTip = "L'ID relie toutes les tables du MDP : il ne se modifie pas ici.";
+            _nameTouched = initial.Name.Length > 0;
+
+            _rappel = new System.Windows.Controls.TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0) };
+            _rappel.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "BrushTextSecondary");
+            Grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(_rappel, Grid.RowDefinitions.Count - 1);
+            Grid.SetColumnSpan(_rappel, 2);
+            Grid.Children.Add(_rappel);
+
+            foreach (var box in new[] { _id, _nom, _commune }) box.TextChanged += (_, _) => Changed?.Invoke();
+            _nom.TextChanged += (_, _) => { if (_nom.IsKeyboardFocusWithin) _nameTouched = true; };
+            foreach (var list in new[] { _typologie, _canton, _intervention, _phase }) list.SelectionChanged += (_, _) => Changed?.Invoke();
+        }
+
+        private T Add<T>(string label, T control) where T : FrameworkElement
+        {
+            var row = Grid.RowDefinitions.Count;
+            Grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var text = new System.Windows.Controls.TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 6, 16, 6) };
             Grid.SetRow(text, row);
             Grid.SetRow(control, row);
             Grid.SetColumn(control, 1);
             control.Margin = new Thickness(0, 6, 0, 6);
-            grid.Children.Add(text);
-            grid.Children.Add(control);
-            row++;
+            Grid.Children.Add(text);
+            Grid.Children.Add(control);
             return control;
         }
-        System.Windows.Controls.ComboBox Liste(IReadOnlyList<string> items, string value, bool optional)
+
+        private static System.Windows.Controls.ComboBox Liste(IReadOnlyList<string> items, string value, bool optional)
         {
             // Une ancienne valeur hors liste (MDP rempli à la main) reste visible, en tête, pour être corrigée
             var all = new List<string>();
@@ -145,51 +271,32 @@ public partial class MainWindow : FluentWindow, IShell
             all.AddRange(items);
             return new System.Windows.Controls.ComboBox { ItemsSource = all, SelectedItem = value.Length > 0 ? value : (optional ? "" : null) };
         }
-        var id = Add("ID projet HRS *", new System.Windows.Controls.TextBox { Text = initial.Id, IsReadOnly = mode == IdentityMode.EditBase });
-        var nom = Add("Nom du projet *", new System.Windows.Controls.TextBox { Text = initial.Name });
-        var typologie = Add("Typologie *", Liste(lists.Typologies, initial.Typologie, false));
-        var canton = Add("Canton *", Liste(lists.Cantons, initial.Canton, false));
-        var commune = Add("Commune", new System.Windows.Controls.TextBox { Text = initial.Commune });
-        var intervention = Add("Type d'intervention *", Liste(lists.Interventions, initial.Intervention, false));
-        var phase = Add("Phase SIA", Liste(lists.Phases, initial.Phase, true));
-        if (mode == IdentityMode.EditBase) id.ToolTip = "L'ID relie toutes les tables du MDP : il ne se modifie pas ici.";
 
-        var rappel = new System.Windows.Controls.TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0) };
-        rappel.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "BrushTextSecondary");
-        Grid.SetRow(rappel, row);
-        Grid.SetColumnSpan(rappel, 2);
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.Children.Add(rappel);
+        public MdpProject Read() => new()
+        {
+            Id = _id.Text.Trim(), Name = _nom.Text.Trim(), Typologie = _typologie.SelectedItem as string ?? "",
+            Canton = _canton.SelectedItem as string ?? "", Commune = _commune.Text.Trim(),
+            Intervention = _intervention.SelectedItem as string ?? "", Phase = _phase.SelectedItem as string ?? "",
+        };
 
-        MdpProject Read() => new()
+        /// <summary>Nom du projet tiré du dossier, tant que l'utilisateur ne l'a pas saisi lui-même.</summary>
+        public void SuggestName(string name)
         {
-            Id = id.Text.Trim(), Name = nom.Text.Trim(), Typologie = typologie.SelectedItem as string ?? "",
-            Canton = canton.SelectedItem as string ?? "", Commune = commune.Text.Trim(),
-            Intervention = intervention.SelectedItem as string ?? "", Phase = phase.SelectedItem as string ?? "",
-        };
-        var dlg = new Wpf.Ui.Controls.MessageBox
+            if (!_nameTouched) _nom.Text = name;
+        }
+
+        public List<string> ShowReminder()
         {
-            Title = "Identité du projet", Content = grid, PrimaryButtonText = ok, CloseButtonText = "Annuler", Owner = this,
-        };
-        void Check()
-        {
-            var current = Read();
-            var forBase = ProjectIdentity.Missing(current, forBase: true);
-            rappel.Text = forBase.Count == 0
+            var forBase = ProjectIdentity.Missing(Read(), forBase: true);
+            _rappel.Text = forBase.Count == 0
                 ? "* nécessaire pour entrer dans le benchmark : tout est renseigné."
                 : $"* nécessaire pour entrer dans le benchmark. Il manque : {string.Join(", ", forBase)}.";
-            dlg.IsPrimaryButtonEnabled = mode switch
-            {
-                IdentityMode.Base => forBase.Count == 0,
-                IdentityMode.Export => current.Id.Length > 0,
-                _ => true,
-            };
+            return forBase;
         }
-        foreach (var box in new[] { id, nom, commune }) box.TextChanged += (_, _) => Check();
-        foreach (var list in new[] { typologie, canton, intervention, phase }) list.SelectionChanged += (_, _) => Check();
-        Check();
-        dlg.Loaded += (_, _) => (mode == IdentityMode.EditBase ? (FrameworkElement)typologie : id).Focus();
-        return await dlg.ShowDialogAsync() == Wpf.Ui.Controls.MessageBoxResult.Primary ? Read() : null;
+
+        public void Refresh() => Changed?.Invoke();
+
+        public void Focus(bool typologie) => (typologie ? (FrameworkElement)_typologie : _id).Focus();
     }
 
     public void OpenFile(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });

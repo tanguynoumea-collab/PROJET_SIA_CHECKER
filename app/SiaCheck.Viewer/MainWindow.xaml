@@ -19,7 +19,7 @@
 
     <Window.InputBindings>
         <KeyBinding Key="R" Modifiers="Control" Command="{Binding AnalyseCommand}" />
-        <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenProjectCommand}" />
+        <KeyBinding Key="N" Modifiers="Control" Command="{Binding NewProjectCommand}" />
         <KeyBinding Key="I" Modifiers="Control" Command="{Binding ToggleAiReportCommand}" />
         <KeyBinding Key="Escape" Command="{Binding ClearFocusCommand}" />
         <KeyBinding Key="D1" Modifiers="Control" Command="{Binding ShowSubjectsTabCommand}" />
@@ -54,11 +54,11 @@
                         <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Fiabilisation" />
                         <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"
                                    Text="Contrôler et corriger les surfaces d'un projet Treegram." />
-                        <ui:Button Margin="0,24,0,0" Appearance="Primary" Icon="{ui:SymbolIcon FolderOpen20}"
-                                   Content="Ouvrir un dossier projet…" Command="{Binding OpenProjectCommand}"
-                                   MinHeight="{StaticResource TargetSize}" ToolTip="Ctrl+O" />
-                        <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}"
-                                   Text="Le dossier contient le fichier .tgm et le cache VWR du viewer Treegram." />
+                        <ui:Button Margin="0,24,0,0" Appearance="Primary" Icon="{ui:SymbolIcon FolderAdd20}"
+                                   Content="Nouveau projet…" Command="{Binding NewProjectCommand}"
+                                   MinHeight="{StaticResource TargetSize}" ToolTip="Ctrl+N" />
+                        <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                                   Text="La fiche projet : le dossier Treegram (fichier .tgm et cache VWR) et l'identité HRS, reprise dans le MDP." />
 
                         <Border Margin="0,16,0,0" Style="{StaticResource Banner}" BorderBrush="{DynamicResource BrushVerdictError}"
                                 Visibility="{Binding HomeError, Converter={StaticResource VisibleWhen}}">
@@ -81,6 +81,12 @@
                                                    Command="{Binding DataContext.DeleteRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                    CommandParameter="{Binding}" ToolTip="Supprimer le projet de SIA Check (statuts, corrections, analyse, revues IA)"
                                                    AutomationProperties.Name="Supprimer le projet" />
+                                        <!-- Fiche projet (Évolution 3.8) : identité et dossier, modifiables sans ouvrir le projet -->
+                                        <ui:Button DockPanel.Dock="Right" Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Edit20}"
+                                                   VerticalAlignment="Center" MinHeight="{StaticResource TargetSize}"
+                                                   Command="{Binding DataContext.EditProjectSheetCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   CommandParameter="{Binding}" ToolTip="Fiche projet : identité HRS et dossier Treegram"
+                                                   AutomationProperties.Name="Fiche projet" />
                                         <!-- Un projet traité nourrit la base du benchmark -->
                                         <ui:Button DockPanel.Dock="Right" Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon DatabaseArrowRight20}"
                                                    VerticalAlignment="Center" MinHeight="{StaticResource TargetSize}"
@@ -94,12 +100,26 @@
                                                 CommandParameter="{Binding}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" MinWidth="120" />
+                                                    <ColumnDefinition Width="44" />
+                                                    <ColumnDefinition Width="*" MinWidth="100" />
+                                                    <ColumnDefinition Width="112" />
                                                     <ColumnDefinition Width="104" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Style="{StaticResource TextSubtitle}" Text="{Binding Name}" ToolTip="{Binding Path}" />
-                                                <TextBlock Grid.Column="1" Margin="8,0" Text="{Binding StatusLabel}" ToolTip="Statut du projet">
+                                                <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding IdText}" />
+                                                <TextBlock Grid.Column="1" Style="{StaticResource TextSubtitle}" Text="{Binding DisplayName}" ToolTip="{Binding Path}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <!-- Typologie et canton, comme la liste de la base ; sinon ce qui manque (✎ pour compléter) -->
+                                                <TextBlock Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Visibility="{Binding HasWarning, Converter={StaticResource HiddenWhen}}">
+                                                    <Run Text="{Binding TypologieText, Mode=OneWay}" /><Run Text="  " /><Run FontFamily="{StaticResource FontMono}" Text="{Binding CantonText, Mode=OneWay}" />
+                                                </TextBlock>
+                                                <TextBlock Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource BrushVerdictWarning}" Text="{Binding Warning}"
+                                                           ToolTip="Cliquez sur ✎ pour compléter la fiche projet"
+                                                           Visibility="{Binding HasWarning, Converter={StaticResource BoolToVisibility}}" />
+                                                <TextBlock Grid.Column="3" Margin="8,0" Text="{Binding StatusLabel}" ToolTip="Statut du projet">
                                                     <TextBlock.Style>
                                                         <Style TargetType="TextBlock" BasedOn="{StaticResource TextCaption}">
                                                             <Setter Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
@@ -111,7 +131,7 @@
                                                         </Style>
                                                     </TextBlock.Style>
                                                 </TextBlock>
-                                                <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}">
+                                                <TextBlock Grid.Column="4" Style="{StaticResource TextCaption}">
                                                     <Run Text="{Binding IssueCount, Mode=OneWay}" /><Run Text=" points · " /><Run Text="{Binding LastAnalysis, StringFormat=dd.MM.yyyy, Mode=OneWay}" />
                                                 </TextBlock>
                                             </Grid>
@@ -336,7 +356,12 @@
                                    AutomationProperties.Name="Accueil" MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource TextTitle}" Text="{Binding ProjectName}" VerticalAlignment="Center" />
+                        <!-- Clic sur le nom : fiche projet (identité, dossier) -->
+                        <Button Style="{StaticResource RowButton}" Padding="0" VerticalAlignment="Center"
+                                Command="{Binding EditProjectSheetCommand}" ToolTip="Fiche projet : identité HRS et dossier Treegram"
+                                AutomationProperties.Name="Fiche projet">
+                            <TextBlock Style="{StaticResource TextTitle}" Text="{Binding ProjectName}" />
+                        </Button>
                         <!-- Statut du projet (registre projets.json, lu par n8n) : un clic bascule en traitement / traité -->
                         <Button Style="{StaticResource RowButton}" Padding="0" Margin="12,0,0,0" VerticalAlignment="Center"
                                 Command="{Binding ToggleProjectStatusCommand}" ToolTip="{Binding ProjectStatusTooltip}"

@@ -150,7 +150,7 @@
                 <Border Grid.Column="1" Width="1" Background="{DynamicResource BrushDivider}" />
 
                 <!-- Benchmark : comparer un projet à ceux qui lui ressemblent -->
-                <DockPanel Grid.Column="2" Margin="{StaticResource HomeColumnRight}">
+                <DockPanel Grid.Column="2" Margin="{StaticResource HomeColumnRight}" Grid.IsSharedSizeScope="True">
                     <StackPanel DockPanel.Dock="Top">
                         <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Benchmark" />
                         <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"
@@ -201,7 +201,27 @@
                         </Border>
                     </StackPanel>
 
-                    <ScrollViewer Margin="0,8,0,0" VerticalScrollBarVisibility="Auto" Focusable="False">
+                    <!-- En-tête : ce que dit chaque colonne ; la légende des cases au survol de « Données du MDP » -->
+                    <Grid DockPanel.Dock="Top" Margin="8,8,8,4"
+                          Visibility="{Binding BenchmarkProjects.Count, Converter={StaticResource VisibleWhen}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="48" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="88" />
+                            <ColumnDefinition Width="32" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="BaseFingerprint" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="BaseVerdict" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource TextCaption}" Text="ID" />
+                        <TextBlock Grid.Column="1" Margin="8,0" Style="{StaticResource TextCaption}" Text="Projet" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}" Text="Typologie" />
+                        <TextBlock Grid.Column="3" Style="{StaticResource TextCaption}" Text="Canton" />
+                        <TextBlock Grid.Column="4" Margin="8,0" Style="{StaticResource TextCaption}" Text="Données du MDP ⓘ"
+                                   ToolTip="{Binding FingerprintLegend}" ToolTipService.ShowDuration="60000" Background="Transparent" />
+                        <TextBlock Grid.Column="5" Style="{StaticResource TextCaption}" Text="Réf."
+                                   ToolTip="✓ dans les références du benchmark · ⚠ écarté (survolez le symbole pour la raison)" Background="Transparent" />
+                    </Grid>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                         <ItemsControl ItemsSource="{Binding BenchmarkProjects}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -215,8 +235,8 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="88" />
                                                 <ColumnDefinition Width="32" />
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" SharedSizeGroup="BaseFingerprint" />
+                                                <ColumnDefinition Width="Auto" SharedSizeGroup="BaseVerdict" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding Id}" />
                                             <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Style="{StaticResource TextBody}" Text="{Binding Name}" />
@@ -245,7 +265,9 @@
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
                                                         <Border Width="{StaticResource FingerprintWidth}" Height="{StaticResource FingerprintHeight}"
-                                                                Margin="{StaticResource FingerprintGap}" BorderThickness="1" CornerRadius="1">
+                                                                Margin="{StaticResource FingerprintGap}" BorderThickness="1" CornerRadius="1"
+                                                                ToolTip="{Binding Tooltip}" ToolTipService.InitialShowDelay="100"
+                                                                ToolTipService.ShowDuration="30000">
                                                             <Border.Style>
                                                                 <Style TargetType="Border">
                                                                     <!-- Donnée manquante : contour seul, assez marqué pour se lire en clair comme en sombre -->
@@ -253,7 +275,7 @@
                                                                     <Setter Property="BorderBrush" Value="{DynamicResource BrushTextSecondary}" />
                                                                     <Setter Property="Opacity" Value="0.45" />
                                                                     <Style.Triggers>
-                                                                        <DataTrigger Binding="{Binding}" Value="True">
+                                                                        <DataTrigger Binding="{Binding Ok}" Value="True">
                                                                             <Setter Property="Background" Value="{DynamicResource BrushTextSecondary}" />
                                                                             <Setter Property="Opacity" Value="1" />
                                                                         </DataTrigger>
@@ -264,7 +286,11 @@
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
-                                            <c:VerdictGlyph Grid.Column="5" VerticalAlignment="Center" Verdict="{Binding Verdict}" />
+                                            <!-- Raison exacte de l'entrée ou de l'écart (le glyphe porte sa propre infobulle : on l'enveloppe) -->
+                                            <Border Grid.Column="5" Background="Transparent" VerticalAlignment="Center"
+                                                    ToolTip="{Binding VerdictText}" ToolTipService.ShowDuration="30000">
+                                                <c:VerdictGlyph Verdict="{Binding Verdict}" IsHitTestVisible="False" />
+                                            </Border>
                                         </Grid>
                                     </Button>
                                 </DataTemplate>

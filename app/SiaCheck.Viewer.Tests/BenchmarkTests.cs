@@ -51,11 +51,37 @@ public class BenchmarkTests
     {
         var p = BenchmarkBase.Load(Write(Json))!.Projects;
         var orée = new BenchmarkItem(p[1]);
-        Assert.Equal([true, false], orée.Fingerprint);
+        Assert.Equal([true, false], orée.Fingerprint.Select(c => c.Ok));
         Assert.Equal("ALERTE", orée.Verdict);
         Assert.Equal("—", orée.Canton);
         Assert.Contains("Part de construction (SC / SP = 56%)", orée.Tooltip);
         Assert.Equal("OK", new BenchmarkItem(p[0]).Verdict);
+        // une infobulle par case : numéro, contrôle, état, détail, rôle
+        Assert.Equal("2. Part de construction\n✗ absent ou hors plage · SC / SP = 56%\nRequis pour entrer dans les références.",
+                     orée.Fingerprint[1].Tooltip);
+        Assert.Contains("ne bloque pas", orée.Fingerprint[0].Tooltip);
+    }
+
+    private static BenchmarkProject Rejected(params (string Id, bool Ok, string Detail)[] checks) => new()
+    {
+        Id = "1", Checks = checks.Select(c => new BenchmarkCheck
+        {
+            Id = c.Id, Ok = c.Ok, Detail = c.Detail,
+            Label = c.Id == "plausible" ? "Part de construction SC / SP entre 8% et 30%" : c.Id,
+        }).ToList(),
+    };
+
+    [Fact]
+    public void Reject_reason_names_the_real_cause()
+    {
+        Assert.Contains("pas de surfaces brutes",
+            BenchmarkItem.RejectReason(Rejected(("brutes", false, ""), ("nettes", true, ""), ("coherence", false, ""), ("plausible", false, ""))));
+        Assert.Contains("SP est inférieure à la SN (SP 900 < SN 950 m²)",
+            BenchmarkItem.RejectReason(Rejected(("brutes", true, ""), ("nettes", true, ""), ("coherence", false, "SP 900 < SN 950 m²"))));
+        var haut = BenchmarkItem.RejectReason(Rejected(("coherence", true, ""), ("plausible", false, "SC / SP = 56%")));
+        Assert.Equal("part de construction SC / SP = 56%, attendue entre 8% et 30% : trop de construction, il manque probablement des surfaces nettes.", haut);
+        Assert.Contains("SP est probablement incomplète",
+            BenchmarkItem.RejectReason(Rejected(("coherence", true, ""), ("plausible", false, "SC / SP = 5%"))));
     }
 
     [Fact]

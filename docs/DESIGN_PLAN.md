@@ -787,6 +787,8 @@ Dix petits segments par projet, **un par contrôle du moteur** (brutes, découpa
 
 Règle conservée : le remplissage reste neutre (TextSecondary) ; le verdict est porté par le glyphe en bout de ligne, coche StatusSeen « dans les références », triangle VerdictWarning « écarté ». Pas de vert en aplat (abords SA).
 
+**Lisibilité (retour utilisateur, 27.10.2026)** : l'empreinte ne disait pas ce qu'elle mesure. Ajouts : un en-tête de colonnes (ID, Projet, Typologie, Canton, **Données du MDP ⓘ**, Réf.) aligné sur les lignes, dont « Données du MDP » donne au survol la légende numérotée des contrôles (requis marqués) ; une infobulle par case (numéro, contrôle, présent ou non, détail chiffré, requis ou non) ; au survol du ✓ / ⚠, la raison exacte (surfaces brutes ou nettes absentes, SP < SN, ou SC / SP hors fourchette avec le sens de l'écart) au lieu d'un message unique. Les contrôles requis pour les références sont « SP ≥ SN » et « SC / SP plausible » (benchmark.REQUIS).
+
 ### Tokens
 
 Aucune nouvelle couleur. Ajouts de dimensions dans `Tokens.xaml` : `HomeMaxWidth` 1360, segment d'empreinte 6 × 12 px (pas de 2 px). Titres de colonne en `TextSection`, phrases d'intention en `TextTitle`.

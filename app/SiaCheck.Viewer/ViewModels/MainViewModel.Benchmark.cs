@@ -6,9 +6,15 @@ using SiaCheck.Viewer.Services;
 
 namespace SiaCheck.Viewer.ViewModels;
 
+/// <summary>Une case de l'empreinte : un contrôle du moteur, présent ou non, avec son infobulle.</summary>
+public sealed record FingerprintCell(bool Ok, bool Required, string Tooltip);
+
 /// <summary>Un MDP de la base sur l'accueil, avec son empreinte de fiabilité (un segment par contrôle du moteur).</summary>
 public sealed class BenchmarkItem(BenchmarkProject p)
 {
+    /// <summary>Contrôles qui décident de l'entrée dans les références (benchmark.REQUIS).</summary>
+    public static readonly IReadOnlySet<string> Required = new HashSet<string> { "coherence", "plausible" };
+
     public BenchmarkProject Project { get; } = p;
     public string Id { get; } = p.Id;
     /// <summary>Typologie (catégorie d'ouvrage) en libellé court ; « Non identifié » sans typologie.</summary>
@@ -18,12 +24,53 @@ public sealed class BenchmarkItem(BenchmarkProject p)
     public string Canton { get; } = p.Info("canton") ?? "—";
     public bool IsReliable { get; } = p.Reliable;
     public string Verdict => IsReliable ? "OK" : "ALERTE";
-    public IReadOnlyList<bool> Fingerprint { get; } = p.Checks.Select(c => c.Ok).ToList();
+    public IReadOnlyList<FingerprintCell> Fingerprint { get; } = p.Checks.Select((c, i) => Cell(i + 1, c)).ToList();
+    /// <summary>Pourquoi le projet est (ou n'est pas) dans les références : infobulle du verdict.</summary>
+    public string VerdictText { get; } = p.Reliable
+        ? "Dans les références : SP ≥ SN et part de construction plausible."
+        : $"Écarté des références : {RejectReason(p)}";
     public string Tooltip { get; } =
-        $"{p.File} · cliquer pour compléter son identité\n" + (p.Reliable ? "Dans les références" : "Écarté des références : SP et SN ne décrivent pas le même périmètre") +
+        $"{p.File} · cliquer pour compléter son identité\n" +
+        (p.Reliable ? "Dans les références" : $"Écarté des références : {RejectReason(p)}") +
         (p.Checks.Where(c => !c.Ok).ToList() is { Count: > 0 } missing
             ? "\n\nManque :\n• " + string.Join("\n• ", missing.Select(c => c.Detail.Length > 0 ? $"{c.Label} ({c.Detail})" : c.Label))
             : "\n\nToutes les données sont présentes.");
+
+    private static FingerprintCell Cell(int n, BenchmarkCheck c)
+    {
+        var required = Required.Contains(c.Id);
+        var state = c.Ok ? "✓ présent" : "✗ absent ou hors plage";
+        var detail = c.Detail.Length > 0 ? $" · {c.Detail}" : "";
+        var role = required ? "Requis pour entrer dans les références." : "Enrichit certains ratios ; ne bloque pas l'entrée dans les références.";
+        return new FingerprintCell(c.Ok, required, $"{n}. {c.Label}\n{state}{detail}\n{role}");
+    }
+
+    /// <summary>
+    /// La vraie raison d'un écart, du plus élémentaire au plus fin : surfaces absentes, puis SP &lt; SN, puis part de
+    /// construction hors de la fourchette plausible (trop haute : nettes incomplètes ; trop basse : SP incomplète).
+    /// </summary>
+    internal static string RejectReason(BenchmarkProject p)
+    {
+        var checks = p.Checks.ToDictionary(c => c.Id);
+        bool Ok(string id) => !checks.TryGetValue(id, out var c) || c.Ok;     // contrôle absent : pas en cause
+        string Detail(string id) => checks.TryGetValue(id, out var c) ? c.Detail : "";
+        if (!Ok("brutes") && !Ok("nettes")) return "le MDP ne contient ni surfaces brutes (SP) ni surfaces nettes.";
+        if (!Ok("brutes")) return "le MDP ne contient pas de surfaces brutes (SP) : impossible de comparer brut et net.";
+        if (!Ok("nettes")) return "le MDP ne contient pas de surfaces nettes : impossible de comparer brut et net.";
+        if (!Ok("coherence"))
+            return $"la SP est inférieure à la SN ({Detail("coherence")}) : brut et net ne décrivent pas le même périmètre.";
+        if (!Ok("plausible"))
+        {
+            var range = checks.TryGetValue("plausible", out var c) && c.Label.IndexOf("entre ", StringComparison.Ordinal) is >= 0 and var i
+                ? c.Label[i..] : "dans la fourchette plausible";
+            var m = System.Text.RegularExpressions.Regex.Match(Detail("plausible"), @"(\d+)\s*%");
+            var why = !m.Success ? ""
+                : int.Parse(m.Groups[1].Value) > 20 ? " : trop de construction, il manque probablement des surfaces nettes."
+                : " : trop peu de construction, la SP est probablement incomplète.";
+            return $"part de construction {Detail("plausible")}, attendue {range}{why}";
+        }
+        return "données incomplètes.";
+    }
 }
 
 /// <summary>
@@ -36,6 +83,8 @@ public sealed partial class MainViewModel
     public const int MinReferenceProjects = 3;
 
     public ObservableCollection<BenchmarkItem> BenchmarkProjects { get; } = [];
+    /// <summary>Légende de la colonne « Données du MDP » : les contrôles du moteur, dans l'ordre des cases.</summary>
+    [ObservableProperty] private string _fingerprintLegend = "";
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasBenchmarkFolder), nameof(BenchmarkEmptyMessage))]
     private string _benchmarkFolder = "";
@@ -201,6 +250,11 @@ public sealed partial class MainViewModel
                 ? "Aucun fichier MDP-*.xlsx dans ce dossier. Exportez un MDP depuis un projet traité, ou choisissez un autre dossier."
                 : null;
         if (data is null || !HasBenchmarkFolder) return;
+        FingerprintLegend = data.Projects.FirstOrDefault()?.Checks is { Count: > 0 } checks
+            ? "Une case par contrôle du MDP, de gauche à droite (pleine = présent) :\n"
+              + string.Join("\n", checks.Select((c, i) => $"{i + 1}. {c.Label}" + (BenchmarkItem.Required.Contains(c.Id) ? "  (requis)" : "")))
+              + "\n\nLes contrôles requis décident de l'entrée dans les références (✓) ; les autres enrichissent certains ratios."
+            : "";
         foreach (var p in data.Projects.OrderByDescending(p => p.Reliable).ThenByDescending(p => p.Score).ThenBy(p => p.Id))
             BenchmarkProjects.Add(new BenchmarkItem(p));
         var reliable = data.Projects.Count(p => p.Reliable);

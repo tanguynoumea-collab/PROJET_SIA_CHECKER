@@ -93,3 +93,11 @@ def test_mdp_glazing_is_srv(cfg):
 def test_srv_is_an_envelope_category(cfg):
     assert cfg.categories["SRV"]["family"] == "enveloppe" and cfg.categories["SFN"]["ignore"]
     assert CAT  # même propriété de catégorie que le lecteur
+
+
+def test_envelope_in_level_balance(cfg):
+    from sia_check import report
+    df = frame(level("A", "N00", 100, gross=120, net=90, res=30, srv=29.5) + level("A", "N01", 100))
+    env = report.envelope_by_level(rules.run(df, cfg))
+    assert env.loc[("A", "N00")].to_dict() == {"SFN": 120, "SFN_NETTE": 90, "SFN_RESERVATIONS": 30, "SRV": 29.5}
+    assert ("A", "N01") not in env.index                       # pas de façade : pas de ligne

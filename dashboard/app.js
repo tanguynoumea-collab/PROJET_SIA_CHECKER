@@ -97,8 +97,7 @@ function domaine(kpi, extra) {
 const CLE_SELECTION = "benchmark.selection";
 const CRITERES = [["typologie", "categorie", "Toutes"], ["canton", "canton", "Tous"], ["intervention", "intervention", "Toutes"]];
 const NON_IDENTIFIEE = "__non_identifiee";
-const KPI_CLES = [["SUP/SP_HS", ""], ["VITRE/FACADE", "provisoire, en attendant « vitrée / pleine »"],
-                  ["FACADE/SP_HS", "provisoire, en attendant le coefficient de forme"]];
+const KPI_CLES = [["SUP/SP_HS", ""], ["VITRE/PLEINE", ""], ["FACADE/SP_HS", "provisoire, en attendant le coefficient de forme"]];
 const sel = { typologie: "", canton: "", intervention: "" };
 
 /** Le projet passe la sélection ; `sauf` ignore un critère (comptes des listes, suggestions d'élargissement). */
@@ -150,6 +149,16 @@ function remplirSelection() {
   const n = fiablesSelection().length;
   document.getElementById("selection-resume").textContent = `${n} projet${n > 1 ? "s" : ""} fiable${n > 1 ? "s" : ""}`;
   document.getElementById("selection-reinit").hidden = !selectionActive();
+}
+
+/** Sélection logement (ou toutes typologies) : seule à donner un sens aux ratios par logement et au mix. */
+function selectionLogement() {
+  return !sel.typologie || norm(sel.typologie).startsWith("logement");
+}
+
+/** KPI de la sélection : ceux propres au logement (SUP par logement…) n'ont pas de sens pour un hôpital. */
+function kpisSelection() {
+  return etat.kpis.filter((k) => k.typologie !== "logement" || selectionLogement());
 }
 
 function majSelection() {
@@ -213,7 +222,7 @@ function dessinerRatios() {
 
   const familles = document.getElementById("ratios-familles");
   familles.replaceChildren();
-  const autres = etat.kpis.filter((k) => !KPI_CLES.some(([id]) => id === k.id));
+  const autres = kpisSelection().filter((k) => !KPI_CLES.some(([id]) => id === k.id));
   for (const famille of [...new Set(autres.map((k) => k.famille))]) {
     const bloc = el("section", { class: "famille" }, el("h2", { text: famille }));
     for (const kpi of autres.filter((k) => k.famille === famille)) {
@@ -358,9 +367,10 @@ function dessinerComparer() {
 
   const regles = document.getElementById("regles");
   regles.replaceChildren();
-  for (const famille of [...new Set(etat.kpis.map((k) => k.famille))]) {
+  const kpis = kpisSelection();
+  for (const famille of [...new Set(kpis.map((k) => k.famille))]) {
     const bloc = el("section", { class: "famille" }, el("h2", { text: famille }));
-    for (const kpi of etat.kpis.filter((k) => k.famille === famille)) bloc.append(ligneKpi(kpi, ref, groupe));
+    for (const kpi of kpis.filter((k) => k.famille === famille)) bloc.append(ligneKpi(kpi, ref, groupe));
     regles.append(bloc);
   }
 }
@@ -436,8 +446,9 @@ function remplirEcartes() {
 function dessinerBase() {
   const t = document.getElementById("table-base");
   const fiables = fiablesSelection();
-  const base = Object.fromEntries(etat.kpis.map((k) => [k.id, combiner(fiables, k)]));     // ensemble de la sélection
-  const colonnes = [{ id: "nom", label: "Projet" }, { id: "canton", label: "Canton" }, ...etat.kpis.map((k) => ({ id: k.id, label: k.id, kpi: k }))];
+  const kpis = kpisSelection();
+  const base = Object.fromEntries(kpis.map((k) => [k.id, combiner(fiables, k)]));     // ensemble de la sélection
+  const colonnes = [{ id: "nom", label: "Projet" }, { id: "canton", label: "Canton" }, ...kpis.map((k) => ({ id: k.id, label: k.id, kpi: k }))];
   const cle = (p, col) => col.id === "nom" ? Number(p.id) || p.id : col.id === "canton" ? (p.infos.canton || "") : p.kpis[col.id]?.valeur ?? -Infinity;
   let lignes = projetsSelection().sort((a, b) => b.fiable - a.fiable || String(a.id).localeCompare(String(b.id), "fr", { numeric: true }));
   if (etat.tri) {
@@ -455,13 +466,13 @@ function dessinerBase() {
   }));
 
   const ensemble = el("tr", { class: "ensemble" }, el("td", { text: `Ensemble de la sélection (${fiables.length} fiable${fiables.length > 1 ? "s" : ""})` }), el("td"),
-    ...etat.kpis.map((k) => el("td", { title: base[k.id]?.n ? `n = ${base[k.id].n}` : "", text: base[k.id]?.n ? `${valeur(k, base[k.id].combine)} (${base[k.id].n})` : "—" })));
+    ...kpis.map((k) => el("td", { title: base[k.id]?.n ? `n = ${base[k.id].n}` : "", text: base[k.id]?.n ? `${valeur(k, base[k.id].combine)} (${base[k.id].n})` : "—" })));
 
   const corps = lignes.map((p) => {
     const tr = el("tr", { class: p.fiable ? "" : "ecarte", tabindex: "0", title: p.fiable ? "Comparer ce projet" : "Écarté des références : comparer pour mémoire" },
       el("td", {}, el("span", { class: "mono", text: p.id }), ` ${p.nom}${p.fiable ? "" : " (écarté)"}`),
       el("td", { class: "mono", text: p.infos.canton || "—" }),
-      ...etat.kpis.map((k) => celluleBase(k, p, base[k.id])));
+      ...kpis.map((k) => celluleBase(k, p, base[k.id])));
     const ouvrir = () => { montrerVue("comparer"); choisirProjet(p.id); };
     tr.addEventListener("click", ouvrir);
     tr.addEventListener("keydown", (e) => { if (e.key === "Enter") ouvrir(); });
@@ -492,8 +503,7 @@ function dessinerTypologies() {
   const titreTypo = document.getElementById("titre-typologies");
   if (!typos.length) {
     titreTypo.textContent = "SUP par logement selon le nombre de chambres";
-    const logement = !sel.typologie || norm(sel.typologie).startsWith("logement");
-    boites.replaceChildren(el("p", { class: "secondaire", text: logement
+    boites.replaceChildren(el("p", { class: "secondaire", text: selectionLogement()
       ? "Aucun projet fiable de la sélection ne donne les chambres de ses logements."
       : "Les typologies de logement ne concernent pas cette sélection." }));
     return;
@@ -533,7 +543,7 @@ function dessinerTypologies() {
 // ------------------------------------------------------------------ Mon projet (saisie ou SIA Check)
 
 const SURFACES = [["SP_HS", "SP hors-sol"], ["SP_SS", "SP sous-sol"], ["SUP_HS", "SUP hors-sol"], ["SD_HS", "SD hors-sol"],
-                  ["SI", "SI"], ["SUS_HS", "SUS hors-sol"], ["SVN", "SVN"], ["FACADE", "Façade"], ["VB", "VB (m³)"]];
+                  ["SI", "SI"], ["SUS_HS", "SUS hors-sol"], ["SVN", "SVN"], ["FACADE", "Façade"], ["VITRE", "Vitrages"], ["VB", "VB (m³)"]];
 const MIX = [["0", "Studios"], ["1", "1 chambre"], ["2", "2 chambres"], ["3", "3 chambres"], ["4", "4 ch. et plus"]];
 const CHF_KPIS = new Set(["SUP/SP_HS", "SVN/SP_HS"]);
 const CLE_SAISIE = "benchmark.monProjet";
@@ -597,6 +607,7 @@ function verifierSaisie(v) {
   const erreurs = {};
   for (const [k] of SURFACES) if (v[k] != null && (!Number.isFinite(v[k]) || v[k] < 0)) erreurs[k] = "Valeur négative ou invalide.";
   if (v.SP_HS != null && v.SUP_HS != null && v.SUP_HS > v.SP_HS) erreurs.SUP_HS = "La SUP dépasse la SP hors-sol.";
+  if (v.FACADE != null && v.VITRE != null && v.VITRE > v.FACADE) erreurs.VITRE = "Les vitrages dépassent la façade.";
   const nettes = ["SUP_HS", "SD_HS", "SUS_HS"].reduce((s, k) => s + (v[k] || 0), 0);
   if (v.SP_HS != null && !erreurs.SUP_HS && nettes > v.SP_HS) erreurs.SP_HS = "Les surfaces nettes hors-sol dépassent la SP hors-sol.";
   return erreurs;
@@ -609,6 +620,8 @@ function projetSaisi(s) {
   for (const [k] of SURFACES) if (s.valeurs[k] != null && !erreurs[k]) t[k] = s.valeurs[k];
   if (t.SP_HS != null && t.SP_SS != null) t.SP = t.SP_HS + t.SP_SS;
   if (t.SUP_HS != null) t.SUP = t.SUP_HS;     // en faisabilité, la SUP est hors-sol
+  if (t.VITRE > 0 && t.FACADE > t.VITRE) t.PLEINE = t.FACADE - t.VITRE;   // comme benchmark._enveloppe
+  else delete t.VITRE;                                                   // vitrée seule : aucun ratio
   const mix = {};
   for (const [k] of MIX) if (s.mix[k] > 0) mix[k] = s.mix[k];
   const nb = Object.values(mix).reduce((a, b) => a + b, 0);
@@ -761,7 +774,7 @@ function lireHypotheses() {
   const num = (n) => { const v = f[n].value.trim(); return v === "" ? null : Number(v); };
   const mix = {};
   for (const [k] of MIX) { const v = num(`mix${k}`); if (v > 0) mix[k] = v; }
-  return { SP_HS: num("SP_HS"), ETAGES_HS: num("ETAGES_HS"), mix, prix: num("prix") };
+  return { SP_HS: num("SP_HS"), ETAGES_HS: num("ETAGES_HS"), mix: selectionLogement() ? mix : {}, prix: num("prix") };
 }
 
 /** Projets similaires à une constructibilité : SP hors-sol, étages et part de grands logements du mix visé. */
@@ -802,6 +815,8 @@ function surfaceMoyenneMix(mix) {
 
 function dessinerProgramme() {
   const h = lireHypotheses();
+  const logement = selectionLogement();
+  for (const id of ["prog-mix-titre", "prog-mix"]) document.getElementById(id).hidden = !logement;
   const totalMix = Object.values(h.mix).reduce((a, b) => a + b, 0);
   const total = document.getElementById("prog-mix-total");
   total.textContent = totalMix ? `= ${F0.format(totalMix)} %` : "";
@@ -831,13 +846,14 @@ function dessinerProgramme() {
   dessinerBarre(h.SP_HS, sup, sd, sus);
 
   const lignes = [];
-  const ligne = (label, f, unite, source, detail) => lignes.push({ label, f, unite, source, detail });
+  const ligne = (label, f, unite, source, detail, sous) => lignes.push({ label, f, unite, source, detail, sous });
   ligne("SUP hors-sol", sup, "m²", sup && `SUP / SP hors-sol (n = ${sup.n})`);
   const svn = fourchette(groupe, "SVN/SP_HS", h.SP_HS);
   ligne("Surface de vente nette (SVN)", svn, "m²", svn && `SVN / SP hors-sol (n = ${svn.n})`);
 
   const moyenne = totalMix > 0 ? surfaceMoyenneMix(h.mix) : null;
-  if (moyenne && sup) {
+  if (!logement) { /* pas de logements à estimer hors logement */ }
+  else if (moyenne && sup) {
     const log = { bas: sup.bas / moyenne, central: sup.central / moyenne, haut: sup.haut / moyenne };
     const n = Math.round(log.central);
     const court = { 0: "studio", 1: "1 ch.", 2: "2 ch.", 3: "3 ch.", 4: "4 ch. et +" };
@@ -852,6 +868,13 @@ function dessinerProgramme() {
   ligne("SP sous-sol", ss, "m²", ss && `SP sous-sol / SUP (n = ${ss.n})`);
   const facade = fourchette(groupe, "FACADE/SP_HS", h.SP_HS);
   ligne("Façade", facade, "m²", facade && `Façade / SP hors-sol (n = ${facade.n})`);
+  const vitree = facade && fourchette(groupe, "VITRE/FACADE", facade.central);
+  if (vitree) {
+    // la façade pleine suit la part vitrée en sens inverse : plus de vitrage, moins de plein
+    ligne("dont vitrée", vitree, "m²", `Part vitrée (n = ${vitree.n})`, null, true);
+    ligne("dont pleine", { bas: facade.central - vitree.haut, central: facade.central - vitree.central, haut: facade.central - vitree.bas },
+          "m²", "façade − vitrée", null, true);
+  }
   if (h.prix > 0 && svn)
     ligne("Chiffre d'affaires (SVN × prix)", { bas: svn.bas * h.prix, central: svn.central * h.prix, haut: svn.haut * h.prix },
           "CHF", `${F0.format(h.prix)} CHF / m² de SVN`);
@@ -893,9 +916,9 @@ function dessinerBarre(sp, sup, sd, sus) {
 function dessinerTableProgramme(lignes) {
   const fmt = (v, unite) => unite === "CHF" ? `≈ ${F1.format(v / 1e6)} M` : unite === "m²" ? `${F0.format(v)} m²` : F0.format(v);
   const tete = el("tr", {}, ...["", "Bas (P25)", "Central", "Haut (P75)", "D'après"].map((t) => el("th", { scope: "col", text: t })));
-  const corps = lignes.map(({ label, f, unite, source, detail }) => {
+  const corps = lignes.map(({ label, f, unite, source, detail, sous }) => {
     if (!f) return el("tr", {}, el("td", { text: label }), el("td", { colspan: "4", class: "absent", text: "Pas de donnée dans les projets similaires" }));
-    const nom = el("td", { text: label });
+    const nom = el("td", { text: label, class: sous ? "sous" : "" });
     if (detail) nom.append(el("span", { class: "detail", text: `dont ${detail}` }));
     return el("tr", {}, nom, el("td", { text: fmt(f.bas, unite) }), el("td", { class: "central", text: fmt(f.central, unite) + (unite === "CHF" ? " CHF" : "") }),
       el("td", { text: fmt(f.haut, unite) }), el("td", { class: "source", text: source || "" }));

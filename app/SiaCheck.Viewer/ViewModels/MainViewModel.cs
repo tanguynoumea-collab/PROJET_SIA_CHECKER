@@ -757,8 +757,9 @@ public sealed partial class MainViewModel : ObservableObject
         var scale = levels.Select(l => Math.Max(Math.Max(l.Value("SP"), l.Value("SEP")),
                                                 Math.Max(l.Before?.Value("SP") ?? 0, l.Before?.Value("SEP") ?? 0)))
                           .DefaultIfEmpty(1).Max();
+        var facadeScale = levels.Select(l => l.Value("SFN")).DefaultIfEmpty(0).Max();
         foreach (var l in levels)
-            BalanceRows.Add(new BalanceRow(l, scale <= 0 ? 1 : scale));
+            BalanceRows.Add(new BalanceRow(l, scale <= 0 ? 1 : scale) { FacadeScale = facadeScale <= 0 ? 1 : facadeScale });
     }
 
     private static readonly string[] VerdictOrder = ["OK", "INFO", "ALERTE", "ERREUR"];

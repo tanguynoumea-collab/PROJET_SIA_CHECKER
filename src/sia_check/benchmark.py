@@ -15,7 +15,8 @@ Totaux (`Projet.totaux`, m² sauf mention) :
     SN, SC               SN = SUP + SUS + SD + SI ; SC = SP − SN (Treegram ne fournit pas la SC)
     SEP, VB              surface externe de plancher ; volume bâti (m³ : lignes VB, sinon m³ des SP)
     SVN, SVB, SNH        USPI, somme des lots
-    FACADE, VITRE        enveloppe : façade brute et partie vitrée
+    FACADE, VITRE        enveloppe : façade brute et partie vitrée (SRV ; réservations de façade dans les anciens MDP)
+    PLEINE               façade pleine = FACADE − VITRE (seulement si la vitrée est connue)
     LOG, ETAGES_HS       nombre de logements, d'étages hors-sol
 """
 
@@ -52,6 +53,7 @@ class Kpi:
     note: str = ""
     sens: int = 0          # +1 plus haut = favorable, −1 plus bas = favorable, 0 neutre
     objet: str = ""        # ce que mesure le numérateur, pour traduire un écart en m² (« de SUP hors-sol »)
+    typologie: str = ""    # « logement » : sans objet pour une autre typologie (le dashboard le masque)
 
 
 KPIS = [
@@ -69,11 +71,14 @@ KPIS = [
         sens=-1, objet="de SUS hors-sol"),
     Kpi("SP_SS/SUP", "Sous-sol", "SP sous-sol / SUP", ("SP_SS",), ("SUP",),
         note="m² de sous-sol construits par m² utile principal.", sens=-1, objet="de sous-sol"),
-    Kpi("FACADE/SP_HS", "Compacité", "Façade / SP hors-sol", ("FACADE",), ("SP_HS",), sens=-1, objet="de façade"),
-    Kpi("VITRE/FACADE", "Compacité", "Vitrage / façade", ("VITRE",), ("FACADE",)),
-    Kpi("VB/SP", "Compacité", "Hauteur brute moyenne : VB / SP", ("VB",), ("SP",), unite="m"),
-    Kpi("SUP/LOG", "Programme", "SUP par logement", ("SUP",), ("LOG",), unite="m²"),
-    Kpi("SP_HS/LOG", "Programme", "SP hors-sol par logement", ("SP_HS",), ("LOG",), unite="m²"),
+    # Enveloppe : le vitrage est neutre (lumière et vente contre coût), le benchmark situe sans juger
+    Kpi("VITRE/PLEINE", "Enveloppe", "Vitrée / pleine", ("VITRE",), ("PLEINE",),
+        note="Surface vitrée / surface pleine de façade (pleine = façade brute − vitrée)."),
+    Kpi("VITRE/FACADE", "Enveloppe", "Part vitrée : vitrée / façade", ("VITRE",), ("FACADE",)),
+    Kpi("FACADE/SP_HS", "Enveloppe", "Façade / SP hors-sol", ("FACADE",), ("SP_HS",), sens=-1, objet="de façade"),
+    Kpi("VB/SP", "Enveloppe", "Hauteur brute moyenne : VB / SP", ("VB",), ("SP",), unite="m"),
+    Kpi("SUP/LOG", "Programme", "SUP par logement", ("SUP",), ("LOG",), unite="m²", typologie="logement"),
+    Kpi("SP_HS/LOG", "Programme", "SP hors-sol par logement", ("SP_HS",), ("LOG",), unite="m²", typologie="logement"),
 ]
 KPI_BY_ID = {k.id: k for k in KPIS}
 
@@ -326,6 +331,7 @@ def _enveloppe(df: pd.DataFrame, t: dict) -> None:
     if facade > 0:
         t["FACADE"] = facade
         t["VITRE"] = vitre if vitre > 0 else None
+        t["PLEINE"] = facade - vitre if 0 < vitre < facade else None
 
 
 def _logements(df: pd.DataFrame, nettes: pd.DataFrame) -> list[dict]:

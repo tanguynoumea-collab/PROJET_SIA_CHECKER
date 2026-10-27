@@ -152,6 +152,26 @@ def _building_summary(result: rules.Result, cfg: Config) -> pd.DataFrame:
     return b
 
 
+ENVELOPE_COLUMNS = ["SFN", "SFN_NETTE", "SFN_RESERVATIONS", "SRV"]
+
+
+def envelope_by_level(result: rules.Result) -> pd.DataFrame:
+    """Façade (brute, nette, réservations) et vitrages de chaque niveau : verticaux, hors des sommes du bilan,
+    montrés à côté de lui (DESIGN_PLAN, Évolution 3.6)."""
+    surf = result.surfaces
+    if surf.empty or "code" not in surf:
+        return pd.DataFrame(columns=ENVELOPE_COLUMNS)
+    env = surf[surf["code"].isin([rules.SFN, rules.SRV]) & (surf["kind"] == "node")]
+    if env.empty:
+        return pd.DataFrame(columns=ENVELOPE_COLUMNS)
+    out = env.groupby(["building", "level", "code"])["area"].sum().unstack("code")
+    sfn = env[env["code"] == rules.SFN].groupby(["building", "level"])
+    for col, src in (("SFN_NETTE", "net_area"), ("SFN_RESERVATIONS", "reservations_area")):
+        if src in env:
+            out[col] = sfn[src].sum(min_count=1)
+    return out.reindex(columns=ENVELOPE_COLUMNS)
+
+
 def _level_table(result: rules.Result, cfg: Config) -> pd.DataFrame:
     tot = result.totals
     if tot.empty:

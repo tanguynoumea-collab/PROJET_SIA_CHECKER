@@ -151,6 +151,8 @@ public sealed class BalanceRow(LevelBalance level, double scale)
     public double Sep => Source.Value("SEP");
     public double R1Diff => Source.R1?.Diff ?? 0;
     public string? R1Verdict => Source.R1?.Verdict;
+    /// <summary>Glyphe R1 seulement s'il signale quelque chose : le résidu courant (INFO) n'encombre pas le bilan.</summary>
+    public bool ShowR1Glyph => HasFloor && R1Verdict is not (null or "INFO");
     public string Alerts => string.Join(" ", Source.Alerts);
 
     // Avant / après (plan, Évolution 2.0) : la barre montre l'état corrigé, le reste est une trace.
@@ -173,6 +175,29 @@ public sealed class BalanceRow(LevelBalance level, double scale)
     private static string Format(double v) =>
         v.ToString("#,##0.00", new System.Globalization.NumberFormatInfo { NumberGroupSeparator = " ", NumberDecimalSeparator = "," });
     public bool HasFloor => Sp > 0;
+
+    // Enveloppe (Évolution 3.6) : façade brute et vitrages du niveau, verticaux, hors des sommes de la barre
+    public double Facade => Source.Value("SFN");
+    public double Glazing => Source.Value("SRV");
+    public bool HasFacade => Facade > 0;
+    /// <summary>Plus grande façade du bâtiment : échelle propre, la façade ne se compare pas à la SP.</summary>
+    public double FacadeScale { get; init; } = 1;
+    public string GlazingShareText => HasFacade && Glazing > 0 ? $"{100 * Glazing / Facade:0} %" : "";
+    public string FacadeTooltip
+    {
+        get
+        {
+            if (!HasFacade) return "";
+            var lines = new List<string> { $"Façade {Building}·{Level} : {Format(Facade)} m² brute" };
+            if (Source.Values.TryGetValue("SFN_NETTE", out var net) && Source.Values.TryGetValue("SFN_RESERVATIONS", out var res))
+                lines.Add($"nette {Format(net)} m² + réservations {Format(res)} m²");
+            lines.Add(Glazing > 0
+                ? $"Vitrages (SRV) {Format(Glazing)} m², {100 * Glazing / Facade:0.0} % de la façade ; pleine {Format(Facade - Glazing)} m²"
+                : "Pas de vitrages (SRV) sur ce niveau");
+            return string.Join("\n", lines);
+        }
+    }
+
     public string LevelTooltip => $"{Building}·{Level} — cliquer pour isoler le niveau dans la 3D";
 }
 

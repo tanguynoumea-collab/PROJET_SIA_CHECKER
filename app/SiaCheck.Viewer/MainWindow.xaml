@@ -689,7 +689,7 @@
                             <Grid Height="{StaticResource BalanceHeight}" Visibility="{Binding IsBalanceCollapsed, Converter={StaticResource HiddenWhen}}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,0,12,8"
                                           Visibility="{Binding ShowRatios, Converter={StaticResource HiddenWhen}}">
-                                <ItemsControl ItemsSource="{Binding BalanceRows}">
+                                <ItemsControl ItemsSource="{Binding BalanceRows}" Grid.IsSharedSizeScope="True">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="vm:BalanceRow">
                                             <Button Style="{StaticResource RowButton}" Padding="4,1"
@@ -701,7 +701,8 @@
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="20" />
                                                         <ColumnDefinition Width="72" />
-                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="128" />
+                                                        <ColumnDefinition Width="Auto" SharedSizeGroup="BalanceChange" /><!-- même largeur sur toutes les lignes : barres alignées -->
                                                         <ColumnDefinition Width="56" />
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock Style="{StaticResource TextMono}" Text="{Binding Level}" VerticalAlignment="Center"
@@ -710,12 +711,24 @@
                                                                   Palette="{Binding DataContext.Palette, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                   Outline="{DynamicResource BrushTextSecondary}" Error="{DynamicResource BrushVerdictError}" />
                                                     <c:VerdictGlyph Grid.Column="2" Margin="4,0,0,0" Verdict="{Binding R1Verdict}"
-                                                                    Visibility="{Binding HasFloor, Converter={StaticResource BoolToVisibility}}" />
+                                                                    Visibility="{Binding ShowR1Glyph, Converter={StaticResource BoolToVisibility}}" />
                                                     <TextBlock Grid.Column="3" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
                                                                Visibility="{Binding HasFloor, Converter={StaticResource BoolToVisibility}}"
                                                                Text="{Binding R1Diff, Converter={StaticResource Area}}" />
+                                                    <!-- Façade du niveau (Évolution 3.6) : vitrages puis partie pleine, sur l'échelle des façades -->
+                                                    <Grid Grid.Column="4" Margin="12,0,0,0" Background="Transparent" ToolTip="{Binding FacadeTooltip}"
+                                                          ToolTipService.ShowDuration="30000"
+                                                          Visibility="{Binding HasFacade, Converter={StaticResource BoolToVisibility}}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" /><ColumnDefinition Width="36" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <c:FacadeBar Row="{Binding}"
+                                                                     Palette="{Binding DataContext.Palette, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                        <TextBlock Grid.Column="1" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding GlazingShareText}" />
+                                                    </Grid>
                                                     <!-- Avant / après : ancien résidu barré, nouveau avec son verdict -->
-                                                    <StackPanel Grid.Column="4" Margin="12,0,0,0" Orientation="Horizontal" VerticalAlignment="Center"
+                                                    <StackPanel Grid.Column="5" Margin="12,0,0,0" Orientation="Horizontal" VerticalAlignment="Center"
                                                                 ToolTip="{Binding ChangeTooltip}"
                                                                 Visibility="{Binding HasChange, Converter={StaticResource BoolToVisibility}}">
                                                         <TextBlock Style="{StaticResource TextNumber}" Foreground="{DynamicResource BrushTextSecondary}"
@@ -724,7 +737,7 @@
                                                         <c:VerdictGlyph Verdict="{Binding ChangeVerdict}" />
                                                         <TextBlock Style="{StaticResource TextNumber}" Margin="4,0,0,0" Text="{Binding ChangeAfter}" />
                                                     </StackPanel>
-                                                    <TextBlock Grid.Column="5" Margin="8,0,0,0" Style="{StaticResource TextMono}" VerticalAlignment="Center"
+                                                    <TextBlock Grid.Column="6" Margin="8,0,0,0" Style="{StaticResource TextMono}" VerticalAlignment="Center"
                                                                Foreground="{DynamicResource BrushVerdictWarning}" Text="{Binding Alerts}" />
                                                 </Grid>
                                             </Button>
@@ -737,7 +750,7 @@
                             <DockPanel Visibility="{Binding ShowRatios, Converter={StaticResource BoolToVisibility}}" Margin="12,0,12,8">
                                 <Grid DockPanel.Dock="Top" Margin="4,0,18,2">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="72" /><ColumnDefinition Width="*" /><ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="96" /><ColumnDefinition Width="*" /><ColumnDefinition Width="150" />
                                         <ColumnDefinition Width="72" /><ColumnDefinition Width="72" /><ColumnDefinition Width="112" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Style="{StaticResource TextCaption}" Text="Ratio" />
@@ -758,7 +771,7 @@
                                                 <Grid Height="{StaticResource BalanceRowHeight}" Margin="4,0,18,0" Background="Transparent" ToolTip="{Binding Tooltip}"
                                                       ToolTipService.ShowDuration="30000" AutomationProperties.Name="{Binding Label}">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="72" /><ColumnDefinition Width="*" /><ColumnDefinition Width="150" />
+                                                        <ColumnDefinition Width="96" /><ColumnDefinition Width="*" /><ColumnDefinition Width="150" />
                                                         <ColumnDefinition Width="72" /><ColumnDefinition Width="72" /><ColumnDefinition Width="112" />
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding Id}" />

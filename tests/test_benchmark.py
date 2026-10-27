@@ -56,6 +56,31 @@ def test_totaux(projet):
     assert t["SUP"] == 650 and t["SUP_HS"] == 650 and t["SUS_SS"] == 100 and t["SN"] == 830 and t["SC"] == 170
     assert t["VB"] == pytest.approx(3000) and t["ETAGES_HS"] == 2 and t["LOG"] == 2
     assert t["SVN"] == 560 and t["FACADE"] == 700 and t["VITRE"] == 150
+    assert t["PLEINE"] == 550                                              # façade − vitrée
+
+
+def test_kpis_d_enveloppe(projet):
+    assert projet.ratio(b.KPI_BY_ID["VITRE/PLEINE"]) == (150, 550)
+    assert projet.ratio(b.KPI_BY_ID["VITRE/FACADE"]) == (150, 700)
+    assert {k.famille for k in b.KPIS if "VITRE" in k.num or "FACADE" in k.num} == {"Enveloppe"}
+    assert b.KPI_BY_ID["VITRE/PLEINE"].sens == 0                           # le benchmark situe, sans juger
+
+
+def test_sans_vitree_pas_de_pleine(tmp_path):
+    import openpyxl
+    f = mdp(tmp_path / "MDP-9001-V.xlsx")
+    wb = openpyxl.load_workbook(f)
+    wb["SurfacesEnveloppe"]["F2"] = 0
+    wb.save(f)
+    t = b.lire(f).totaux
+    assert t["FACADE"] == 700 and "VITRE" not in t and "PLEINE" not in t
+
+
+def test_kpis_propres_au_logement(projet):
+    logement = {k.id for k in b.KPIS if k.typologie == "logement"}
+    assert logement == {"SUP/LOG", "SP_HS/LOG"}
+    data = b.construire([projet], [])
+    assert {k["id"]: k["typologie"] for k in data["kpis"]}["SUP/LOG"] == "logement"
 
 
 def test_projet_fiable(projet):

@@ -79,7 +79,7 @@ SP sous-sol ── surtout SUS (parking, caves)         ← le m² qui coûte le
 | Rendement (le cœur) | SUP / SP hors-sol, SVN / SP hors-sol, SN / SP | Revenu par m² construit |
 | Pertes | SC / SP, SD / SP, SI / SP (hors-sol, étages types) | Où partent les m² |
 | Sous-sol | SP sous-sol / SUP, m² de parking par place | Coût caché par m² vendu |
-| Compacité | Façade / SP hors-sol, VB / SP (hauteur moyenne), vitrage / façade | Coût d'enveloppe |
+| Enveloppe | Vitrée / pleine, part vitrée, façade / SP hors-sol, VB / SP (hauteur moyenne) | Coût d'enveloppe |
 | Distribution | Logements par cage et par étage, SP par cage | Efficacité des circulations verticales |
 | Programme | Mix typologique, SUP moyenne par nombre de chambres, SUP par logement | Bibliothèque de programmation |
 
@@ -224,4 +224,4 @@ Un second jeu de 80 SRV (5 271 m²) existe dans un autre arbre de quantités Tre
 | Phase | Contenu |
 |---|---|
 | 17a ✓ | **Fiabilisation de l'enveloppe.** Lecture de la SRV de l'arbre SIA ; SFN et SRV dans une famille « Enveloppe » (surfaces verticales), hors des sommes horizontales ; calques et rendu 3D propres ; contrôles : brute = nette + réservations, SRV ≈ réservations, façade ≈ périmètre × hauteur brute, vitres ≤ façade, niveau hors-sol sans façade ; ratios d'enveloppe dans l'espace de revue ; MDP : « Surface vitrée » = SRV |
-| 17b | **Enveloppe dans le benchmark.** KPI « Vitrée / pleine » et « Part vitrée » à la place du ratio provisoire ; KPI clés mis à jour ; coefficient de forme dès que sa définition est connue ; ratios propres au logement réservés au logement (reste de la phase 17) |
+| 17b ✓ | **Enveloppe dans le benchmark.** KPI « Vitrée / pleine » et « Part vitrée » à la place du ratio provisoire ; KPI clés mis à jour ; coefficient de forme dès que sa définition est connue ; ratios propres au logement réservés au logement (reste de la phase 17) |

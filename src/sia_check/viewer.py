@@ -12,7 +12,7 @@ Contrat (version 1) :
   "surfaces":   [{"id", "building", "level", "category", "code", "kind", "status" (checked | ignored | unknown |
                   excluded : retirée par une correction), "area",
                   "room_type", "lot", "mesh": {"v": [x, y, z, …], "i": [a, b, c, …]} | null}],
-  "levels":     [{"building", "level", "rank", "values": {code: m²}, "r1": {"diff", "verdict"} | null,
+  "levels":     [{"building", "level", "rank", "values": {code: m², dont SFN, SFN_NETTE, SFN_RESERVATIONS, SRV}, "r1": {"diff", "verdict"} | null,
                   "r3": {…} | null, "alerts": [règles],
                   "before": {"values", "r1", "r3"} | null}],   (avec corrections : bilan sans elles)
   "issues":     [{"key", "rule", "verdict", "building", "level", "lot", "category", "expected",
@@ -196,13 +196,17 @@ def _without(mesh: dict, region, edge: float = 0.0) -> dict | None:
 
 def _levels(rep: report.Report, cfg: Config) -> list[dict]:
     out = []
+    env = report.envelope_by_level(rep.result)
     for r in rep.levels.to_dict("records"):
+        e = env.loc[(r["building"], r["level"])] if (r["building"], r["level"]) in env.index else {}
         def check(prefix):
             v = r.get(f"{prefix} verdict")
             return None if not isinstance(v, str) else {"diff": _num(r[f"{prefix} écart"]), "verdict": v}
         out.append({
             "building": r["building"], "level": r["level"], "rank": _num(rules.level_rank(r["level"], cfg)),
-            "values": {c: _num(r[c]) for c in report.LEVEL_COLUMNS if _num(r[c]) is not None},
+            "values": {c: _num(v) for c, v in [*((c, r[c]) for c in report.LEVEL_COLUMNS),
+                                                 *((c, e[c]) for c in report.ENVELOPE_COLUMNS if c in e)]
+                       if _num(v) is not None},
             "r1": check("R1"), "r3": check("R3"),
             "alerts": [a for a in r["Alertes"].split(", ") if a],
         })

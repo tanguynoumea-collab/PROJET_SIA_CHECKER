@@ -218,3 +218,6 @@ table.programme th:last-child { text-align: left; }
 table.programme .detail { display: block; color: var(--texte-2); font-size: 12px; }
 table.programme tbody tr { cursor: default; }
 .lien { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
+
+/* Programmer : vitrée et pleine sous la façade (Évolution 3.7) */
+table.programme td.sous { padding-left: 1.5rem; color: var(--texte-2); }

@@ -1433,3 +1433,102 @@ Feuille SurfacesEnveloppe : « Surface vitrée » = SRV du niveau (au lieu des r
 - Ratios L'Orée : part vitrée 32,7 %, vitrée / pleine 48,6 %, façade / SP hors-sol 0,60.
 - **Écart au plan** : l'infobulle du calque SFN ne donne pas encore la part nette et les réservations (données du moteur, non transmises à la visionneuse).
 - Rendu 3D : la translucidité réagissait mal à l'écran (ordre de dessin WPF) ; façades et vitrages sont passés en opaque. La toiture SPT est affichée par défaut.
+- **Bilan par niveau** (retour utilisateur) : une colonne « Façade » après l'écart R1 : mini-barre vitrages (bleu SRV) puis partie pleine (gris SFN), sur l'échelle de la plus grande façade du bâtiment (pas celle de la SP), et part vitrée en %. Infobulle : brute, nette + réservations, vitrages, pleine (ce qui manquait à l'infobulle du calque SFN).
+- **Ratios d'enveloppe** (retour utilisateur) : colonne « Ratio » élargie (96 px, « SRV/PLEINE » débordait) ; repères de vraisemblance tirés de la base (part vitrée 0,20–0,45 ; vitrée / pleine 0,25–0,80 ; façade / SP 0,50–1,10), pour que la jauge s'affiche comme pour les autres ratios.
+
+## Évolution 3.7 — Enveloppe dans le benchmark (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (27.10.2026) ☑ Implémenté
+> Version : 3.7 — 27.10.2026 · Phase 17b de `docs/V3_PLAN.md` (§9, §10)
+
+### Ancrage
+
+L'équipe a trois KPI clés : SUP / SP, **vitrée / pleine**, coefficient de forme. Le dashboard affiche aujourd'hui « Vitrage / façade » et « Façade / SP hors-sol », marqués provisoires. La fiabilisation (3.6) produit maintenant une surface vitrée réelle (SRV) dans le MDP : le benchmark peut afficher le vrai KPI. Et la base n'est pas que du logement : les ratios par logement ne doivent plus s'imposer à une sélection Santé ou Bureaux.
+
+### Ce que dit la base aujourd'hui
+
+| Projet | Façade | Vitrée | Part vitrée | Vitrée / pleine | Façade / SP HS |
+|---|---:|---:|---:|---:|---:|
+| La Bâtie | 4 519 | 1 921 | 42,5 % | 73,9 % | 0,73 |
+| Avallons | 4 416 | 1 500 | 34,0 % | 51,5 % | 1,07 |
+| Le Clos des Hêtres | 2 612 | 559 | 21,4 % | 27,2 % | 1,08 |
+| Les Patios (non fiable) | 8 820 | 1 836 | 20,8 % | 26,3 % | 0,67 |
+| Sauvabelines | 3 515 | — | — | — | 0,81 |
+
+4 projets sur 10 ont une surface vitrée. Les MDP déjà dans la base portent comme « vitrée » les réservations de façade : sur L'Orée, elles ne diffèrent des vitres SRV que de 0,7 %. **Pas besoin de régénérer la base pour ce KPI** ; seul un MDP sans enveloppe (L'Orée, Côté Gare…) gagne à être réexporté depuis SIA Check.
+
+### Moteur (benchmark.py)
+
+- Nouveau terme **PLEINE = FACADE − VITRE** (seulement si VITRE existe).
+- La famille « Compacité » devient **« Enveloppe »** :
+
+| Id | Libellé | Num / den | Sens | Statut |
+|---|---|---|---|---|
+| VITRE/PLEINE | Vitrée / pleine | VITRE / PLEINE | neutre | **KPI clé** |
+| VITRE/FACADE | Part vitrée : vitrée / façade | VITRE / FACADE | neutre | remplace « Vitrage / façade » |
+| FACADE/SP_HS | Façade / SP hors-sol | FACADE / SP_HS | plus bas = favorable | KPI clé **provisoire** (coefficient de forme) |
+| VB/SP | Hauteur brute moyenne | VB / SP | neutre | inchangé |
+
+- Sens **neutre** pour le vitrage : plus de vitrage coûte plus cher mais sert la lumière et la vente ; le benchmark situe le projet sans dire « mieux » ou « moins bien ».
+- Les KPI SUP / logement et SP hors-sol / logement reçoivent un attribut `typologie: "logement"`.
+
+### Dashboard
+
+**Onglet Ratios — KPI clés** (chiffres des maquettes : exemples)
+```
+KPI CLÉS
+SUP hors-sol / SP hors-sol      78,4 %   médiane … · quartiles … · n = 5   ──●──●─┃─●──
+Vitrée / pleine                 51,5 %   médiane … · n = 3                  ──●───┃──●──
+Façade / SP hors-sol   provisoire, en attendant le coefficient de forme     ──●─┃──●──
+```
+« Vitrée / pleine » n'est plus provisoire. « Part vitrée » passe dans la famille Enveloppe.
+
+**Logement réservé au logement**
+- Les KPI marqués logement ne s'affichent (Ratios, Comparer) que si la sélection est **Logement** ou **toutes typologies**. Sinon ils disparaissent sans mention : ils n'ont pas de sens pour un hôpital.
+- Programmer : les lignes « Logements » et la saisie du mix ne s'affichent que pour une sélection logement (déjà le cas pour l'onglet Typologies).
+
+**Programmer — deux lignes de plus**
+```
+Façade                 3 520 m²   (2 940 – 4 080)   Façade / SP hors-sol (n = 4)
+  dont vitrée          1 200 m²   (  750 – 1 750)   Part vitrée (n = 3)
+  dont pleine          2 320 m²                      façade − vitrée
+```
+Utile pour le plan financier : la façade pleine et les vitrages n'ont pas le même coût au m².
+
+**Mon projet** : un champ « Vitrages » à côté de « Façade » dans la saisie ; les KPI d'enveloppe se calculent dès que les deux sont saisis. Depuis SIA Check, la valeur vient du MDP (SRV).
+
+### Coefficient de forme
+
+Toujours en attente de la définition de l'équipe. Dès qu'elle est connue, il remplace « Façade / SP hors-sol » dans les KPI clés ; « Façade / SP hors-sol » retourne dans la famille Enveloppe.
+
+### États non-nominaux
+
+| État | Rendu |
+|---|---|
+| Aucun projet de la sélection n'a de vitrée | Carte KPI clé : « Aucun projet de la sélection n'a ce ratio » (comportement existant) |
+| Projet comparé sans vitrée | Ligne du KPI : « — » ; ses projets similaires restent calculés sans l'enveloppe |
+| Programmer sans part vitrée dans le groupe | Ligne « Façade » seule, sans « dont vitrée / pleine » |
+| Sélection non logement | Pas de KPI par logement, pas de mix, pas d'onglet Typologies (déjà) |
+
+### Passe B — auto-critique
+
+- **Premier jet** : régénérer toute la base avant d'afficher le KPI. Retiré : les réservations sont un très bon substitut (0,7 % d'écart sur L'Orée) ; exiger la régénération bloquerait l'équipe pour un gain négligeable.
+- **Sens du vitrage** : une version « moins de vitrage = favorable » coloriait les écarts. Rejetée : ce n'est pas un ratio de rendement, et l'équipe n'a pas donné de cible.
+- **Accessoire retiré** : un indicateur de la source de la vitrée (SRV ou réservations) par projet. L'écart est trop faible pour mériter un badge.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Régénérer toute la base avant 17b | Réservations ≈ SRV (0,7 %) | 27.10.2026 |
+| Vitrage : sens « moins = mieux » | Pas de cible, pas un rendement | 27.10.2026 |
+| Badge de source de la vitrée | Écart négligeable | 27.10.2026 |
+| Message « ratios logement masqués » | Bruit pour une sélection non logement | 27.10.2026 |
+
+### Mise en œuvre et vérifications (27.10.2026)
+
+- Base actuelle, toutes typologies : vitrée / pleine **52,6 %** (combiné, n = 3 projets fiables : Avallons, La Bâtie, Le Clos des Hêtres ; quartiles 39,3 – 62,7 %).
+- Programmer, 5 000 m² de SP hors-sol : façade 4 408 m², dont vitrée 1 519 m² et pleine 2 889 m². La fourchette de la façade pleine suit la part vitrée en sens inverse (bas = façade − vitrée haute).
+- Sélection non logement : KPI par logement retirés de Ratios, Comparer et Base ; mix du Programmer masqué.
+- **Écart au plan** : vitrée / pleine et part vitrée n'ont pas d'« objet » (pas d'écart traduit en m² dans Comparer), comme tout KPI neutre.
+- Mon projet : une vitrée saisie sans façade est ignorée (aucun ratio d'enveloppe sans les deux).

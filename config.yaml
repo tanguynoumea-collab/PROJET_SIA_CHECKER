@@ -137,11 +137,13 @@ ratios:
   - {id: SNH/lot, family: uspi, label: "Surface nette habitable moyenne par lot", num: [SNH], den: [LOTS], unit: m2,
      note: "Informatif : dépend du programme (typologies)."}
   # Enveloppe (V3_PLAN §10) : surface vitrée = SRV, surface pleine = façade brute − SRV (jeton PLEINE)
-  - {id: SRV/SFN, family: enveloppe, label: "Part vitrée (vitrages / façade brute)", num: [SRV], den: [SFN], levels: above_ground}
+  # Repères de vraisemblance tirés des projets de la base (27.10.2026), élargis : pas des cibles
+  - {id: SRV/SFN, family: enveloppe, label: "Part vitrée (vitrages / façade brute)", num: [SRV], den: [SFN], levels: above_ground,
+     ref: [0.20, 0.45], note: "Repère : projets de la base de données (21 à 42 %)."}
   - {id: SRV/PLEINE, family: enveloppe, label: "Surface vitrée / surface pleine", num: [SRV], den: [PLEINE], levels: above_ground,
-     note: "Surface pleine = façade brute − vitrages."}
+     ref: [0.25, 0.80], note: "Surface pleine = façade brute − vitrages. Repère : projets de la base (26 à 74 %)."}
   - {id: SFN/SP, family: enveloppe, label: "Façade brute / plancher hors sous-sol", num: [SFN], den: [SP], levels: above_ground,
-     note: "Compacité : m² de façade par m² de plancher."}
+     ref: [0.50, 1.10], note: "Compacité : m² de façade par m² de plancher. Repère : projets de la base (0,60 à 1,08)."}
 
 tolerance: {abs_m2: 0.5, rel: 0.005}
 

@@ -17,6 +17,7 @@
   <ItemGroup>
     <Resource Include="Assets\SiaCheck.ico" />
     <Resource Include="Assets\SiaCheck.png" />
+    <Resource Include="Assets\SiaCheckMark.png" />
   </ItemGroup>
 
   <ItemGroup>

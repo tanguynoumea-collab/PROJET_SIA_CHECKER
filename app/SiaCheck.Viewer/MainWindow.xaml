@@ -40,7 +40,11 @@
         </ui:TitleBar>
 
         <!-- ================================================================ ACCUEIL : Fiabilisation | Benchmark (plan §Évolution 3.0) -->
-        <Grid Grid.Row="1" Visibility="{Binding IsHome, Converter={StaticResource BoolToVisibility}}">
+        <Grid Grid.Row="1" Visibility="{Binding IsHome, Converter={StaticResource BoolToVisibility}}" ClipToBounds="True">
+            <!-- Filigrane : le logo (plaques seules), grand et pâle, calé dans le coin bas-gauche, derrière le contenu -->
+            <Image Source="pack://application:,,,/Assets/SiaCheckMark.png" Height="740" Opacity="0.07"
+                   HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="-100,0,0,-125"
+                   IsHitTestVisible="False" Focusable="False" RenderOptions.BitmapScalingMode="HighQuality" />
             <Grid MaxWidth="{StaticResource HomeMaxWidth}" Margin="{StaticResource HomeMargin}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />

@@ -44,6 +44,11 @@ def _level_value(code: str, row: pd.Series, cfg: Config) -> tuple[float, bool]:
     """Valeur effective d'un code SIA sur un niveau ; SC absente = SP − SN."""
     from .rules import _effective   # import local : rules importe ce module
 
+    if code == "PLEINE":     # façade pleine = façade brute − vitrages (V3_PLAN §10)
+        sfn, srv = row.get("SFN"), row.get("SRV")
+        if sfn is None or pd.isna(sfn):
+            return 0.0, False
+        return float(sfn) - (0.0 if srv is None or pd.isna(srv) else float(srv)), True
     if code == "SC" and not _effective(row, "SC", cfg)[1]:
         sp, has_sp = _effective(row, "SP", cfg)
         sn, has_sn = _effective(row, "SN", cfg)
@@ -83,6 +88,10 @@ def compute(totals: pd.DataFrame, surf: pd.DataFrame, cfg: Config) -> pd.DataFra
     lot_totals = level_totals(lot_surf) if not lot_surf.empty else pd.DataFrame(index=totals.index)
     lots_src = surf[(surf["code"] == "SNH") & (surf["kind"] == "leaf") & surf["lot"].notna()] \
         if "lot" in surf else surf.iloc[0:0]
+    # Enveloppe : façades et vitrages, ignorés par les règles de sommation, rejoignent les totaux des seuls ratios
+    env = surf[surf["code"].isin(["SFN", "SRV"]) & (surf["kind"] == "node")]
+    if not env.empty:
+        totals = totals.join(env.groupby(["building", "level", "code"])["area"].sum().unstack("code"), how="left")
     above = [(b, l) for b, l in totals.index if (level_rank(l, cfg) is None or level_rank(l, cfg) >= 0)]
     scopes = [ALL] + sorted(totals.index.get_level_values("building").unique())
 

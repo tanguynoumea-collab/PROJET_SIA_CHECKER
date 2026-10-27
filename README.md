@@ -54,7 +54,7 @@ Le tableau MDP HRS, rempli depuis le `.tgm` sans copier-coller. Le gabarit par d
 | SurfacesNettesSIA416 | une ligne par local, comme l'export Treegram, SED et SUT compris |
 | SurfacesUSPI | SNH, SH, SBH, SE (= SVN − SH), SVN, SVB par lot |
 | ListeLogements | un lot par ligne, avec son nombre de chambres (vide quand Treegram écrit −1) |
-| SurfacesEnveloppe | façade de chaque niveau (SFN : longueur, hauteur, surfaces brute, nette et vitrée) et toitures (SPT) |
+| SurfacesEnveloppe | façade de chaque niveau (SFN : longueur, hauteur, surfaces brute et nette ; surface vitrée = vitrages SRV du niveau, à défaut les réservations de la façade) et toitures (SPT) |
 | InfosBatiment | étages hors-sol et sous-sol, largeur et longueur du plus grand niveau courant |
 | InfosProjet | nombre de bâtiments, d'étages, de logements (par nombre de chambres) et de chambres |
 

@@ -39,10 +39,12 @@ def failing(res, rule):
 def test_counts_match_viewer(loree):
     # Compteurs du viewer Treegram : 80 SP, 80 SEP (un total par niveau).
     df, _ = loree
-    assert (df.category != "SFN").sum() == 6090
+    assert (~df.category.isin(["SFN", "SRV"])).sum() == 6090
     sfn = df[df.category == "SFN"]  # façade de chaque niveau, même hauteur brute que la SP du niveau
     assert len(sfn) == 80 and len(sfn[["building", "level"]].drop_duplicates()) == 80
     assert sfn.gross_area.sum() == pytest.approx(30138.23, abs=0.01)
+    srv = df[df.category == "SRV"]  # vitrages : la SRV qui suit chaque SFN, pas celles de l'arbre de quantités
+    assert len(srv) == 80 and srv.area.sum() == pytest.approx(7108, abs=1)
     nodes = df[df.kind == "node"].category.value_counts()
     assert nodes["SP"] == 80 and nodes["SEP"] == 80
     assert set(df.building) == BUILDINGS

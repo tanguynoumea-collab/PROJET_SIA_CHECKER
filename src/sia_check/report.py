@@ -26,7 +26,8 @@ from .config import Config
 # SUT (catégorie Treegram comptée dans la SU, règle P1) : orangé, entre SUP et SUS.
 SIA_COLORS = {"SP": "#B1005D", "SUP": "#D5003B", "SUT": "#E8601C", "SUS": "#F0A900", "SD": "#F2E900", "SI": "#0C9DDA",
               "SEP": "#B1005D", "SEU": "#D5003B", "SED": "#F2E900", "SEI": "#0C9DDA",
-              "SA": "#5BA845"}   # abords (§1.2) : surfaces créées par une découpe vers SA
+              "SA": "#5BA845",   # abords (§1.2) : surfaces créées par une découpe vers SA
+              "SFN": "#A8A29E", "SRV": "#9ED8E6"}   # enveloppe : hors légende SIA 416 (DESIGN_PLAN, Évolution 3.6)
 HATCHED = {"SEP", "SEU", "SED", "SEI", "SEN", "SEC"}
 LEVEL_COLUMNS = ["SP", "SUP", "SUT", "SUS", "SD", "SI", "SEP", "SEU", "SED"]
 

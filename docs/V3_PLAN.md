@@ -195,3 +195,33 @@ Décisions (27.10.2026) : ordre 15 → 16 → 17 ; l'identité des MDP déjà da
 ### Indice de performance par projet
 
 Pas de note unique pour l'instant : mélanger des ratios de sens différents dans un seul chiffre masquerait ce qui fait la différence. À la place, chaque projet sera **situé dans sa typologie** sur les KPI clés (rang ou quartile : « dans le meilleur quart pour SUP / SP »). Un indice composite pourra venir quand la base sera assez grande pour pondérer les KPI de façon défendable.
+
+## 10. Façades et vitrages de Treegram (SFN, SRV) — 27.10.2026
+
+### Ce que Treegram produit (relevé sur L'Orée)
+
+Dans l'arbre des surfaces SIA, chaque niveau porte, juste après sa SPT, deux totaux **verticaux** avec leur géométrie :
+
+| Code | Contenu | L'Orée (80 niveaux) | Géométrie (cache VWR) |
+|---|---|---:|---|
+| SFN | Façade du niveau : brute, nette, réservations (ouvertures), périmètre, hauteur | brute 30 138 m², nette 23 076 m², réservations 7 062 m² (brute = nette + réservations au m² près) | 71 niveaux |
+| SRV | Toutes les vitres du niveau | 7 108 m² (écart aux réservations : 2,6 m² au plus par niveau) | 56 niveaux |
+
+Un second jeu de 80 SRV (5 271 m²) existe dans un autre arbre de quantités Treegram (codes SFB2, SR, MIB…) : hors surfaces SIA, il est laissé de côté.
+
+### Ce que l'outil en fait aujourd'hui
+
+- **Fiabilisation** : la SFN est lue comme un total de niveau « ignoré » (rangé avec les codes maison), sans contrôle ni rendu propre ; **la SRV n'est pas lue du tout** (elle n'a pas de catégorie SIA). Le MDP exporte comme « surface vitrée » les réservations de la SFN.
+- **Benchmark** : « Vitrage / façade » rapporte ces réservations à la façade brute ; aucun ratio vitrée / pleine.
+
+### Décisions (27.10.2026)
+
+- **Surface vitrée = SRV** (les vitres réelles, avec leur géométrie) ; les réservations de la SFN servent de contrôle de cohérence.
+- **Surface pleine = façade brute − vitrée** : vitrée + pleine = façade.
+
+### Phases
+
+| Phase | Contenu |
+|---|---|
+| 17a ✓ | **Fiabilisation de l'enveloppe.** Lecture de la SRV de l'arbre SIA ; SFN et SRV dans une famille « Enveloppe » (surfaces verticales), hors des sommes horizontales ; calques et rendu 3D propres ; contrôles : brute = nette + réservations, SRV ≈ réservations, façade ≈ périmètre × hauteur brute, vitres ≤ façade, niveau hors-sol sans façade ; ratios d'enveloppe dans l'espace de revue ; MDP : « Surface vitrée » = SRV |
+| 17b | **Enveloppe dans le benchmark.** KPI « Vitrée / pleine » et « Part vitrée » à la place du ratio provisoire ; KPI clés mis à jour ; coefficient de forme dès que sa définition est connue ; ratios propres au logement réservés au logement (reste de la phase 17) |

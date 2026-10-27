@@ -36,6 +36,8 @@ public sealed class SceneController
     private const double SpThickness = 0.30;    // m : dalle SP, plus épaisse, sous les pièces
     private const double SpDrop = 0.04;         // m : dessus de la SP sous celui des pièces (joints visibles)
     private const double EdgeShade = 0.58;      // chants : 58 % de la luminosité du dessus
+    private const byte FacadeAlpha = 0x59;   // 35 % : façade SFN
+    private const byte GlazingAlpha = 0x80;  // 50 % : vitrages SRV
     private const double SpShade = 0.72;        // SP plus foncée que sa couleur de légende, comme dans Treegram
     private const double ExternalTint = 0.45;   // surfaces externes : part de la couleur conservée (reste = blanc)
     private const double FocusLift = 0.01;      // m : évite le scintillement avec le fantôme coplanaire
@@ -235,8 +237,9 @@ public sealed class SceneController
     private Batch MakeBatch(string code, IEnumerable<SurfaceGeometry> surfaces, double lift)
     {
         var sp = code == "SP";
+        // Façades et vitrages sont verticaux : pas d'épaisseur de dalle, qui les doublerait d'un chant horizontal
         var (top, edges, starts, ids) = Extrude(surfaces,
-            dz: lift - (sp ? SpDrop : 0), thickness: sp ? SpThickness : SlabThickness, textured: false);
+            dz: lift - (sp ? SpDrop : 0), thickness: sp ? SpThickness : _palette.IsEnvelope(code) ? 0 : SlabThickness, textured: false);
         var batch = new Batch(code,
             new GeometryModel3D(top, MaterialOf(code, edge: false)) { BackMaterial = MaterialOf(code, edge: false) },
             new GeometryModel3D(edges, MaterialOf(code, edge: true)) { BackMaterial = MaterialOf(code, edge: true) },
@@ -318,7 +321,9 @@ public sealed class SceneController
         // varier l'échelle des hachures et produit un moiré qui envahit la vue d'ensemble ; les hachures
         // restent dans la légende et le bilan, où l'échelle est fixe.
         if (_palette.IsHatched(code)) c = SiaPalette.Tint(c, ExternalTint);
-        Brush brush = new SolidColorBrush(edge ? SiaPalette.Shade(c, EdgeShade) : c);
+        if (_palette.IsEnvelope(code))      // translucides : l'enveloppe laisse voir les niveaux (DESIGN_PLAN §3.6)
+            c = Color.FromArgb(code == "SRV" ? GlazingAlpha : FacadeAlpha, c.R, c.G, c.B);
+        Brush brush = new SolidColorBrush(edge ? Color.FromArgb(c.A, (byte)(c.R * EdgeShade), (byte)(c.G * EdgeShade), (byte)(c.B * EdgeShade)) : c);
         brush.Freeze();
         return _materials[(code, edge)] = Frozen(new DiffuseMaterial(brush));
     }

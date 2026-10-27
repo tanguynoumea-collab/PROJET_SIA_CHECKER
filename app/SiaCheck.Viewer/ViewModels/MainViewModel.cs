@@ -363,6 +363,7 @@ public sealed partial class MainViewModel : ObservableObject
             // Totaux sans aire ni géométrie (façades SFN : données d'enveloppe pour le MDP) : rien à montrer en calque.
             if (!withGeometry.Contains(cat.Code) && counted.All(s => (s.Area ?? 0) == 0)) continue;
             var group = cat.Status == "unknown" ? "Codes inconnus"
+                : cat.Family == "enveloppe" ? "Enveloppe"     // façades, vitrages : verticales, hors sommes
                 : cat.Status != "ignored" && InteriorCodes.Contains(cat.Code) ? "Intérieur"   // SUT : code maison compté dans la SU
                 : cat.Status == "ignored" || cat.Family == "custom" ? "USPI · Maison"
                 : cat.Family == "uspi" ? "USPI · Maison"
@@ -385,6 +386,11 @@ public sealed partial class MainViewModel : ObservableObject
             var after = Layers.Select((l, i) => (l, i)).LastOrDefault(x => x.l.Group == "Extérieur");
             Layers.Insert(after.l is null ? Layers.Count : after.i + 1, sa);
         }
+        // Enveloppe juste après Extérieur (les groupes s'affichent dans l'ordre de leur premier calque)
+        var envelope = Layers.Where(l => l.Group == "Enveloppe").ToList();
+        foreach (var l in envelope) Layers.Remove(l);
+        var lastOutside = Layers.Select((l, i) => (l, i)).LastOrDefault(x => x.l.Group is "Intérieur" or "Extérieur");
+        for (var k = 0; k < envelope.Count; k++) Layers.Insert((lastOutside.l is null ? 0 : lastOutside.i + 1) + k, envelope[k]);
 
         Buildings.Clear();
         foreach (var b in doc.Levels.Select(l => l.Building).Distinct().Order())

@@ -51,8 +51,10 @@ categories:
   SUT:  {family: custom}                 # rattaché à SU par la règle personnalisée P1 (voir custom_rules)
   SPT:  {family: custom, ignore: true}   # toitures (Type = Toiture)
   NC:   {family: custom, ignore: true}   # non comptabilisée : surface gardée mais hors sommes (toiture non accessible…)
-  SFN:  {family: custom, ignore: true}   # façades
-  SRV:  {family: custom, ignore: true}   # vitrages
+  # Enveloppe (surfaces verticales, V3_PLAN §10) : totaux de niveau Treegram, hors des sommes horizontales ;
+  # contrôlés par les règles E1–E5 (rules.envelope_checks) et repris dans les ratios d'enveloppe.
+  SFN:  {family: enveloppe, ignore: true}   # façade du niveau : brute (aire), nette, réservations (ouvertures)
+  SRV:  {family: enveloppe, ignore: true}   # vitrages : toutes les vitres du niveau
 
 # Libellés affichés (infobulles, rapports) : nom, référence, définition courte en paraphrase de la norme.
 labels:
@@ -83,8 +85,8 @@ labels:
   SUT:  {name: Surface utile hors logement (catégorie Treegram), ref: règle personnalisée P1, def: "Catégorie ajoutée par Treegram à côté de SUP et SUS. Sur L'Orée : activités, commerces, bureaux, école, UAPE et leurs WC (docs/classification/L_OREE_SUT.md). Comptée dans la SU (SU = SUP + SUS + SUT)."}
   SPT:  {name: Toitures (code Treegram), ref: code maison, def: "Sens déduit du contenu (Type = Toiture). Ignoré dans les sommes."}
   NC:   {name: Non comptabilisée, ref: correction, def: "Surface gardée dans le modèle mais hors des sommes SIA 416 et des exports (toiture non accessible, vide…). Choisie dans la visionneuse."}
-  SFN:  {name: Façades (code Treegram), ref: code maison}
-  SRV:  {name: Vitrages (code Treegram), ref: code maison}
+  SFN:  {name: Façades (code Treegram), ref: code maison, def: "Surface verticale de la façade du niveau, brute (aire affichée) ; Treegram en donne aussi la part nette et les réservations (ouvertures). Hors des sommes SIA 416."}
+  SRV:  {name: Vitrages (code Treegram), ref: code maison, def: "Surface de toutes les vitres du niveau (verticale). Surface vitrée des ratios d'enveloppe ; la surface pleine est la façade brute moins les vitrages."}
 
 # Règles personnalisées : écarts assumés à la SIA 416, propres à la production Treegram.
 # Chaque règle rattache des codes (adds) à un parent de l'arbre normatif ; le moteur les applique au
@@ -134,6 +136,12 @@ ratios:
      ref: [0.70, 0.95], note: "Rendement commercial du projet (VS)."}
   - {id: SNH/lot, family: uspi, label: "Surface nette habitable moyenne par lot", num: [SNH], den: [LOTS], unit: m2,
      note: "Informatif : dépend du programme (typologies)."}
+  # Enveloppe (V3_PLAN §10) : surface vitrée = SRV, surface pleine = façade brute − SRV (jeton PLEINE)
+  - {id: SRV/SFN, family: enveloppe, label: "Part vitrée (vitrages / façade brute)", num: [SRV], den: [SFN], levels: above_ground}
+  - {id: SRV/PLEINE, family: enveloppe, label: "Surface vitrée / surface pleine", num: [SRV], den: [PLEINE], levels: above_ground,
+     note: "Surface pleine = façade brute − vitrages."}
+  - {id: SFN/SP, family: enveloppe, label: "Façade brute / plancher hors sous-sol", num: [SFN], den: [SP], levels: above_ground,
+     note: "Compacité : m² de façade par m² de plancher."}
 
 tolerance: {abs_m2: 0.5, rel: 0.005}
 
@@ -184,6 +192,9 @@ sources:
                        gross_area: GrossArea, net_area: NetArea, reservations_area: ReservationsArea}
     # totaux de niveau sans « Catégorie SIA » (nom : propriété qui les identifie), lus avec le nom pour code
     uncategorized_nodes: {SFN: NetArea}   # façade du niveau : surfaces brute, nette, vitrée (ReservationsArea)
+    # totaux sans propriété distinctive, gardés seulement juste après un total donné : la SRV de l'arbre SIA suit
+    # la SFN de son niveau ; d'autres SRV (arbre de quantités SFB2, SR, MIB…) n'appartiennent pas aux surfaces SIA
+    following_nodes: {SRV: SFN}
   ifc:
     classes: [IfcSlab, IfcSpace, IfcBuildingElementProxy]
     category: {attribute: Name}            # ou {pset: ..., property: ...}

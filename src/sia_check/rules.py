@@ -35,6 +35,11 @@ RULE_TITLES = {
     "U2": "Lot USPI : SBH < SH",
     "U3": "Lot USPI : SVB < SVN",
     "U4": "Lot USPI : SVB − SVN ≠ MEM",
+    "E1": "Façade : brute ≠ nette + réservations",
+    "E2": "Vitrages ≠ réservations de la façade",
+    "E3": "Façade ≠ périmètre × hauteur",
+    "E4": "Vitrages plus grands que la façade",
+    "E5": "Niveau hors-sol sans façade",
 }
 
 
@@ -449,6 +454,78 @@ def uspi_checks(surf: pd.DataFrame, cfg: Config) -> list[dict]:
     return out
 
 
+# --------------------------------------------------------------------------- enveloppe (E1–E5)
+
+SFN, SRV = "SFN", "SRV"
+FACADE_HEIGHT_REL = 0.02     # E3 : écart relatif admis entre la façade et périmètre × hauteur brute
+# E2 : vitrages et réservations diffèrent normalement de 1 à 2 % (cadres, portes pleines : L'Orée) ; au-delà de 5 %,
+# des vitrages manquent ou sont en double
+GLAZING_REL = 0.05
+
+
+def _num(v) -> float | None:
+    return None if v is None or pd.isna(v) else float(v)
+
+
+def envelope_checks(surf: pd.DataFrame, totals: pd.DataFrame, cfg: Config) -> list[dict]:
+    """Façades (SFN) et vitrages (SRV) : totaux verticaux par niveau, contrôlés sans entrer dans les sommes.
+    Rien n'est contrôlé sur un projet sans SFN (Treegram ancien, IFC)."""
+    env = surf[surf["code"].isin([SFN, SRV]) & (surf["kind"] == "node")]
+    if not (env["code"] == SFN).any():
+        return []
+    cols = [c for c in ("gross_area", "net_area", "reservations_area", "perimeter", "gross_height") if c in env]
+    sfn = env[env["code"] == SFN].groupby(["building", "level"])[["area", *cols]].sum(min_count=1)
+    srv = env[env["code"] == SRV].groupby(["building", "level"])["area"].sum(min_count=1)
+    out = []
+    for (bld, lvl), f in sfn.iterrows():
+        gross, net, res = _num(f.get("gross_area", f["area"])), _num(f.get("net_area")), _num(f.get("reservations_area"))
+        gross = gross if gross is not None else _num(f["area"])
+        if gross is None:
+            continue
+        if net is not None and res is not None:
+            bad = _exceeds(gross - (net + res), gross, cfg)
+            out.append(_row(bld, lvl, "E1", SFN, gross, net + res, "ERREUR" if bad else "OK",
+                            f"Façade brute {_m2(gross)} m², nette + réservations {_m2(net + res)} m²." if bad
+                            else "Façade brute = nette + réservations.",
+                            hint="Façade recalculée partiellement par Treegram : relancer « Create SIA Surfaces »." if bad else ""))
+        v = _num(srv.get((bld, lvl)))
+        if v is not None and res is not None:
+            bad = abs(v - res) > cfg.abs_m2 and (res == 0 or abs(v - res) / res > GLAZING_REL)
+            out.append(_row(bld, lvl, "E2", SRV, res, v, "INFO" if bad else "OK",
+                            f"Vitrages {_m2(v)} m² pour {_m2(res)} m² de réservations dans la façade." if bad
+                            else "Vitrages = réservations de la façade.",
+                            hint="Normal si des ouvertures ne sont pas vitrées (portes pleines) ou si les cadres "
+                                 "sont comptés ; un grand écart signale des vitrages oubliés ou en double." if bad else ""))
+        if v is not None:
+            bad = v - gross > 0 and _exceeds(v - gross, gross, cfg)
+            out.append(_row(bld, lvl, "E4", SRV, gross, v, "ERREUR" if bad else "OK",
+                            f"Vitrages {_m2(v)} m² pour une façade de {_m2(gross)} m²." if bad else "Vitrages ≤ façade.",
+                            hint="Impossible : vitrages en double ou rattachés au mauvais niveau." if bad else ""))
+        per, h = _num(f.get("perimeter")), _num(f.get("gross_height"))
+        if per and h:
+            calc = per * h
+            bad = abs(gross - calc) > cfg.abs_m2 and abs(gross - calc) / calc > FACADE_HEIGHT_REL
+            out.append(_row(bld, lvl, "E3", SFN, calc, gross, "ALERTE" if bad else "OK",
+                            f"Façade {_m2(gross)} m² pour un périmètre de {_pct1(per)} m × {_pct1(h)} m de hauteur brute "
+                            f"({_m2(calc)} m²)." if bad else "Façade = périmètre × hauteur brute.",
+                            hint="Façade incomplète (pans manquants) ou hauteur d'étage différente de celle du "
+                                 "niveau." if bad else ""))
+    # E5 — niveau hors-sol avec du plancher mais sans façade
+    if SP in totals:
+        for (bld, lvl), sp in totals[SP].items():
+            r = level_rank(lvl, cfg)
+            if pd.isna(sp) or sp <= 0 or r is None or r < 0 or r >= 1000:
+                continue
+            g = sfn.loc[(bld, lvl)] if (bld, lvl) in sfn.index else None
+            gross = None if g is None else _num(g.get("gross_area", g["area"]))
+            if not gross:
+                out.append(_row(bld, lvl, "E5", SFN, float(sp), 0.0, "ALERTE",
+                                f"{_m2(float(sp))} m² de SP hors-sol sans façade.",
+                                hint="Façade non créée par Treegram pour ce niveau : le ratio vitrée / pleine "
+                                     "du bâtiment sera faussé."))
+    return out
+
+
 # --------------------------------------------------------------------------- codes inconnus (A3)
 
 def unknown_checks(unknown: pd.DataFrame) -> list[dict]:
@@ -471,6 +548,7 @@ def run(df: pd.DataFrame, cfg: Config) -> Result:
     rows = sum_checks(totals, cfg)
     rows += level_checks(totals, surf, cfg)
     rows += uspi_checks(surf, cfg)
+    rows += envelope_checks(surf, totals, cfg)
     rows += unknown_checks(unknown)
     res = pd.DataFrame(rows, columns=RESIDUAL_COLUMNS)
     from . import ratios   # import local : ratios s'appuie sur ce module

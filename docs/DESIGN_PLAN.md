@@ -1353,3 +1353,83 @@ Page servie en local (base des 10 MDP) : 1 440 px en sombre et en clair, 375 px 
 | « 1 projets » dans le titre des Typologies | Mineur | Corrigé |
 | Position par quart vide sous 4 projets fiables | Voulu | Un quart n'a pas de sens sur 2 ou 3 valeurs |
 | La sélection est gardée d'une visite à l'autre : un « Comparer au benchmark » depuis SIA Check peut s'ouvrir sur une sélection restreinte | À surveiller | La mention « hors sélection » et « Réinitialiser » le rendent visible |
+
+---
+
+## Évolution 3.6 — Enveloppe : façades et vitrages (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (27.10.2026) ☑ Implémenté
+> Version : 3.6 — 27.10.2026 · Phase 17a de `docs/V3_PLAN.md` (§10)
+
+### Ancrage
+
+Jusqu'ici l'espace de revue ne parle que de surfaces **horizontales**, qui se somment niveau par niveau. La SFN (façade) et la SRV (vitrages) sont **verticales** : elles ne se somment pas avec la SP, mais elles portent deux KPI clés de l'équipe (vitrée / pleine, compacité). Il faut les contrôler comme le reste, sans les mélanger au bilan horizontal.
+
+### Calques — un groupe « Enveloppe »
+
+```
+CALQUES
+Intérieur        …
+Extérieur        …
+Enveloppe                         ← nouveau groupe, entre Extérieur et USPI · Maison
+☐ ▦ SFN  Façades     71   30 138   (brute ; infobulle : nette 23 076, réservations 7 062)
+☐ ▦ SRV  Vitrages    56    7 108
+▸ USPI · Maison
+```
+
+- Les deux calques sont **masqués par défaut** : affichées, ces surfaces enveloppent le bâtiment et cachent les niveaux. Les cocher montre l'enveloppe, la touche « Isoler » garde son sens.
+- Aire affichée : façade **brute** pour SFN (c'est la base des ratios), vitres pour SRV.
+
+### Rendu 3D (contenu, pas chrome)
+
+- Façade : aplat gris chaud `#A8A29E` translucide (35 %), arêtes fines. Vitrages : bleu-vert pâle `#9ED8E6` translucide (50 %), dessinés devant la façade.
+- Aucune des deux ne reprend une couleur de la légende SIA 416 (qui n'en prévoit pas pour l'enveloppe) ; le bleu des vitrages est nettement plus pâle et transparent que le bleu SI, et ces surfaces sont verticales, là où toutes les SI sont horizontales.
+
+### Contrôles — famille E (enveloppe)
+
+| Règle | Contrôle | Verdict |
+|---|---|---|
+| E1 | Façade brute = nette + réservations | Erreur au-delà de la tolérance |
+| E2 | SRV ≈ réservations de la façade | Information au-delà de la tolérance (vitres ≠ ouvertures : portes pleines, cadres) |
+| E3 | Façade brute ≈ périmètre × hauteur brute du niveau | Alerte au-delà de 2 % |
+| E4 | Vitres ≤ façade brute | Erreur |
+| E5 | Niveau hors-sol avec SP mais sans façade | Alerte |
+
+Ils entrent dans la liste des points d'attention et les sujets comme les autres règles (même glyphes, même fiche détail), avec « Enveloppe » comme catégorie. Le bilan par niveau reste horizontal : il n'est pas modifié.
+
+### Ratios (zone Ratios de l'espace de revue)
+
+Une famille « Enveloppe » : part vitrée (SRV / façade brute), vitrée / pleine (SRV / (façade brute − SRV)), façade / SP hors-sol. Par bâtiment et pour le projet, comme les autres ratios.
+
+### Export MDP
+
+Feuille SurfacesEnveloppe : « Surface vitrée » = SRV du niveau (au lieu des réservations). Brute et nette inchangées.
+
+### États non-nominaux
+
+| État | Rendu |
+|---|---|
+| Projet sans SFN ni SRV (Treegram ancien, export IFC) | Groupe Enveloppe absent ; aucun contrôle E ; ratios d'enveloppe « n/a » |
+| SFN ou SRV sans géométrie dans le cache | Calque et chiffres présents ; la 3D n'affiche que les niveaux qui ont un maillage (comme pour les autres surfaces) |
+
+### Passe B — auto-critique
+
+- **Générique ?** Premier jet : ranger SFN et SRV avec SEP (« Extérieur »). Rejeté : ce sont des surfaces verticales qui ne participent à aucune somme ; les mêler aux catégories horizontales brouillerait le bilan.
+- **Encombrement 3D** : affichées par défaut, les façades masqueraient tout le travail de contrôle horizontal ; d'où masquées par défaut.
+- **Accessoire retiré** : une coupe verticale de façade dans le bilan par niveau. Belle, mais les ratios et les contrôles E suffisent au besoin.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| SFN / SRV dans le groupe « Extérieur » | Surfaces verticales, hors sommes | 27.10.2026 |
+| Réservations de la SFN comme surface vitrée | Décision : SRV (vitres réelles, avec géométrie) | 27.10.2026 |
+| Calques Enveloppe visibles par défaut | Masquent les niveaux en 3D | 27.10.2026 |
+
+### Mise en œuvre et vérifications (27.10.2026)
+
+- L'Orée : 80 SFN (30 138 m²) et 80 SRV (7 108 m²) lues ; géométrie pour 71 façades et 56 vitrages. Contrôles : E1, E3 et E4 sans écart, aucun niveau hors-sol sans façade (E5).
+- **E2 : tolérance propre de 5 %**, et non la tolérance générale (0,5 m² et 0,5 %) : vitrages et réservations diffèrent normalement de 1 à 2 % (cadres, portes pleines), ce qui donnait 30 informations sans intérêt sur L'Orée. Aucune au-delà de 5 %.
+- Ratios L'Orée : part vitrée 32,7 %, vitrée / pleine 48,6 %, façade / SP hors-sol 0,60.
+- **Écart au plan** : l'infobulle du calque SFN ne donne pas encore la part nette et les réservations (données du moteur, non transmises à la visionneuse).
+- **Non vérifié à l'écran** : le rendu 3D translucide et l'ordre des groupes de calques (session Windows verrouillée pendant l'essai). À regarder dans l'application.

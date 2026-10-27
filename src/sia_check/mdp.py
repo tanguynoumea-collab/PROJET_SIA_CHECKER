@@ -186,11 +186,14 @@ def logements_records(lots: pd.DataFrame, cfg, pid, infos=None, columns=()) -> l
 
 def enveloppe_records(result, cfg, pid) -> list[dict]:
     rows = []
+    # Surface vitrée = vitrages SRV du niveau (V3_PLAN §10) ; à défaut (projet sans SRV), les réservations de la façade
+    srv = _nodes(result, "SRV").groupby(["building", "level"])["area"].sum()
     for r in _nodes(result, "SFN").to_dict("records"):
+        vitree = srv.get((r["building"], r["level"]))
         rows.append({"building": r["building"], "level": r["level"], "_k": 0, "part": FACADE,
                      "len": _blank(r.get("perimeter")), "h": _blank(r.get("gross_height")),
                      "brute": _blank(r.get("gross_area")), "nette": _blank(r.get("net_area")),
-                     "vitree": _blank(r.get("reservations_area"))})
+                     "vitree": _blank(vitree if vitree is not None else r.get("reservations_area"))})
     spt = _nodes(result, "SPT")
     for r in spt[spt.area.fillna(0) > 0].to_dict("records"):
         rows.append({"building": r["building"], "level": r["level"], "_k": 1, "part": ROOF, "len": None, "h": None,

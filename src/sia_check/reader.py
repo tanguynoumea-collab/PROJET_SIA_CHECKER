@@ -102,8 +102,15 @@ def read_tgm(path: Path, cfg: Config) -> pd.DataFrame:
     extra = EXTRA_COLUMNS | (src.get("extra_properties") or {})
 
     uncategorized = src.get("uncategorized_nodes") or {}
-    bags = [g for g in tgm.scan(path.read_bytes())
-            if cat_p in g.props or uncategorized.get(g.name) in g.props]
+    following = src.get("following_nodes") or {}
+    bags, prev = [], None
+    for g in tgm.scan(path.read_bytes()):
+        if cat_p in g.props or uncategorized.get(g.name) in g.props:
+            bags.append(g)
+        elif (prev is not None and following.get(g.name) == prev.name
+              and uncategorized.get(prev.name) in prev.props):     # ex. SRV juste après la SFN de son niveau
+            bags.append(g)
+        prev = g
     if not any(cat_p in g.props for g in bags):
         raise ReadError(f"aucun élément portant la propriété « {cat_p} » : surfaces SIA non créées dans ce projet ?")
 

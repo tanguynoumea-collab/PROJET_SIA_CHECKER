@@ -36,6 +36,8 @@ public sealed class AppSettings
     public double IssuesPanelWidth { get; set; } = 380;
     public WindowPlacement Window { get; set; } = new();
     public List<RecentProject> Recents { get; set; } = [];
+    /// <summary>Dossier des tableaux MDP de la base du benchmark ; vide tant qu'il n'a pas été choisi.</summary>
+    public string BenchmarkFolder { get; set; } = "";
     /// <summary>ID et nom HRS de chaque projet (clé : dossier normalisé), demandés à l'export MDP.</summary>
     public Dictionary<string, MdpProject> MdpProjects { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

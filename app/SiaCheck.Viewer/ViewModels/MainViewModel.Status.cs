@@ -77,11 +77,13 @@ public sealed partial class MainViewModel
         _shell.Notify(next == ProjectStatus.Done ? $"« {ProjectName} » passé en traité." : $"« {ProjectName} » remis en traitement.");
     }
 
+    /// <summary>Projets actifs de l'accueil : en traitement d'abord, puis traités, chacun dans l'ordre des récents.</summary>
     private void FillRecents()
     {
         Recents.Clear();
-        foreach (var r in _settings.Recents.Where(r => System.IO.Directory.Exists(r.Path)))
-            Recents.Add(new RecentItem(r, _registry.StatusOf(r.Path)));
+        foreach (var r in _settings.Recents.Where(r => System.IO.Directory.Exists(r.Path))
+                     .Select(r => new RecentItem(r, _registry.StatusOf(r.Path))).OrderBy(r => r.IsDone))
+            Recents.Add(r);
     }
 
     private static string S(int n) => n > 1 ? "s" : "";

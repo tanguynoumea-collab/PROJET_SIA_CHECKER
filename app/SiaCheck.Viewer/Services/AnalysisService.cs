@@ -104,6 +104,10 @@ public sealed partial class AnalysisService(string enginePath)
     public Task<EngineRun> ExportTreegramAsync(string projectDir, string outDir, EngineInputs inputs, CancellationToken ct) =>
         RunAsync(["-q", projectDir, "--treegram", outDir, .. inputs.Args()], null, ct);
 
+    /// <summary>Base du benchmark : les MDP d'un dossier lus, normalisés et comparés (sia_check.benchmark).</summary>
+    public Task<EngineRun> BenchmarkAsync(string folder, string json, CancellationToken ct) =>
+        RunAsync(["--benchmark", folder, "--benchmark-json", json], null, ct);
+
     private async Task<EngineRun> RunAsync(IEnumerable<string> args, IProgress<AnalysisProgress>? progress,
                                            CancellationToken ct)
     {

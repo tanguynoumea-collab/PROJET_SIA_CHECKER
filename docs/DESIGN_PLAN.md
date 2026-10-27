@@ -733,3 +733,117 @@ Captures L'Orée : volet ouvert sur la découpe B03 N00 (tracé pré-calculé, 1
 | Annuler / rétablir pendant le dessin perdait le polygone en cours (trouvé par les tests) | Bloquant (fonctionnel) | Corrigé : l'historique garde l'état du dessin |
 | Écart Clipper2 (app) / shapely (moteur) de l'ordre de 0,1 à 0,5 m² sur les tracés pré-calculés | Accepté | Sous la tolérance : le moteur ne recalcule qu'au-delà de 0,5 m² et 0,5 % |
 | Double-clic : fermer (Tracer) et insérer un sommet (Modifier) | À surveiller | Pas de confusion constatée : les modes sont exclusifs et affichés ; à revoir avec l'usage |
+
+---
+
+## Évolution 3.0 — Accueil en deux sections : Fiabilisation et Benchmark (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (27.10.2026) ☑ Implémenté
+> Version : 3.0 — 27.10.2026 · Phase 10 de `docs/V3_PLAN.md`
+
+### Ancrage
+
+- **Deux métiers sur le même écran.** Le coordinateur BIM *fiabilise* un projet Treegram (inchangé). Le développement immobilier *exploite* la base des MDP pour comparer un projet à ceux qui lui ressemblent.
+- **Job de l'accueil** : *choisir son travail du jour et voir, avant d'entrer, l'état de chaque côté* (projets en cours d'un côté, solidité de la base de l'autre).
+- **Le lien entre les deux** : un projet « Traité » produit un MDP propre, qui nourrit la base. L'accueil rend ce flux visible, de gauche à droite.
+
+### Emplacement — décision
+
+Un seul écran, deux colonnes de même largeur, séparées par un filet vertical (Divider). Pas d'onglets : les deux sections doivent se voir en même temps, puisque l'une alimente l'autre. Le dashboard s'ouvre dans un écran à part (phase 11, HTML dans WebView2) ; l'accueil n'en montre que l'entrée et l'état de la base.
+
+### Wireframe
+
+```
+┌───────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ SIA Check Viewer                                                                                  │
+│                                                                                                   │
+│   FIABILISATION                                  │   BENCHMARK                                    │
+│   Contrôler et corriger les surfaces             │   Comparer un projet à ceux qui lui            │
+│   d'un projet Treegram.                          │   ressemblent.                                 │
+│                                                  │                                                │
+│   [▸ Ouvrir un dossier projet…]  (accent)        │   [▸ Ouvrir le benchmark]  (accent)            │
+│   Le dossier contient le .tgm et le cache VWR.   │   5 projets de référence sur 10 · lue le 27.10 │
+│                                                  │                                                │
+│   PROJETS ACTIFS                         2       │   BASE DE DONNÉES                  [↻] [📁]    │
+│   L OREE        En traitement  156 pts · 21.10 🗑│   …\03-DataBase-DonneesProjets                 │
+│   SAUVABELINES  Traité   ⇥base 12 pts · 20.10 🗑│   1714 Le Clos des Hêtres  VD  ▮▮▮▮▮▮▮▮▮▮ ✓  │
+│   …                                              │   1467 La Bâtie            GE  ▮▮▮▮▮▮▮▮▮▯ ✓  │
+│                                                  │   1784 Sauvabelines        —   ▮▮▮▮▮▮▮▮▮▯ ✓  │
+│                                                  │   1778 L'Orée              —   ▮▮▮▯▯▯▯▯▮▯ △  │
+│                                                  │   1023 Côté Gare           VS  ▮▯▯▯▯▯▯▮▯▮ △  │
+│                                                  │   …                                            │
+└───────────────────────────────────────────────────────────────────────────────────────────────────┘
+  deux colonnes * / *, largeur max 1 360, centrées en haut · listes défilantes, en-têtes fixes
+```
+
+Hiérarchie : **1er** les deux titres et leurs boutons (le choix du travail) · **2e** les listes (l'état de chaque côté) · **3e** les légendes (chemin, date de lecture).
+
+- **Projets actifs** (les récents, renommés puisqu'ils portent un statut) : « En traitement » d'abord, puis « Traité ». Même ligne qu'aujourd'hui. Sur une ligne « Traité », une action **⇥ Ajouter à la base** exporte le MDP du projet directement dans le dossier de la base (ID et nom HRS demandés comme à l'export MDP), puis relit la base.
+- **Base de données** : une ligne par MDP, fiables d'abord, puis par score. ID en mono, nom, canton (mono, « — » s'il manque), empreinte de fiabilité, verdict. Survol : la liste des données manquantes. Clic : rien en phase 10 (la fiche projet vient avec le dashboard). [↻] relit la base, [📁] change de dossier.
+
+### Élément signature — l'empreinte de fiabilité
+
+Dix petits segments par projet, **un par contrôle du moteur** (brutes, découpage, nettes, SP ≥ SN, SC plausible, logements, chambres, USPI, enveloppe, infos), toujours dans le même ordre. Segment plein = donnée présente, segment vide (contour Divider) = manquante. La colonne se lit comme un code-barres : on voit d'un coup *quelle* donnée manque dans la base, pas seulement *combien*. C'est le pendant du bilan par niveau (une barre qui montre ce qui manque), appliqué à la base.
+
+Règle conservée : le remplissage reste neutre (TextSecondary) ; le verdict est porté par le glyphe en bout de ligne, coche StatusSeen « dans les références », triangle VerdictWarning « écarté ». Pas de vert en aplat (abords SA).
+
+### Tokens
+
+Aucune nouvelle couleur. Ajouts de dimensions dans `Tokens.xaml` : `HomeMaxWidth` 1360, segment d'empreinte 6 × 12 px (pas de 2 px). Titres de colonne en `TextSection`, phrases d'intention en `TextTitle`.
+
+### Arbitrage — deux boutons accentués
+
+Le plan V1 réserve l'accent à une action unique par écran. Ici l'écran porte deux tâches indépendantes, pour deux publics ; chacune a son action primaire. Je propose **deux boutons accentués, un par colonne**, symétriques. L'alternative est rejetée plus bas.
+
+### Carte de navigation (delta)
+
+| Depuis | Action | Vers |
+|---|---|---|
+| Accueil, Fiabilisation | Ouvrir un dossier / clic sur un projet | Espace de revue (inchangé) |
+| Accueil, Fiabilisation | ⇥ Ajouter à la base | Dialogue ID / nom HRS → export MDP dans la base → relecture |
+| Accueil, Benchmark | Ouvrir le benchmark | Écran Dashboard (phase 11) ; en phase 10, bouton désactivé avec l'infobulle « Disponible avec le dashboard (phase 11) » |
+| Accueil, Benchmark | ↻ / 📁 | Relecture de la base / sélecteur de dossier |
+| Espace de revue | Accueil | Accueil, base relue si un MDP a changé |
+
+### États non-nominaux
+
+| Zone | État | Rendu |
+|---|---|---|
+| Benchmark | Aucun dossier choisi | « Choisissez le dossier qui contient les MDP du benchmark. » + [Choisir le dossier…] à la place de la liste |
+| Benchmark | Dossier sans MDP | « Aucun fichier MDP-*.xlsx dans ce dossier. Exportez un MDP depuis un projet traité, ou choisissez un autre dossier. » |
+| Benchmark | Lecture en cours | Barre fine indéterminée sous l'en-tête ; la liste précédente reste affichée |
+| Benchmark | MDP illisibles | Bandeau VerdictError : « 2 fichiers ignorés : … (pas un MDP) » |
+| Benchmark | Moins de 3 projets fiables | Sous le bouton, en VerdictWarning : « 2 projets de référence : trop peu pour comparer. » |
+| Fiabilisation | Aucun projet | Invitation et bouton seuls, pas de liste vide (inchangé) |
+
+### Contrat technique
+
+- La base est lue par le moteur : `sia-check --benchmark <dossier> --benchmark-json %LOCALAPPDATA%\SiaCheckViewer\benchmark\benchmark.json`. L'app lit ce JSON ; elle relance le moteur au démarrage seulement si un MDP est plus récent que le JSON, ou sur [↻].
+- Dossier de la base : `AppSettings.BenchmarkFolder` (vide = pas encore choisi).
+
+### Passe B — auto-critique
+
+- **Générique ?** Premier jet : deux tuiles « portail » avec une grande icône chacune. Rejeté : décoratif, ne dit rien de l'état. L'empreinte de fiabilité remplace l'icône par une information.
+- **Charge cognitive** : 10 segments par ligne, c'est dense. Acceptable, parce que l'ordre ne change jamais et que le survol nomme ce qui manque ; le verdict en bout de ligne suffit pour une lecture rapide.
+- **Fitts / clavier** : boutons ≥ 32 px, lignes navigables au clavier (Tab entre colonnes), focus visible en accent.
+- **Point faible assumé** : à 1 400 px de large, chaque colonne fait environ 650 px ; la colonne Fiabilisation tronque le chemin du projet (déjà le cas aujourd'hui, avec points de suspension et infobulle).
+- **Accessoire retiré** : le nombre de logements et la SP par ligne de la base. Ce sont des chiffres de dashboard, pas l'état de la base.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Onglets Fiabilisation / Benchmark | Cache le lien entre les deux ; l'accueil doit montrer les deux états d'un regard | 27.10.2026 |
+| Tuiles portail avec grande icône | Décoratif, n'informe pas | 27.10.2026 |
+| Un seul bouton accentué (Ouvrir un dossier), « Ouvrir le benchmark » secondaire | Hiérarchise un public sur l'autre ; les deux tâches sont indépendantes | 27.10.2026 |
+| Score de fiabilité en pourcentage seul | Dit combien il manque, pas quoi ; l'empreinte dit quoi | 27.10.2026 |
+
+### Revue visuelle (Phase 2, 27.10.2026)
+
+Capture en thème clair, fenêtre maximisée (1 456 px), base des 10 MDP de `00_RESSOURCES` : les deux colonnes, 5 projets de référence sur 10, empreintes et verdicts lisibles.
+
+| Constat | Classe | Suite |
+|---|---|---|
+| En clair, les segments vides de l'empreinte (contour Divider) étaient presque invisibles : une donnée manquante se lisait comme un simple espace | Bloquant | Corrigé : contour TextSecondary à 45 % d'opacité ; rendu corrigé non recapturé |
+| Grand vide sous « Projets actifs » quand il n'y a qu'un projet | Accepté | La colonne se remplit avec l'usage ; pas de contenu de remplissage |
+| Chemin complet de la base affiché en entier | À surveiller | Tient à 1 456 px ; points de suspension au-delà |

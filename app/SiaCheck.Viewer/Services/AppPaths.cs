@@ -31,6 +31,9 @@ public sealed class AppPaths(string roamingRoot, string localRoot)
     /// <summary>Bilan par niveau et ratios de l'aperçu en direct des corrections.</summary>
     public string PreviewFile(string projectDir) => Path.Combine(localRoot, "analyses", $"{Slug(projectDir)}.apercu.json");
 
+    /// <summary>Base du benchmark lue par le moteur (sia-check --benchmark) : régénérable, reste locale.</summary>
+    public string BenchmarkFile => Path.Combine(localRoot, "benchmark", "benchmark.json");
+
     public string LogFile(string projectDir) => Path.Combine(localRoot, "analyses", $"{Slug(projectDir)}.log");
 
     /// <summary>Revues IA lancées depuis l'app (rapport, verdicts, preuves) : suivent l'utilisateur, comme les statuts.</summary>

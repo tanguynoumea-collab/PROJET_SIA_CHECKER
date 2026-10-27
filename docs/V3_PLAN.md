@@ -142,7 +142,7 @@ MDP *.xlsx (dossier base) ──► sia_check.benchmark (Python)
 | Phase | Contenu | Livrable |
 |---|---|---|
 | 9 ✓ | Moteur de base : lecture et normalisation des MDP, score de fiabilité, KPI SIA 416, projets similaires, ratios combinés, `benchmark.json`, tests sur les 10 MDP | `sia-check --benchmark <dossier>` (`sia_check/benchmark.py`) |
-| 10 | Accueil en deux sections (Fiabilisation / Benchmark) | Accueil WPF |
+| 10 ✓ | Accueil en deux sections (Fiabilisation / Benchmark), empreinte de fiabilité, « Ajouter à la base » | Accueil WPF (DESIGN_PLAN, Évolution 3.0) |
 | 11 | Dashboard v1 dans WebView2 : vue Portefeuille (distribution des KPI), fiche Projet, Typologies | `dashboard/` |
 | 12 | Mon projet : positionnement face aux projets similaires, écarts en m² et CHF | Comparaison |
 | 13 | Programmation inverse | Outil de faisabilité |

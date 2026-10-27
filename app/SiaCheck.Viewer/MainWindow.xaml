@@ -38,69 +38,199 @@
             </ui:TitleBar.Icon>
         </ui:TitleBar>
 
-        <!-- ================================================================ ACCUEIL (état vide) -->
+        <!-- ================================================================ ACCUEIL : Fiabilisation | Benchmark (plan §Évolution 3.0) -->
         <Grid Grid.Row="1" Visibility="{Binding IsHome, Converter={StaticResource BoolToVisibility}}">
-            <StackPanel MaxWidth="640" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock Style="{StaticResource TextTitle}" TextWrapping="Wrap"
-                           Text="Ouvrez un projet Treegram pour contrôler ses surfaces SIA 416." />
-                <ui:Button Margin="0,24,0,0" Appearance="Primary" Icon="{ui:SymbolIcon FolderOpen20}"
-                           Content="Ouvrir un dossier projet…" Command="{Binding OpenProjectCommand}"
-                           MinHeight="{StaticResource TargetSize}" ToolTip="Ctrl+O" />
-                <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}"
-                           Text="Le dossier contient le fichier .tgm et le cache VWR du viewer Treegram." />
+            <Grid MaxWidth="{StaticResource HomeMaxWidth}" Margin="{StaticResource HomeMargin}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-                <Border Margin="0,16,0,0" Style="{StaticResource Banner}" BorderBrush="{DynamicResource BrushVerdictError}"
-                        Visibility="{Binding HomeError, Converter={StaticResource VisibleWhen}}">
-                    <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding HomeError}" />
-                </Border>
+                <!-- Fiabilisation : contrôler et corriger un projet Treegram -->
+                <DockPanel Grid.Column="0" Margin="{StaticResource HomeColumnLeft}">
+                    <StackPanel DockPanel.Dock="Top">
+                        <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Fiabilisation" />
+                        <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"
+                                   Text="Contrôler et corriger les surfaces d'un projet Treegram." />
+                        <ui:Button Margin="0,24,0,0" Appearance="Primary" Icon="{ui:SymbolIcon FolderOpen20}"
+                                   Content="Ouvrir un dossier projet…" Command="{Binding OpenProjectCommand}"
+                                   MinHeight="{StaticResource TargetSize}" ToolTip="Ctrl+O" />
+                        <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}"
+                                   Text="Le dossier contient le fichier .tgm et le cache VWR du viewer Treegram." />
 
-                <StackPanel Visibility="{Binding Recents.Count, Converter={StaticResource VisibleWhen}}">
-                    <TextBlock Style="{StaticResource TextSection}" Margin="0,32,0,8" Text="Récents" />
-                    <ItemsControl ItemsSource="{Binding Recents}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <DockPanel>
-                                    <ui:Button DockPanel.Dock="Right" Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Delete20}"
-                                               VerticalAlignment="Center" MinHeight="{StaticResource TargetSize}"
-                                               Command="{Binding DataContext.DeleteRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                               CommandParameter="{Binding}" ToolTip="Supprimer le projet de SIA Check (statuts, corrections, analyse, revues IA)"
-                                               AutomationProperties.Name="Supprimer le projet" />
-                                    <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}"
-                                            Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}">
+                        <Border Margin="0,16,0,0" Style="{StaticResource Banner}" BorderBrush="{DynamicResource BrushVerdictError}"
+                                Visibility="{Binding HomeError, Converter={StaticResource VisibleWhen}}">
+                            <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding HomeError}" />
+                        </Border>
+
+                        <DockPanel Margin="0,32,0,8" Visibility="{Binding Recents.Count, Converter={StaticResource VisibleWhen}}">
+                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource TextCaption}" Text="{Binding Recents.Count}" />
+                            <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Projets actifs" />
+                        </DockPanel>
+                    </StackPanel>
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+                        <ItemsControl ItemsSource="{Binding Recents}" KeyboardNavigation.TabNavigation="Continue">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel>
+                                        <ui:Button DockPanel.Dock="Right" Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Delete20}"
+                                                   VerticalAlignment="Center" MinHeight="{StaticResource TargetSize}"
+                                                   Command="{Binding DataContext.DeleteRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   CommandParameter="{Binding}" ToolTip="Supprimer le projet de SIA Check (statuts, corrections, analyse, revues IA)"
+                                                   AutomationProperties.Name="Supprimer le projet" />
+                                        <!-- Un projet traité nourrit la base du benchmark -->
+                                        <ui:Button DockPanel.Dock="Right" Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon DatabaseArrowRight20}"
+                                                   VerticalAlignment="Center" MinHeight="{StaticResource TargetSize}"
+                                                   Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibility}}"
+                                                   Command="{Binding DataContext.AddToBaseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   CommandParameter="{Binding}"
+                                                   ToolTip="Ajouter à la base : exporte le MDP du projet (surfaces corrigées) dans le dossier de la base du benchmark"
+                                                   AutomationProperties.Name="Ajouter à la base" />
+                                        <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}"
+                                                Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" MinWidth="120" />
+                                                    <ColumnDefinition Width="104" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Style="{StaticResource TextSubtitle}" Text="{Binding Name}" ToolTip="{Binding Path}" />
+                                                <TextBlock Grid.Column="1" Margin="8,0" Text="{Binding StatusLabel}" ToolTip="Statut du projet">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource TextCaption}">
+                                                            <Setter Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsDone}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource BrushStatusSeen}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}">
+                                                    <Run Text="{Binding IssueCount, Mode=OneWay}" /><Run Text=" points · " /><Run Text="{Binding LastAnalysis, StringFormat=dd.MM.yyyy, Mode=OneWay}" />
+                                                </TextBlock>
+                                            </Grid>
+                                        </Button>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+
+                <Border Grid.Column="1" Width="1" Background="{DynamicResource BrushDivider}" />
+
+                <!-- Benchmark : comparer un projet à ceux qui lui ressemblent -->
+                <DockPanel Grid.Column="2" Margin="{StaticResource HomeColumnRight}">
+                    <StackPanel DockPanel.Dock="Top">
+                        <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Benchmark" />
+                        <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"
+                                   Text="Comparer un projet à ceux qui lui ressemblent." />
+                        <ui:Button Margin="0,24,0,0" Appearance="Primary" Icon="{ui:SymbolIcon ChartMultiple20}"
+                                   Content="Ouvrir le benchmark" Command="{Binding OpenBenchmarkCommand}"
+                                   MinHeight="{StaticResource TargetSize}"
+                                   ToolTipService.ShowOnDisabled="True" ToolTip="Disponible avec le dashboard (phase 11)" />
+                        <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}" Text="{Binding BenchmarkSummary}"
+                                   Visibility="{Binding BenchmarkSummary, Converter={StaticResource VisibleWhen}}" />
+                        <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushVerdictWarning}"
+                                   Text="{Binding BenchmarkWarning}" TextWrapping="Wrap"
+                                   Visibility="{Binding BenchmarkWarning, Converter={StaticResource VisibleWhen}}" />
+
+                        <DockPanel Margin="0,32,0,0">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                        Visibility="{Binding HasBenchmarkFolder, Converter={StaticResource BoolToVisibility}}">
+                                <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ArrowClockwise20}" MinHeight="{StaticResource TargetSize}"
+                                           Command="{Binding RefreshBenchmarkCommand}" ToolTip="Relire la base"
+                                           AutomationProperties.Name="Relire la base" />
+                                <ui:Button Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon FolderOpen20}" MinHeight="{StaticResource TargetSize}"
+                                           Command="{Binding ChooseBenchmarkFolderCommand}" ToolTip="Changer le dossier de la base"
+                                           AutomationProperties.Name="Changer le dossier de la base" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource TextSection}" Margin="0" VerticalAlignment="Center" Text="Base de données" />
+                        </DockPanel>
+                        <TextBlock Style="{StaticResource TextCaption}" Text="{Binding BenchmarkFolder}" ToolTip="{Binding BenchmarkFolder}"
+                                   Visibility="{Binding HasBenchmarkFolder, Converter={StaticResource BoolToVisibility}}" />
+                        <StackPanel Margin="0,8,0,0" Visibility="{Binding IsBenchmarkLoading, Converter={StaticResource BoolToVisibility}}">
+                            <ProgressBar Height="2" IsIndeterminate="True" />
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" Text="{Binding BenchmarkActivity}" />
+                        </StackPanel>
+
+                        <!-- Aucun dossier choisi : une invitation à la place de la liste -->
+                        <StackPanel Margin="0,8,0,0" Visibility="{Binding HasBenchmarkFolder, Converter={StaticResource HiddenWhen}}">
+                            <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap"
+                                       Text="Choisissez le dossier qui contient les MDP du benchmark." />
+                            <ui:Button Margin="0,12,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon FolderOpen20}"
+                                       Content="Choisir le dossier…" Command="{Binding ChooseBenchmarkFolderCommand}"
+                                       MinHeight="{StaticResource TargetSize}" />
+                        </StackPanel>
+                        <TextBlock Margin="0,8,0,0" Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding BenchmarkEmptyMessage}"
+                                   Visibility="{Binding BenchmarkEmptyMessage, Converter={StaticResource VisibleWhen}}" />
+                        <Border Margin="0,8,0,0" Style="{StaticResource Banner}" BorderBrush="{DynamicResource BrushVerdictError}"
+                                Visibility="{Binding BenchmarkError, Converter={StaticResource VisibleWhen}}">
+                            <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding BenchmarkError}" />
+                        </Border>
+                    </StackPanel>
+
+                    <ScrollViewer Margin="0,8,0,0" VerticalScrollBarVisibility="Auto" Focusable="False">
+                        <ItemsControl ItemsSource="{Binding BenchmarkProjects}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="{StaticResource RowPadding}" Background="Transparent" ToolTip="{Binding Tooltip}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="160" />
-                                                <ColumnDefinition Width="104" />
+                                                <ColumnDefinition Width="48" />
                                                 <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="32" />
+                                                <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Style="{StaticResource TextSubtitle}" Text="{Binding Name}" />
-                                            <TextBlock Grid.Column="1" Margin="8,0" Text="{Binding StatusLabel}" ToolTip="Statut du projet">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource TextCaption}">
-                                                        <Setter Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsDone}" Value="True">
-                                                                <Setter Property="Foreground" Value="{DynamicResource BrushStatusSeen}" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                            <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}" Margin="8,0" Text="{Binding Path}"
-                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" />
-                                            <TextBlock Grid.Column="3" Style="{StaticResource TextCaption}">
-                                                <Run Text="{Binding IssueCount, Mode=OneWay}" /><Run Text=" points · " /><Run Text="{Binding LastAnalysis, StringFormat=dd.MM.yyyy, Mode=OneWay}" />
-                                            </TextBlock>
+                                            <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding Id}" />
+                                            <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Style="{StaticResource TextBody}" Text="{Binding Name}" />
+                                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource TextMono}"
+                                                       Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding Canton}" />
+                                            <!-- Empreinte de fiabilité : un segment par contrôle du moteur, toujours dans le même ordre -->
+                                            <ItemsControl Grid.Column="3" Margin="8,0" VerticalAlignment="Center" ItemsSource="{Binding Fingerprint}"
+                                                          Focusable="False" AutomationProperties.Name="Empreinte de fiabilité">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Width="{StaticResource FingerprintWidth}" Height="{StaticResource FingerprintHeight}"
+                                                                Margin="{StaticResource FingerprintGap}" BorderThickness="1" CornerRadius="1">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <!-- Donnée manquante : contour seul, assez marqué pour se lire en clair comme en sombre -->
+                                                                    <Setter Property="Background" Value="Transparent" />
+                                                                    <Setter Property="BorderBrush" Value="{DynamicResource BrushTextSecondary}" />
+                                                                    <Setter Property="Opacity" Value="0.45" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding}" Value="True">
+                                                                            <Setter Property="Background" Value="{DynamicResource BrushTextSecondary}" />
+                                                                            <Setter Property="Opacity" Value="1" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <c:VerdictGlyph Grid.Column="4" VerticalAlignment="Center" Verdict="{Binding Verdict}" />
                                         </Grid>
-                                    </Button>
-                                </DockPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Grid>
         </Grid>
 
         <!-- ================================================================ ESPACE DE REVUE -->

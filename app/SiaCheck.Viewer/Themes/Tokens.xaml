@@ -1,4 +1,4 @@
-<!-- Tokens hors couleurs d'interface — docs/DESIGN_PLAN.md §2. Aucune valeur en dur dans les vues. -->
+﻿<!-- Tokens hors couleurs d'interface — docs/DESIGN_PLAN.md §2. Aucune valeur en dur dans les vues. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
@@ -45,4 +45,13 @@
     <sys:Double x:Key="SwatchSize">12</sys:Double>
     <sys:Double x:Key="WindowMinWidth">1400</sys:Double>
     <sys:Double x:Key="WindowMinHeight">860</sys:Double>
+    <!-- Accueil : Fiabilisation | Benchmark (Évolution 3.0) -->
+    <sys:Double x:Key="HomeMaxWidth">1360</sys:Double>
+    <Thickness x:Key="HomeMargin">24,48,24,24</Thickness>
+    <Thickness x:Key="HomeColumnLeft">0,0,32,0</Thickness>
+    <Thickness x:Key="HomeColumnRight">32,0,0,0</Thickness>
+    <!-- Empreinte de fiabilité d'un MDP : un segment par contrôle -->
+    <sys:Double x:Key="FingerprintWidth">6</sys:Double>
+    <sys:Double x:Key="FingerprintHeight">12</sys:Double>
+    <Thickness x:Key="FingerprintGap">0,0,2,0</Thickness>
 </ResourceDictionary>

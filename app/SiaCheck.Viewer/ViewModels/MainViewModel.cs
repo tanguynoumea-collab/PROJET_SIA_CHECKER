@@ -37,6 +37,7 @@ public sealed partial class MainViewModel : ObservableObject
         _showRatios = settings.ShowRatios;
         _registry = new ProjectRegistry(paths.ProjectsFile);
         FillRecents();
+        InitBenchmark();
         LayersView = new ListCollectionView(Layers);
         LayersView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(LayerItem.Group)));
         IssuesView = CollectionViewSource.GetDefaultView(Issues);
@@ -326,6 +327,7 @@ public sealed partial class MainViewModel : ObservableObject
         Document = null;
         Scene = null;
         FillRecents();
+        if (IsBenchmarkStale) _ = RefreshBenchmarkAsync();
     }
 
     // ------------------------------------------------------------------ chargement

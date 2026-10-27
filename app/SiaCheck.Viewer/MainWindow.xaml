@@ -173,13 +173,11 @@
                                            Command="{Binding RefreshBenchmarkCommand}" ToolTip="Relire la base"
                                            AutomationProperties.Name="Relire la base" />
                                 <ui:Button Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon FolderOpen20}" MinHeight="{StaticResource TargetSize}"
-                                           Command="{Binding ChooseBenchmarkFolderCommand}" ToolTip="Changer le dossier de la base"
+                                           Command="{Binding ChooseBenchmarkFolderCommand}" ToolTip="{Binding BenchmarkFolderTooltip}"
                                            AutomationProperties.Name="Changer le dossier de la base" />
                             </StackPanel>
                             <TextBlock Style="{StaticResource TextSection}" Margin="0" VerticalAlignment="Center" Text="Base de données" />
                         </DockPanel>
-                        <TextBlock Style="{StaticResource TextCaption}" Text="{Binding BenchmarkFolder}" ToolTip="{Binding BenchmarkFolder}"
-                                   Visibility="{Binding HasBenchmarkFolder, Converter={StaticResource BoolToVisibility}}" />
                         <StackPanel Margin="0,8,0,0" Visibility="{Binding IsBenchmarkLoading, Converter={StaticResource BoolToVisibility}}">
                             <ProgressBar Height="2" IsIndeterminate="True" />
                             <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" Text="{Binding BenchmarkActivity}" />
@@ -201,47 +199,62 @@
                         </Border>
                     </StackPanel>
 
-                    <!-- En-tête : ce que dit chaque colonne ; la légende des cases au survol de « Données du MDP » -->
+                    <!-- En-tête : un clic trie la liste sur la colonne (même colonne : sens inversé) -->
                     <Grid DockPanel.Dock="Top" Margin="8,8,8,4"
                           Visibility="{Binding BenchmarkProjects.Count, Converter={StaticResource VisibleWhen}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="48" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="88" />
-                            <ColumnDefinition Width="32" />
+                            <ColumnDefinition Width="56" />
                             <ColumnDefinition Width="Auto" SharedSizeGroup="BaseFingerprint" />
-                            <ColumnDefinition Width="Auto" SharedSizeGroup="BaseVerdict" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Style="{StaticResource TextCaption}" Text="ID" />
-                        <TextBlock Grid.Column="1" Margin="8,0" Style="{StaticResource TextCaption}" Text="Projet" />
-                        <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}" Text="Typologie" />
-                        <TextBlock Grid.Column="3" Style="{StaticResource TextCaption}" Text="Canton" />
-                        <TextBlock Grid.Column="4" Margin="8,0" Style="{StaticResource TextCaption}" Text="Données du MDP ⓘ"
-                                   ToolTip="{Binding FingerprintLegend}" ToolTipService.ShowDuration="60000" Background="Transparent" />
-                        <TextBlock Grid.Column="5" Style="{StaticResource TextCaption}" Text="Réf."
-                                   ToolTip="✓ dans les références du benchmark · ⚠ écarté (survolez le symbole pour la raison)" Background="Transparent" />
+                        <Grid.Resources>
+                            <Style x:Key="SortHeader" TargetType="Button" BasedOn="{StaticResource RowButton}">
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="HorizontalAlignment" Value="Left" />
+                                <!-- Pas de focus clavier au clic : sinon le cadre d'accent reste autour de l'en-tête -->
+                                <Setter Property="Focusable" Value="False" />
+                                <Setter Property="Command" Value="{Binding SortBaseCommand}" />
+                            </Style>
+                        </Grid.Resources>
+                        <Button Style="{StaticResource SortHeader}" CommandParameter="id" ToolTip="Trier par ID">
+                            <TextBlock Style="{StaticResource TextCaption}"><Run Text="ID" /><Run Text=" " /><Run FontSize="10" Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding SortArrowId, Mode=OneWay}" /></TextBlock>
+                        </Button>
+                        <Button Grid.Column="1" Margin="8,0" Style="{StaticResource SortHeader}" CommandParameter="nom" ToolTip="Trier par nom">
+                            <TextBlock Style="{StaticResource TextCaption}"><Run Text="Projet" /><Run Text=" " /><Run FontSize="10" Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding SortArrowName, Mode=OneWay}" /></TextBlock>
+                        </Button>
+                        <Button Grid.Column="2" Style="{StaticResource SortHeader}" HorizontalAlignment="Center" CommandParameter="typologie" ToolTip="Trier par typologie">
+                            <TextBlock Style="{StaticResource TextCaption}"><Run Text="Typologie" /><Run Text=" " /><Run FontSize="10" Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding SortArrowTypologie, Mode=OneWay}" /></TextBlock>
+                        </Button>
+                        <Button Grid.Column="3" Style="{StaticResource SortHeader}" HorizontalAlignment="Center" CommandParameter="canton" ToolTip="Trier par canton">
+                            <TextBlock Style="{StaticResource TextCaption}"><Run Text="Canton" /><Run Text=" " /><Run FontSize="10" Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding SortArrowCanton, Mode=OneWay}" /></TextBlock>
+                        </Button>
+                        <Button Grid.Column="4" Margin="8,0" Style="{StaticResource SortHeader}" HorizontalAlignment="Center" CommandParameter="donnees"
+                                ToolTip="Trier par complétude : projets de référence d'abord, puis les plus complets">
+                            <TextBlock Style="{StaticResource TextCaption}"><Run Text="Données du MDP" /><Run Text=" " /><Run FontSize="10" Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding SortArrowData, Mode=OneWay}" /></TextBlock>
+                        </Button>
                     </Grid>
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                         <ItemsControl ItemsSource="{Binding BenchmarkProjects}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <!-- Clic : fiche « Identité du projet », écrite dans le MDP (Évolution 3.4) -->
-                                    <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}" ToolTip="{Binding Tooltip}"
-                                            Command="{Binding DataContext.EditBaseIdentityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    <!-- Clic : page du MDP (identité à remplir en priorité, ce qui manque, recharger) -->
+                                    <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}"
+                                            Command="{Binding DataContext.OpenBaseDetailCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                             CommandParameter="{Binding}" AutomationProperties.Name="{Binding Name}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="48" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="88" />
-                                                <ColumnDefinition Width="32" />
+                                                <ColumnDefinition Width="56" />
                                                 <ColumnDefinition Width="Auto" SharedSizeGroup="BaseFingerprint" />
-                                                <ColumnDefinition Width="Auto" SharedSizeGroup="BaseVerdict" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding Id}" />
                                             <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Style="{StaticResource TextBody}" Text="{Binding Name}" />
                                             <!-- Typologie : première dimension du benchmark ; « Non identifié » invite à cliquer -->
-                                            <TextBlock Grid.Column="2" Margin="0,0,8,0" VerticalAlignment="Center" Text="{Binding Typologie}">
+                                            <TextBlock Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding Typologie}">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource TextCaption}">
                                                         <Style.Triggers>
@@ -252,10 +265,10 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
-                                            <TextBlock Grid.Column="3" VerticalAlignment="Center" Style="{StaticResource TextMono}"
+                                            <TextBlock Grid.Column="3" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource TextMono}"
                                                        Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding Canton}" />
                                             <!-- Empreinte de fiabilité : un segment par contrôle du moteur, toujours dans le même ordre -->
-                                            <ItemsControl Grid.Column="4" Margin="8,0" VerticalAlignment="Center" ItemsSource="{Binding Fingerprint}"
+                                            <ItemsControl Grid.Column="4" Margin="8,0" HorizontalAlignment="Center" VerticalAlignment="Center" ItemsSource="{Binding Fingerprint}"
                                                           Focusable="False" AutomationProperties.Name="Empreinte de fiabilité">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
@@ -265,9 +278,7 @@
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
                                                         <Border Width="{StaticResource FingerprintWidth}" Height="{StaticResource FingerprintHeight}"
-                                                                Margin="{StaticResource FingerprintGap}" BorderThickness="1" CornerRadius="1"
-                                                                ToolTip="{Binding Tooltip}" ToolTipService.InitialShowDelay="100"
-                                                                ToolTipService.ShowDuration="30000">
+                                                                Margin="{StaticResource FingerprintGap}" BorderThickness="1" CornerRadius="1">
                                                             <Border.Style>
                                                                 <Style TargetType="Border">
                                                                     <!-- Donnée manquante : contour seul, assez marqué pour se lire en clair comme en sombre -->
@@ -275,7 +286,7 @@
                                                                     <Setter Property="BorderBrush" Value="{DynamicResource BrushTextSecondary}" />
                                                                     <Setter Property="Opacity" Value="0.45" />
                                                                     <Style.Triggers>
-                                                                        <DataTrigger Binding="{Binding Ok}" Value="True">
+                                                                        <DataTrigger Binding="{Binding}" Value="True">
                                                                             <Setter Property="Background" Value="{DynamicResource BrushTextSecondary}" />
                                                                             <Setter Property="Opacity" Value="1" />
                                                                         </DataTrigger>
@@ -286,11 +297,6 @@
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
-                                            <!-- Raison exacte de l'entrée ou de l'écart (le glyphe porte sa propre infobulle : on l'enveloppe) -->
-                                            <Border Grid.Column="5" Background="Transparent" VerticalAlignment="Center"
-                                                    ToolTip="{Binding VerdictText}" ToolTipService.ShowDuration="30000">
-                                                <c:VerdictGlyph Verdict="{Binding Verdict}" IsHitTestVisible="False" />
-                                            </Border>
                                         </Grid>
                                     </Button>
                                 </DataTemplate>
@@ -299,6 +305,104 @@
                     </ScrollViewer>
                 </DockPanel>
             </Grid>
+        </Grid>
+
+        <!-- ================================================================ PAGE D'UN MDP DE LA BASE : identité d'abord, puis ce qui manque -->
+        <Grid Grid.Row="1" Visibility="{Binding IsBaseDetail, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid.Resources>
+                <!-- Un point : glyphe, libellé, valeur ou détail, ce qu'il apporte au benchmark -->
+                <DataTemplate x:Key="DetailPointTemplate" DataType="vm:DetailPoint">
+                    <Grid Margin="0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="260" />
+                            <ColumnDefinition Width="200" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <c:VerdictGlyph VerticalAlignment="Center" Verdict="{Binding Verdict}" />
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding Label}" />
+                        <TextBlock Grid.Column="2" Margin="12,0" VerticalAlignment="Center" TextWrapping="Wrap" Text="{Binding Value}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource TextBody}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Ok}" Value="False">
+                                            <Setter Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Grid.Column="3" VerticalAlignment="Center" Style="{StaticResource TextCaption}" TextWrapping="Wrap" Text="{Binding Note}" />
+                    </Grid>
+                </DataTemplate>
+            </Grid.Resources>
+            <Border Background="{DynamicResource BrushSurface}" Padding="16,8">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <ui:Button Appearance="Secondary" Icon="{ui:SymbolIcon Open20}" Content="Ouvrir le MDP" MinHeight="{StaticResource TargetSize}"
+                                   Command="{Binding OpenBaseMdpCommand}" ToolTip="Ouvrir le fichier dans Excel pour le compléter" />
+                        <ui:Button Margin="8,0,0,0" Appearance="Primary" Icon="{ui:SymbolIcon ArrowClockwise20}" Content="Recharger"
+                                   MinHeight="{StaticResource TargetSize}" Command="{Binding ReloadBaseDetailCommand}"
+                                   ToolTip="Relire le MDP après l'avoir modifié" />
+                    </StackPanel>
+                    <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ArrowLeft20}" Command="{Binding CloseBaseDetailCommand}"
+                               ToolTip="Retour à l'accueil" AutomationProperties.Name="Retour"
+                               MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
+                    <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextTitle}" Text="{Binding BaseDetail.Title}" />
+                    <TextBlock Margin="16,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextCaption}" Text="{Binding BaseDetail.File}" />
+                    <StackPanel Margin="16,0,0,0" Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding IsBenchmarkLoading, Converter={StaticResource BoolToVisibility}}">
+                        <ui:ProgressRing Width="16" Height="16" IsIndeterminate="True" />
+                        <TextBlock Margin="8,0,0,0" Style="{StaticResource TextCaption}" Text="{Binding BenchmarkActivity}" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel MaxWidth="1000" Margin="24,16,24,24">
+                    <!-- Entrée dans les références, ou la raison exacte de l'écart -->
+                    <Border Margin="0">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource Banner}">
+                                <Setter Property="BorderBrush" Value="{DynamicResource BrushVerdictWarning}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding BaseDetail.IsReliable}" Value="True">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource BrushStatusSeen}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding BaseDetail.Status}" />
+                    </Border>
+
+                    <DockPanel Margin="0,28,0,8">
+                        <ui:Button DockPanel.Dock="Right" Appearance="Secondary" Icon="{ui:SymbolIcon Edit20}" Content="Renseigner l'identité"
+                                   MinHeight="{StaticResource TargetSize}"
+                                   Command="{Binding EditBaseIdentityCommand}" CommandParameter="{Binding BaseDetail.Item}"
+                                   ToolTip="Fiche Identité : écrite dans la feuille InfosProjet du MDP" />
+                        <TextBlock VerticalAlignment="Center" Margin="0" Text="{Binding BaseDetail.IdentityHeader}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource TextSection}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding BaseDetail.HasIdentityMissing}" Value="True">
+                                            <Setter Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </DockPanel>
+                    <ItemsControl ItemsSource="{Binding BaseDetail.Identity}" ItemTemplate="{StaticResource DetailPointTemplate}" Focusable="False" />
+
+                    <TextBlock Margin="0,28,0,8" Style="{StaticResource TextSection}" Text="{Binding BaseDetail.DataHeader}" />
+                    <ItemsControl ItemsSource="{Binding BaseDetail.Data}" ItemTemplate="{StaticResource DetailPointTemplate}" Focusable="False" />
+                    <TextBlock Margin="0,16,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                               Text="Les données se corrigent dans le MDP (Ouvrir le MDP), ou en réexportant le MDP depuis le projet de fiabilisation ; puis Recharger." />
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
 
         <!-- ================================================================ DASHBOARD (plan §Évolution 3.1) -->

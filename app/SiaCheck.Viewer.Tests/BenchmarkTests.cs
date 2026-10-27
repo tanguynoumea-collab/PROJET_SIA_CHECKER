@@ -47,19 +47,27 @@ public class BenchmarkTests
     }
 
     [Fact]
-    public void Fingerprint_and_tooltip_name_the_missing_data()
+    public void Fingerprint_and_detail_page_name_the_missing_data()
     {
         var p = BenchmarkBase.Load(Write(Json))!.Projects;
         var orée = new BenchmarkItem(p[1]);
-        Assert.Equal([true, false], orée.Fingerprint.Select(c => c.Ok));
-        Assert.Equal("ALERTE", orée.Verdict);
+        Assert.Equal([true, false], orée.Fingerprint);
+        Assert.False(orée.IsReliable);
         Assert.Equal("—", orée.Canton);
-        Assert.Contains("Part de construction (SC / SP = 56%)", orée.Tooltip);
-        Assert.Equal("OK", new BenchmarkItem(p[0]).Verdict);
-        // une infobulle par case : numéro, contrôle, état, détail, rôle
-        Assert.Equal("2. Part de construction\n✗ absent ou hors plage · SC / SP = 56%\nRequis pour entrer dans les références.",
-                     orée.Fingerprint[1].Tooltip);
-        Assert.Contains("ne bloque pas", orée.Fingerprint[0].Tooltip);
+        Assert.True(new BenchmarkItem(p[0]).IsReliable);
+
+        var page = new MdpDetail(orée);
+        Assert.Equal("1778 · L'Orée", page.Title);
+        Assert.StartsWith("Écarté des références : part de construction SC / SP = 56%", page.Status);
+        // identité d'abord, à remplir en priorité : typologie, canton, intervention manquent (commune, phase facultatives)
+        Assert.Equal(3, page.IdentityMissing);
+        Assert.Contains("à remplir en priorité (3 champs manquants)", page.IdentityHeader);
+        Assert.Equal(("Canton", "à renseigner", "ERREUR"), (page.Identity[3].Label, page.Identity[3].Value, page.Identity[3].Verdict));
+        Assert.Equal("ALERTE", page.Identity[5].Verdict);                     // commune facultative
+        // puis les données : le contrôle requis manquant, avec son détail et sa conséquence
+        var sc = page.Data.Single(d => !d.Ok);
+        Assert.Equal(("SC / SP = 56%", "ERREUR"), (sc.Value, sc.Verdict));
+        Assert.Contains("écarté des références", sc.Note);
     }
 
     private static BenchmarkProject Rejected(params (string Id, bool Ok, string Detail)[] checks) => new()
@@ -112,6 +120,30 @@ public class BenchmarkTests
         Assert.EndsWith("MDP-1467.00_Batie.xlsx", BenchmarkBase.FindById(tmp.Path, "1467"));
         Assert.Null(BenchmarkBase.FindById(tmp.Path, "177"));
         Assert.Equal(2, BenchmarkBase.MdpFiles(tmp.Path).Count());
+    }
+
+    [Fact]
+    public void Base_list_sorts_on_its_headers_and_opens_a_page()
+    {
+        using var tmp = new TempDir();
+        var paths = new AppPaths(tmp.Path, tmp.Path);
+        Directory.CreateDirectory(Path.GetDirectoryName(paths.BenchmarkFile)!);
+        File.WriteAllText(paths.BenchmarkFile, Json);
+        var vm = new MainViewModel(new FakeShell(), paths, new AppSettings { BenchmarkFolder = tmp.Path }, enginePath: null);
+        Assert.Equal(["1714", "1778"], vm.BenchmarkProjects.Select(i => i.Id));      // par défaut : références d'abord
+        Assert.Equal("↓", vm.SortArrowData);
+        vm.SortBaseCommand.Execute("nom");
+        Assert.Equal(["1778", "1714"], vm.BenchmarkProjects.Select(i => i.Id));      // « L'Orée » avant « Le Clos »
+        Assert.Equal(("↑", ""), (vm.SortArrowName, vm.SortArrowData));
+        vm.SortBaseCommand.Execute("nom");
+        Assert.Equal(["1714", "1778"], vm.BenchmarkProjects.Select(i => i.Id));      // même en-tête : sens inversé
+        Assert.Equal(("↓", ""), (vm.SortArrowName, vm.SortArrowId));
+
+        vm.OpenBaseDetailCommand.Execute(vm.BenchmarkProjects[0]);
+        Assert.True(vm.IsBaseDetail);
+        Assert.False(vm.IsHome);
+        vm.CloseBaseDetailCommand.Execute(null);
+        Assert.True(vm.IsHome);
     }
 
     private static string Write(string json)

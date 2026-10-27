@@ -6,9 +6,6 @@ using SiaCheck.Viewer.Services;
 
 namespace SiaCheck.Viewer.ViewModels;
 
-/// <summary>Une case de l'empreinte : un contrôle du moteur, présent ou non, avec son infobulle.</summary>
-public sealed record FingerprintCell(bool Ok, bool Required, string Tooltip);
-
 /// <summary>Un MDP de la base sur l'accueil, avec son empreinte de fiabilité (un segment par contrôle du moteur).</summary>
 public sealed class BenchmarkItem(BenchmarkProject p)
 {
@@ -23,27 +20,8 @@ public sealed class BenchmarkItem(BenchmarkProject p)
     public string Name { get; } = p.Name;
     public string Canton { get; } = p.Info("canton") ?? "—";
     public bool IsReliable { get; } = p.Reliable;
-    public string Verdict => IsReliable ? "OK" : "ALERTE";
-    public IReadOnlyList<FingerprintCell> Fingerprint { get; } = p.Checks.Select((c, i) => Cell(i + 1, c)).ToList();
-    /// <summary>Pourquoi le projet est (ou n'est pas) dans les références : infobulle du verdict.</summary>
-    public string VerdictText { get; } = p.Reliable
-        ? "Dans les références : SP ≥ SN et part de construction plausible."
-        : $"Écarté des références : {RejectReason(p)}";
-    public string Tooltip { get; } =
-        $"{p.File} · cliquer pour compléter son identité\n" +
-        (p.Reliable ? "Dans les références" : $"Écarté des références : {RejectReason(p)}") +
-        (p.Checks.Where(c => !c.Ok).ToList() is { Count: > 0 } missing
-            ? "\n\nManque :\n• " + string.Join("\n• ", missing.Select(c => c.Detail.Length > 0 ? $"{c.Label} ({c.Detail})" : c.Label))
-            : "\n\nToutes les données sont présentes.");
-
-    private static FingerprintCell Cell(int n, BenchmarkCheck c)
-    {
-        var required = Required.Contains(c.Id);
-        var state = c.Ok ? "✓ présent" : "✗ absent ou hors plage";
-        var detail = c.Detail.Length > 0 ? $" · {c.Detail}" : "";
-        var role = required ? "Requis pour entrer dans les références." : "Enrichit certains ratios ; ne bloque pas l'entrée dans les références.";
-        return new FingerprintCell(c.Ok, required, $"{n}. {c.Label}\n{state}{detail}\n{role}");
-    }
+    /// <summary>Une case par contrôle, dans l'ordre du moteur : pleine = présent. Le détail est sur la page du MDP.</summary>
+    public IReadOnlyList<bool> Fingerprint { get; } = p.Checks.Select(c => c.Ok).ToList();
 
     /// <summary>
     /// La vraie raison d'un écart, du plus élémentaire au plus fin : surfaces absentes, puis SP &lt; SN, puis part de
@@ -83,10 +61,24 @@ public sealed partial class MainViewModel
     public const int MinReferenceProjects = 3;
 
     public ObservableCollection<BenchmarkItem> BenchmarkProjects { get; } = [];
-    /// <summary>Légende de la colonne « Données du MDP » : les contrôles du moteur, dans l'ordre des cases.</summary>
-    [ObservableProperty] private string _fingerprintLegend = "";
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasBenchmarkFolder), nameof(BenchmarkEmptyMessage))]
+    /// <summary>Page d'un MDP de la base (clic sur sa ligne) : identité à remplir en priorité, puis ce qui manque.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsHome), nameof(IsBaseDetail))] private MdpDetail? _baseDetail;
+    public bool IsBaseDetail => BaseDetail is not null;
+
+    // Tri de la liste de la base : clic sur un en-tête (même en-tête : sens inversé)
+    private string _baseSortKey = "donnees";
+    private bool _baseSortDescending = true;
+    /// <summary>Flèche fine du tri, à côté de l'en-tête de la colonne triée ; vide pour les autres.</summary>
+    public string SortArrowId => SortArrow("id");
+    public string SortArrowName => SortArrow("nom");
+    public string SortArrowTypologie => SortArrow("typologie");
+    public string SortArrowCanton => SortArrow("canton");
+    public string SortArrowData => SortArrow("donnees");
+    private string SortArrow(string key) => key == _baseSortKey ? (_baseSortDescending ? "↓" : "↑") : "";
+    public string BenchmarkFolderTooltip => HasBenchmarkFolder ? $"Changer le dossier de la base\n{BenchmarkFolder}" : "Choisir le dossier de la base";
+
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasBenchmarkFolder), nameof(BenchmarkEmptyMessage), nameof(BenchmarkFolderTooltip))]
     private string _benchmarkFolder = "";
     [ObservableProperty] private bool _isBenchmarkLoading;
     [ObservableProperty] private string? _benchmarkActivity;
@@ -189,6 +181,58 @@ public sealed partial class MainViewModel
 
     private bool CanOpenBenchmark() => BenchmarkProjects.Count > 0;
 
+    /// <summary>Liste de la base dans l'ordre choisi ; à égalité, fiables d'abord puis par ID.</summary>
+    private void FillBenchmarkProjects()
+    {
+        BenchmarkProjects.Clear();
+        if (_benchmarkData is null) return;
+        static string Num(string id) => id.PadLeft(12, '0');     // « 1023 » avant « 1714 », comme des nombres
+        var items = _benchmarkData.Projects.Select(p => new BenchmarkItem(p));
+        Func<BenchmarkItem, IComparable> key = _baseSortKey switch
+        {
+            "id" => i => Num(i.Id),
+            "nom" => i => i.Name,
+            "typologie" => i => i.IsIdentified ? i.Typologie : "\uffff",       // non identifiés en fin de liste
+            "canton" => i => i.Canton == "—" ? "\uffff" : i.Canton,
+            _ => i => (i.IsReliable ? 1 : 0) + i.Project.Score,
+        };
+        var sorted = _baseSortDescending ? items.OrderByDescending(key, Comparer<IComparable>.Create(Compare))
+                                         : items.OrderBy(key, Comparer<IComparable>.Create(Compare));
+        foreach (var i in sorted.ThenByDescending(i => i.IsReliable).ThenBy(i => Num(i.Id))) BenchmarkProjects.Add(i);
+        foreach (var h in new[] { nameof(SortArrowId), nameof(SortArrowName), nameof(SortArrowTypologie), nameof(SortArrowCanton), nameof(SortArrowData) })
+            OnPropertyChanged(h);
+    }
+
+    private static int Compare(IComparable? a, IComparable? b) =>
+        a is string sa && b is string sb ? string.Compare(sa, sb, StringComparison.CurrentCultureIgnoreCase) : Comparer<IComparable>.Default.Compare(a!, b!);
+
+    [RelayCommand]
+    private void SortBase(string key)
+    {
+        _baseSortDescending = key == _baseSortKey ? !_baseSortDescending : key == "donnees";
+        _baseSortKey = key;
+        FillBenchmarkProjects();
+    }
+
+    [RelayCommand]
+    private void OpenBaseDetail(BenchmarkItem item) => BaseDetail = new MdpDetail(item);
+
+    [RelayCommand]
+    private void CloseBaseDetail() => BaseDetail = null;
+
+    /// <summary>MDP modifié à la main (Excel) : relit la base ; la page reprend le même fichier.</summary>
+    [RelayCommand]
+    private Task ReloadBaseDetailAsync() => RefreshBenchmarkAsync();
+
+    [RelayCommand]
+    private void OpenBaseMdp()
+    {
+        if (BaseDetail is null || !HasBenchmarkFolder) return;
+        var path = Path.Combine(BenchmarkFolder, BaseDetail.File);
+        if (File.Exists(path)) _shell.OpenFile(path);
+        else _shell.Notify($"Fichier introuvable : {path}", isError: true);
+    }
+
     [RelayCommand]
     private async Task ChooseBenchmarkFolderAsync()
     {
@@ -249,14 +293,19 @@ public sealed partial class MainViewModel
             : !BenchmarkBase.MdpFiles(BenchmarkFolder).Any()
                 ? "Aucun fichier MDP-*.xlsx dans ce dossier. Exportez un MDP depuis un projet traité, ou choisissez un autre dossier."
                 : null;
-        if (data is null || !HasBenchmarkFolder) return;
-        FingerprintLegend = data.Projects.FirstOrDefault()?.Checks is { Count: > 0 } checks
-            ? "Une case par contrôle du MDP, de gauche à droite (pleine = présent) :\n"
-              + string.Join("\n", checks.Select((c, i) => $"{i + 1}. {c.Label}" + (BenchmarkItem.Required.Contains(c.Id) ? "  (requis)" : "")))
-              + "\n\nLes contrôles requis décident de l'entrée dans les références (✓) ; les autres enrichissent certains ratios."
-            : "";
-        foreach (var p in data.Projects.OrderByDescending(p => p.Reliable).ThenByDescending(p => p.Score).ThenBy(p => p.Id))
-            BenchmarkProjects.Add(new BenchmarkItem(p));
+        if (data is null || !HasBenchmarkFolder)
+        {
+            BaseDetail = null;
+            return;
+        }
+        FillBenchmarkProjects();
+        // Page d'un MDP ouverte : elle suit la relecture (même fichier), ou se ferme s'il a disparu
+        if (BaseDetail is { } open)
+        {
+            var same = BenchmarkProjects.FirstOrDefault(i => i.Project.File == open.File)
+                       ?? BenchmarkProjects.FirstOrDefault(i => i.Id == open.Item.Id);
+            BaseDetail = same is null ? null : new MdpDetail(same);
+        }
         var reliable = data.Projects.Count(p => p.Reliable);
         if (data.Projects.Count > 0)
             BenchmarkSummary = $"{reliable} projet{S(reliable)} de référence sur {data.Projects.Count} · lue le {data.Generated:dd.MM.yyyy HH:mm}";

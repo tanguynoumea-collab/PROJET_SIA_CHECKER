@@ -65,7 +65,7 @@ public sealed partial class MainViewModel : ObservableObject
     public bool HasDocument => Document is not null;
     /// <summary>Espace de revue visible : un projet est ouvert et le dashboard n'est pas affiché par-dessus.</summary>
     public bool IsReviewing => HasDocument && !IsDashboard;
-    public bool IsHome => Document is null && !IsDashboard;
+    public bool IsHome => Document is null && !IsDashboard && BaseDetail is null;
     /// <summary>Nom de la fiche projet, sinon celui du dossier Treegram.</summary>
     public string ProjectName => Document is null ? ""
         : ProjectDir is not null && _settings.FindMdpProject(ProjectDir)?.Name is { Length: > 0 } n ? n : Document.Project;

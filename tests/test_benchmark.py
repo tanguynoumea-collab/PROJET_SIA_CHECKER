@@ -59,6 +59,18 @@ def test_totaux(projet):
     assert t["PLEINE"] == 550                                              # façade − vitrée
 
 
+def test_enveloppe_hors_sol_sans_toitures(tmp_path):
+    # Comme les ratios de la fiabilisation : ni les toitures, ni les murs enterrés du sous-sol
+    f = mdp(tmp_path / "MDP-9001-E.xlsx")
+    with pd.ExcelWriter(f, mode="a", if_sheet_exists="replace") as w:
+        pd.DataFrame({"ID Projet": 9001, "Partie de l'enveloppe": ["Facade global", "Facade global", "Surface de toiture"],
+                      "Etage": ["N00", "S01", "N01"], "Surface Brutte": [700.0, 300.0, 200.0],
+                      "Surface nette (m2)": [550.0, 300.0, 200.0], "Surface vitrée": [150.0, 10.0, 0.0]}
+                     ).to_excel(w, sheet_name="SurfacesEnveloppe", index=False)
+    t = b.lire(f).totaux
+    assert (t["FACADE"], t["VITRE"], t["PLEINE"]) == (700, 150, 550)
+
+
 def test_kpis_d_enveloppe(projet):
     assert projet.ratio(b.KPI_BY_ID["VITRE/PLEINE"]) == (150, 550)
     assert projet.ratio(b.KPI_BY_ID["VITRE/FACADE"]) == (150, 700)
@@ -71,6 +83,10 @@ def test_sans_vitree_pas_de_pleine(tmp_path):
     f = mdp(tmp_path / "MDP-9001-V.xlsx")
     wb = openpyxl.load_workbook(f)
     wb["SurfacesEnveloppe"]["F2"] = 0
+    wb.save(f)
+    t = b.lire(f).totaux
+    assert (t["FACADE"], t["VITRE"]) == (700, 150)          # sans vitrée : les ouvertures (brute 700 − nette 550)
+    wb["SurfacesEnveloppe"]["E2"] = 700                      # ni vitrée ni ouverture
     wb.save(f)
     t = b.lire(f).totaux
     assert t["FACADE"] == 700 and "VITRE" not in t and "PLEINE" not in t
@@ -166,10 +182,14 @@ def test_projet_json_sans_comparaison(projet):
 def test_base_de_reference():
     projets, erreurs = b.lire_dossier(BASE)
     assert not erreurs and len(projets) == 10
-    assert {p.id for p in projets if p.fiable} == {"1467", "1712", "1714", "1746", "1784"}
-    assert not next(p for p in projets if p.id == "1778").fiable     # nettes tronquées : SC / SP = 56 %
+    # L'Orée (1778) réexportée par SIA Check au passage en traité : fiable ; Gare Casino garde ses nettes tronquées
+    assert {p.id for p in projets if p.fiable} == {"1467", "1712", "1714", "1746", "1778", "1784"}
+    assert not next(p for p in projets if p.id == "1747").fiable     # SC / SP = 55 %
     r = b.combiner(projets, b.KPI_BY_ID["SUP/SP_HS"])
-    assert r["n"] == 5 and 0.70 < r["combine"] < 0.76
+    assert r["n"] == 6 and 0.70 < r["combine"] < 0.76
+    # enveloppe hors-sol, sans toitures : L'Orée retrouve la part vitrée de la fiabilisation (32,7 %)
+    loree = next(p for p in projets if p.id == "1778")
+    assert loree.totaux["VITRE"] / loree.totaux["FACADE"] == pytest.approx(0.327, abs=0.005)
 
 
 def test_identite_d_un_ancien_mdp_puis_relue(tmp_path):

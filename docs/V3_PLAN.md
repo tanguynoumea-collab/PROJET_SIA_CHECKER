@@ -233,3 +233,8 @@ Les MDP de la base ne sont identifiés que si quelqu'un remplit la fiche Identit
 | Phase | Contenu |
 |---|---|
 | 18 ✓ | **Fiche projet.** « Nouveau projet… » ouvre une fiche (dossier Treegram + identité) ; ✎ sur chaque projet actif et clic sur le nom dans l'espace de revue pour l'éditer ; changement de dossier qui déplace statuts, corrections et revues IA ; export MDP et « Ajouter à la base » sans dialogue (la fiche s'ouvre seulement s'il manque un champ requis). Détail : DESIGN_PLAN, Évolution 3.8 |
+
+### Correction de l'enveloppe du benchmark (27.10.2026)
+
+La façade du benchmark additionnait toutes les lignes de la feuille SurfacesEnveloppe : façades hors-sol, murs enterrés des sous-sols **et toitures** (L'Orée : 37 417 m² au lieu de 21 491 m², part vitrée 19 % au lieu de 32,7 %). Elle ne garde plus que les façades hors-sol, comme les ratios de la fiabilisation : ni toitures, ni sous-sols (code S01 ou « Sous Sol »), ni lignes de total sans étage. Sans surface vitrée, la vitrée est prise égale aux ouvertures de la façade (brute − nette), comme à l'export MDP : les blocs de vitrages saisis à la main en double (Sauvabelines) ne faussent plus le ratio.
+

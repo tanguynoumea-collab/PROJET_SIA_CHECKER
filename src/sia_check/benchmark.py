@@ -15,7 +15,8 @@ Totaux (`Projet.totaux`, m² sauf mention) :
     SN, SC               SN = SUP + SUS + SD + SI ; SC = SP − SN (Treegram ne fournit pas la SC)
     SEP, VB              surface externe de plancher ; volume bâti (m³ : lignes VB, sinon m³ des SP)
     SVN, SVB, SNH        USPI, somme des lots
-    FACADE, VITRE        enveloppe : façade brute et partie vitrée (SRV ; réservations de façade dans les anciens MDP)
+    FACADE, VITRE        enveloppe hors-sol : façade brute et partie vitrée (SRV ; réservations de façade dans les
+                         anciens MDP), sans toitures ni murs enterrés
     PLEINE               façade pleine = FACADE − VITRE (seulement si la vitrée est connue)
     LOG, ETAGES_HS       nombre de logements, d'étages hors-sol
 """
@@ -317,11 +318,23 @@ def _uspi(df: pd.DataFrame, t: dict) -> None:
 
 
 def _enveloppe(df: pd.DataFrame, t: dict) -> None:
+    """Façade et vitrages **hors-sol**, comme les ratios d'enveloppe de la fiabilisation (config : above_ground) :
+    ni toitures, ni murs enterrés des sous-sols, ni lignes de total sans étage. Les MDP remplis à la main nomment
+    leurs parties librement (« Partie pleine », « Surface de façade »…) : on écarte ce qui n'est pas de la façade."""
     if df.empty:
         return
-    c_brute, c_vit = _col(df, "surface brut"), _col(df, "surface vitr")
-    if c_brute:                                             # gabarit actuel : une ligne par niveau
+    c_et = _col(df, "etage")
+    if c_et:   # sous-sol par code (S01) ou en toutes lettres (« Sous Sol ») ; sans étage : ligne de total
+        df = df[[not _empty(e) and zone(e) != "SS" and not _key(e).startswith("sous") for e in df[c_et]]]
+    c_brute, c_vit, c_part = _col(df, "surface brut"), _col(df, "surface vitr"), _col(df, "partie de l'enveloppe")
+    if c_brute:                                             # gabarit actuel : une ligne par niveau et par partie
+        k = df[c_part].map(lambda v: "" if _empty(v) else _key(v)) if c_part else pd.Series("", index=df.index)
+        df, k = df[~k.str.contains("toit")], k[~k.str.contains("toit")]
         facade, vitre = _sum(df, c_brute), _sum(df, c_vit) if c_vit else 0.0
+        c_net = _col(df, "surface nette")
+        if vitre == 0 and c_net:   # pas de vitrée : les ouvertures de la façade (brute − nette), comme l'export MDP
+            murs = df[pd.to_numeric(df[c_brute], errors="coerce").notna()]
+            vitre = max(_sum(murs, c_brute) - _sum(murs, c_net), 0.0)
     else:                                                   # anciens MDP : une ligne par partie d'enveloppe
         c_part, c_m2 = _col(df, "partie de l'enveloppe"), _col(df, "surface")
         if not (c_part and c_m2):

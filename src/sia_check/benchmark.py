@@ -18,6 +18,8 @@ Totaux (`Projet.totaux`, m² sauf mention) :
     FACADE, VITRE        enveloppe hors-sol : façade brute et partie vitrée (SRV ; réservations de façade dans les
                          anciens MDP), sans toitures ni murs enterrés
     PLEINE               façade pleine = FACADE − VITRE (seulement si la vitrée est connue)
+    TOITURE              toitures hors-sol (lignes « toiture » de SurfacesEnveloppe) : avec FACADE, l'enveloppe du
+                         coefficient de forme ; absente, le coefficient n'est pas calculé (il serait surestimé)
     LOG, ETAGES_HS       nombre de logements, d'étages hors-sol
 """
 
@@ -76,7 +78,12 @@ KPIS = [
     Kpi("VITRE/PLEINE", "Enveloppe", "Vitrée / pleine", ("VITRE",), ("PLEINE",),
         note="Surface vitrée / surface pleine de façade (pleine = façade brute − vitrée)."),
     Kpi("VITRE/FACADE", "Enveloppe", "Part vitrée : vitrée / façade", ("VITRE",), ("FACADE",)),
-    Kpi("FACADE/SP_HS", "Enveloppe", "Façade / SP hors-sol", ("FACADE",), ("SP_HS",), sens=-1, objet="de façade"),
+    # Coefficient de forme (équipe DEV, 27.10.2026) : SP hors-sol / surface d'enveloppe (façades hors-sol + toitures).
+    # Plus il est haut, plus le bâtiment est compact : moins d'enveloppe, donc de coût et de pertes thermiques, par m².
+    Kpi("FORME", "Enveloppe", "Coefficient de forme : SP hors-sol / enveloppe", ("SP_HS",), ("FACADE", "TOITURE"), unite="",
+        note="Enveloppe = façades hors-sol + toitures. Un bâtiment compact (rectangle) l'emporte sur une forme découpée.",
+        sens=1, objet="de SP hors-sol"),
+    Kpi("FACADE/SP_HS", "Enveloppe", "Façade / SP hors-sol", ("FACADE",), ("SP_HS",), unite="", sens=-1, objet="de façade"),
     Kpi("VB/SP", "Enveloppe", "Hauteur brute moyenne : VB / SP", ("VB",), ("SP",), unite="m"),
     Kpi("SUP/LOG", "Programme", "SUP par logement", ("SUP",), ("LOG",), unite="m²", typologie="logement"),
     Kpi("SP_HS/LOG", "Programme", "SP hors-sol par logement", ("SP_HS",), ("LOG",), unite="m²", typologie="logement"),
@@ -329,6 +336,7 @@ def _enveloppe(df: pd.DataFrame, t: dict) -> None:
     c_brute, c_vit, c_part = _col(df, "surface brut"), _col(df, "surface vitr"), _col(df, "partie de l'enveloppe")
     if c_brute:                                             # gabarit actuel : une ligne par niveau et par partie
         k = df[c_part].map(lambda v: "" if _empty(v) else _key(v)) if c_part else pd.Series("", index=df.index)
+        toiture = _sum(df[k.str.contains("toit")], c_brute)
         df, k = df[~k.str.contains("toit")], k[~k.str.contains("toit")]
         facade, vitre = _sum(df, c_brute), _sum(df, c_vit) if c_vit else 0.0
         c_net = _col(df, "surface nette")
@@ -341,6 +349,9 @@ def _enveloppe(df: pd.DataFrame, t: dict) -> None:
             return
         k = df[c_part].map(_key)
         facade, vitre = _sum(df[k.str.contains("facade")], c_m2), _sum(df[k.str.contains("vitr")], c_m2)
+        toiture = _sum(df[k.str.contains("toit")], c_m2)
+    if toiture > 0:
+        t["TOITURE"] = toiture
     if facade > 0:
         t["FACADE"] = facade
         t["VITRE"] = vitre if vitre > 0 else None

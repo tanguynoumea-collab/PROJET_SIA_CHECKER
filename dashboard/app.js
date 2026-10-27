@@ -26,6 +26,7 @@ function valeur(kpi, v) {
   if (v == null) return "—";
   if (kpi.unite === "%") return `${F1.format(v * 100)} %`;
   if (kpi.unite === "m") return `${F2.format(v)} m`;
+  if (!kpi.unite) return F2.format(v);       // rapport sans unité (coefficient de forme)
   return `${F0.format(v)} ${kpi.unite}`;
 }
 
@@ -34,6 +35,7 @@ function ecartTexte(kpi, d) {
   const a = Math.abs(d);
   if (kpi.unite === "%") { const p = a * 100; return `${s}${F1.format(p)} pt${p >= 2 ? "s" : ""}`; }
   if (kpi.unite === "m") return `${s}${F2.format(a)} m`;
+  if (!kpi.unite) return `${s}${F2.format(a)}`;
   return `${s}${F0.format(a)} ${kpi.unite}`;
 }
 
@@ -97,7 +99,7 @@ function domaine(kpi, extra) {
 const CLE_SELECTION = "benchmark.selection";
 const CRITERES = [["typologie", "categorie", "Toutes"], ["canton", "canton", "Tous"], ["intervention", "intervention", "Toutes"]];
 const NON_IDENTIFIEE = "__non_identifiee";
-const KPI_CLES = [["SUP/SP_HS", ""], ["VITRE/PLEINE", ""], ["FACADE/SP_HS", "provisoire, en attendant le coefficient de forme"]];
+const KPI_CLES = [["SUP/SP_HS", ""], ["VITRE/PLEINE", ""], ["FORME", ""]];
 const sel = { typologie: "", canton: "", intervention: "" };
 
 /** Le projet passe la sélection ; `sauf` ignore un critère (comptes des listes, suggestions d'élargissement). */
@@ -543,7 +545,7 @@ function dessinerTypologies() {
 // ------------------------------------------------------------------ Mon projet (saisie ou SIA Check)
 
 const SURFACES = [["SP_HS", "SP hors-sol"], ["SP_SS", "SP sous-sol"], ["SUP_HS", "SUP hors-sol"], ["SD_HS", "SD hors-sol"],
-                  ["SI", "SI"], ["SUS_HS", "SUS hors-sol"], ["SVN", "SVN"], ["FACADE", "Façade"], ["VITRE", "Vitrages"], ["VB", "VB (m³)"]];
+                  ["SI", "SI"], ["SUS_HS", "SUS hors-sol"], ["SVN", "SVN"], ["FACADE", "Façade hors-sol"], ["VITRE", "Vitrages"], ["TOITURE", "Toitures"], ["VB", "VB (m³)"]];
 const MIX = [["0", "Studios"], ["1", "1 chambre"], ["2", "2 chambres"], ["3", "3 chambres"], ["4", "4 ch. et plus"]];
 const CHF_KPIS = new Set(["SUP/SP_HS", "SVN/SP_HS"]);
 const CLE_SAISIE = "benchmark.monProjet";

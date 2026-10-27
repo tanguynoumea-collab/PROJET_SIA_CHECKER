@@ -1501,7 +1501,7 @@ Utile pour le plan financier : la façade pleine et les vitrages n'ont pas le m�
 
 ### Coefficient de forme
 
-Toujours en attente de la définition de l'équipe. Dès qu'elle est connue, il remplace « Façade / SP hors-sol » dans les KPI clés ; « Façade / SP hors-sol » retourne dans la famille Enveloppe.
+Défini par l'équipe DEV (27.10.2026) : **SP hors-sol / surface d'enveloppe**, l'enveloppe étant les façades hors-sol et les toitures (plancher bas non compté). Plus il est haut, plus le bâtiment est compact (un rectangle l'emporte sur une étoile : moins de périmètre pour la même surface, donc moins de coût et de pertes thermiques). Il remplace « Façade / SP hors-sol » dans les KPI clés, qui reste dans la famille Enveloppe (et sert au Programmer pour estimer la façade). Calculé seulement pour les MDP qui ont façades **et** toitures : sans toitures, il serait surestimé. Base au 27.10.2026 : n = 3 (Le Clos des Hêtres 1,03, La Bâtie 1,09, L'Orée 1,25 ; combiné 1,21). Mon projet : champ « Toitures ».
 
 ### États non-nominaux
 

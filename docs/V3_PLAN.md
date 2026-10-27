@@ -190,7 +190,7 @@ En parallèle (hors code) : ré-exporter par SIA Check les MDP anciens (L'Orée 
 | 16 ✓ | **Sélectionner, puis lire les ratios.** Une barre de sélection commune à tout le dashboard (typologie, canton, type d'intervention ; plus tard phase, période, taille). Un onglet d'entrée « Ratios » : les KPI clés de la sélection en tête (n, ratio combiné, chaque projet sur la règle), puis les autres familles, et la liste des projets retenus. Comparer et Programmer cherchent leurs projets similaires **dans** la sélection |
 | 17 | **Des KPI par typologie.** Ajout de « surface vitrée / surface pleine » et du coefficient de forme (définition à fixer). Les ratios propres au logement (par logement, mix, Typologies) ne s'affichent que pour le logement ; les autres typologies auront plus tard leurs unités (chambres, lits, postes de travail…), à définir avec l'équipe. Fourchette de fiabilité revue par typologie si besoin |
 
-Décisions (27.10.2026) : ordre 15 → 16 → 17 ; l'identité des MDP déjà dans la base s'écrit **dans le MDP** (feuille `InfosProjet`), seule source de vérité ; la définition du coefficient de forme est demandée à l'équipe (ouvert).
+Décisions (27.10.2026) : ordre 15 → 16 → 17 ; l'identité des MDP déjà dans la base s'écrit **dans le MDP** (feuille `InfosProjet`), seule source de vérité ; la définition du coefficient de forme est demandée à l'équipe ; réponse (27.10.2026) : SP hors-sol / surface d'enveloppe (façades hors-sol + toitures), KPI « FORME » du benchmark.
 
 ### Indice de performance par projet
 

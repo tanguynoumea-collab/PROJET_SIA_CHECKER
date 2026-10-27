@@ -67,8 +67,11 @@ def test_enveloppe_hors_sol_sans_toitures(tmp_path):
                       "Etage": ["N00", "S01", "N01"], "Surface Brutte": [700.0, 300.0, 200.0],
                       "Surface nette (m2)": [550.0, 300.0, 200.0], "Surface vitrée": [150.0, 10.0, 0.0]}
                      ).to_excel(w, sheet_name="SurfacesEnveloppe", index=False)
-    t = b.lire(f).totaux
-    assert (t["FACADE"], t["VITRE"], t["PLEINE"]) == (700, 150, 550)
+    p = b.lire(f)
+    t = p.totaux
+    assert (t["FACADE"], t["VITRE"], t["PLEINE"], t["TOITURE"]) == (700, 150, 550, 200)
+    # coefficient de forme : SP hors-sol / (façades hors-sol + toitures)
+    assert p.ratio(b.KPI_BY_ID["FORME"]) == (800, 900)
 
 
 def test_kpis_d_enveloppe(projet):
@@ -76,6 +79,8 @@ def test_kpis_d_enveloppe(projet):
     assert projet.ratio(b.KPI_BY_ID["VITRE/FACADE"]) == (150, 700)
     assert {k.famille for k in b.KPIS if "VITRE" in k.num or "FACADE" in k.num} == {"Enveloppe"}
     assert b.KPI_BY_ID["VITRE/PLEINE"].sens == 0                           # le benchmark situe, sans juger
+    assert "TOITURE" not in projet.totaux and projet.ratio(b.KPI_BY_ID["FORME"]) is None   # sans toiture : pas de coefficient
+    assert b.KPI_BY_ID["FORME"].sens == 1                                  # plus compact = favorable
 
 
 def test_sans_vitree_pas_de_pleine(tmp_path):
@@ -190,6 +195,7 @@ def test_base_de_reference():
     # enveloppe hors-sol, sans toitures : L'Orée retrouve la part vitrée de la fiabilisation (32,7 %)
     loree = next(p for p in projets if p.id == "1778")
     assert loree.totaux["VITRE"] / loree.totaux["FACADE"] == pytest.approx(0.327, abs=0.005)
+    assert loree.ratio(b.KPI_BY_ID["FORME"])[0] / loree.ratio(b.KPI_BY_ID["FORME"])[1] == pytest.approx(1.25, abs=0.01)
 
 
 def test_identite_d_un_ancien_mdp_puis_relue(tmp_path):

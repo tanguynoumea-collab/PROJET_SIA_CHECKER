@@ -9,6 +9,8 @@ public enum ProjectStatus
 {
     [JsonStringEnumMemberName("en_traitement")] InProgress,
     [JsonStringEnumMemberName("traite")] Done,
+    /// <summary>Traité, puis modifié (corrections, fiche projet) : le MDP de la base n'est plus à jour, à republier.</summary>
+    [JsonStringEnumMemberName("traite_modifie")] DoneModified,
 }
 
 /// <summary>Changement de statut, pour le suivi (qui a passé quoi en traité, quand).</summary>
@@ -32,7 +34,12 @@ public sealed class ProjectRecord
     public int IssueCount { get; set; }
     public List<StatusChange> History { get; set; } = [];
 
-    public static string Label(ProjectStatus s) => s == ProjectStatus.Done ? "Traité" : "En traitement";
+    public static string Label(ProjectStatus s) => s switch
+    {
+        ProjectStatus.Done => "Traité",
+        ProjectStatus.DoneModified => "Traité · modifié",
+        _ => "En traitement",
+    };
 }
 
 public sealed class ProjectRegistryData

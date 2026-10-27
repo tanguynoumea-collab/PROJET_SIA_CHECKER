@@ -49,6 +49,41 @@ internal static class SubjectFixture
     }
 }
 
+public class ModifiedAfterDoneTests
+{
+    [Fact]
+    public async Task A_decision_on_a_done_project_asks_for_republication_later()
+    {
+        using var tmp = new TempDir();
+        var shell = new FakeShell { ConfirmAnswer = false };
+        var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), new AppSettings(), enginePath: null) { AiSearchBaseDir = tmp.Path };
+        vm.LoadDocument(tmp.Path, SubjectFixture.Doc());
+        var registry = new ProjectRegistry(new AppPaths(tmp.Path, tmp.Path).ProjectsFile);
+        registry.SetStatus(tmp.Path, ProjectStatus.Done);
+        vm.LoadDocument(tmp.Path, SubjectFixture.Doc());
+        Assert.True(vm.IsProjectDone);
+
+        vm.Subjects.Single(s => s.Id == "S1").Corrections[0].Decision = CorrectionDecision.Accepted;   // une modification
+        Assert.True(vm.IsProjectModified);
+        Assert.Equal(("Traité · modifié", ProjectStatus.DoneModified), (vm.ProjectStatusLabel, registry.StatusOf(tmp.Path)));
+
+        await vm.ToggleProjectStatusCommand.ExecuteAsync(null);                  // « Plus tard » : rien n'est republié
+        Assert.True(vm.IsProjectModified);
+        vm.Subjects.Single(s => s.Id == "S1").Corrections[1].Decision = CorrectionDecision.Rejected;   // on continue
+        Assert.Equal(ProjectStatus.DoneModified, registry.StatusOf(tmp.Path));
+    }
+
+    [Fact]
+    public void An_in_progress_project_stays_in_progress_when_modified()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        vm.Subjects.Single(s => s.Id == "S1").Corrections[0].Decision = CorrectionDecision.Accepted;
+        Assert.False(vm.IsProjectModified);
+        Assert.Equal("En traitement", vm.ProjectStatusLabel);
+    }
+}
+
 public class SubjectListTests
 {
     private static ViewerDocument With(params string[] extra)

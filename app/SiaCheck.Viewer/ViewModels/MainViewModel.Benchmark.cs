@@ -329,7 +329,7 @@ public sealed partial class MainViewModel
     /// <paramref name="onValidation"/> : appelé au passage en traité ; le projet reste traité si l'export n'a pas lieu,
     /// et chaque cas le dit (le bouton ⇥ de l'accueil permet de réessayer). true si le MDP est dans la base.
     /// </summary>
-    internal async Task<bool> AddProjectToBaseAsync(string projectDir, string name, bool onValidation)
+    internal async Task<bool> AddProjectToBaseAsync(string projectDir, string name, bool onValidation, bool republish = false)
     {
         // Messages : le nom de la fiche projet ; name (dossier) reste le repli de l'identité
         var label = _settings.FindMdpProject(projectDir)?.Name is { Length: > 0 } n ? n : name;
@@ -362,7 +362,8 @@ public sealed partial class MainViewModel
             return false;
         }
         var existing = BenchmarkBase.FindById(BenchmarkFolder, hrs.Id);
-        if (existing is not null && !await _shell.ConfirmAsync($"Remplacer {Path.GetFileName(existing)} ?",
+        // Republier : remplacer son propre MDP est le but, pas de question
+        if (existing is not null && !republish && !await _shell.ConfirmAsync($"Remplacer {Path.GetFileName(existing)} ?",
                 $"La base contient déjà un MDP pour le projet {hrs.Id}. Il sera remplacé par celui de « {label} », " +
                 "exporté avec les surfaces corrigées.", "Remplacer", "Garder l'ancien"))
         {
@@ -393,7 +394,15 @@ public sealed partial class MainViewModel
             NotAdded(r.ErrorMessage ?? "export du MDP impossible.");
             return false;
         }
-        _shell.Notify($"{(onValidation ? done + "et ajouté" : $"« {label} » ajouté")} à la base : {Path.GetFileName(path)}.");
+        _shell.Notify(republish ? $"« {label} » republié dans la base : {Path.GetFileName(path)}."
+                      : $"{(onValidation ? done + "et ajouté" : $"« {label} » ajouté")} à la base : {Path.GetFileName(path)}.");
+        // MDP de la base à jour : un projet « Traité · modifié » redevient « Traité »
+        if (_registry.StatusOf(projectDir) == ProjectStatus.DoneModified)
+        {
+            var record = _registry.SetStatus(projectDir, ProjectStatus.Done);
+            if (ProjectDir is not null && ProjectFolder.Same(ProjectDir, projectDir)) ShowProjectStatus(record);
+            FillRecents();
+        }
         await RefreshBenchmarkAsync();
         return true;
     }

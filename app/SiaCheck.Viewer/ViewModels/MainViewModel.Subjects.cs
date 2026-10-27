@@ -117,6 +117,7 @@ public sealed partial class MainViewModel
     private void LoadSubjects(ViewerDocument doc)
     {
         _journal = CorrectionJournal.Open(_paths.CorrectionsFile(ProjectDir!), doc.Project);
+        _journal.Changed += () => MarkModifiedIfDone(ProjectDir);
         var log = doc.CorrectionsLog.GroupBy(l => l.Id).ToDictionary(g => g.Key, g => g.Last());
         var issues = doc.Issues.ToDictionary(i => i.Key, i => i);
         Subjects.Clear();

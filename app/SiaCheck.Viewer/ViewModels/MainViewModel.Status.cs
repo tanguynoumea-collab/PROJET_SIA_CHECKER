@@ -23,7 +23,10 @@ public sealed class RecentItem(RecentProject project, ProjectStatus status, MdpP
     public string Path => Project.Path;
     public int IssueCount => Project.IssueCount;
     public DateTime LastAnalysis => Project.LastAnalysis;
-    public bool IsDone { get; } = status == ProjectStatus.Done;
+    /// <summary>Traité, modifié ou non depuis : il a nourri la base (⇥ pour le republier).</summary>
+    public bool IsDone { get; } = status is ProjectStatus.Done or ProjectStatus.DoneModified;
+    /// <summary>Modifié depuis son passage en traité : son MDP de la base n'est plus à jour.</summary>
+    public bool IsModified { get; } = status == ProjectStatus.DoneModified;
     public string StatusLabel { get; } = ProjectRecord.Label(status);
 }
 
@@ -37,11 +40,33 @@ public sealed partial class MainViewModel
     private string _projectStatusChanged = "";
 
     public bool IsProjectDone => _projectStatus == ProjectStatus.Done;
+    public bool IsProjectModified => _projectStatus == ProjectStatus.DoneModified;
     public string ProjectStatusLabel => ProjectRecord.Label(_projectStatus);
-    public string ProjectStatusTooltip => (IsProjectDone
-        ? "Projet vérifié et corrigé. Cliquer pour le remettre en traitement."
-        : "Vérification en cours. Cliquer pour passer le projet en traité : son MDP est alors exporté dans la base du benchmark.")
-        + _projectStatusChanged;
+    public string ProjectStatusTooltip => _projectStatus switch
+    {
+        ProjectStatus.Done => "Projet vérifié et corrigé. Cliquer pour le remettre en traitement.",
+        ProjectStatus.DoneModified => "Modifié depuis son passage en traité : le MDP de la base n'est plus à jour. " +
+                                      "Cliquer pour le republier (le dashboard sera mis à jour).",
+        _ => "Vérification en cours. Cliquer pour passer le projet en traité : son MDP est alors exporté dans la base du benchmark.",
+    } + _projectStatusChanged;
+
+    /// <summary>
+    /// Un projet traité qu'on modifie (décision de correction, fiche projet) passe « Traité · modifié » : on peut
+    /// continuer à modifier et enregistrer, la base ne change qu'à la republication.
+    /// </summary>
+    internal void MarkModifiedIfDone(string? projectDir)
+    {
+        if (projectDir is null || _registry.StatusOf(projectDir) != ProjectStatus.Done) return;
+        try
+        {
+            var r = _registry.SetStatus(projectDir, ProjectStatus.DoneModified);
+            if (ProjectDir is not null && ProjectFolder.Same(ProjectDir, projectDir)) ShowProjectStatus(r);
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        {
+            _shell.Notify($"Statut non enregistré : {ex.Message}", isError: true);
+        }
+    }
 
     /// <summary>Points ouverts encore « à traiter », hors agrégats.</summary>
     internal int OpenIssuesToReview => Issues.Count(i => !i.IsResolved && !i.IsAggregate && i.Status == ReviewStatus.ToReview);
@@ -58,6 +83,7 @@ public sealed partial class MainViewModel
         _projectStatusChanged = $"\n{r.StatusLabel} depuis le {r.StatusChanged:dd.MM.yyyy HH:mm}" +
                                 (string.IsNullOrEmpty(r.ChangedBy) ? "" : $" ({r.ChangedBy})");
         OnPropertyChanged(nameof(IsProjectDone));
+        OnPropertyChanged(nameof(IsProjectModified));
         OnPropertyChanged(nameof(ProjectStatusLabel));
         OnPropertyChanged(nameof(ProjectStatusTooltip));
     }
@@ -66,6 +92,16 @@ public sealed partial class MainViewModel
     private async Task ToggleProjectStatusAsync()
     {
         if (ProjectDir is null || Document is null) return;
+        if (IsProjectModified)
+        {
+            // Modifié depuis la publication : republier ? Sinon on garde la main pour d'autres modifications.
+            if (await _shell.ConfirmAsync($"Republier « {ProjectName} » ?",
+                    "Le projet a été modifié depuis son passage en traité. Republier réexporte son MDP dans la base du " +
+                    "benchmark, et le dashboard est mis à jour.\n\nVous pouvez aussi continuer à le modifier et republier plus tard.",
+                    "Republier", "Plus tard"))
+                await AddProjectToBaseAsync(ProjectDir, Document.Project, onValidation: false, republish: true);
+            return;
+        }
         var next = IsProjectDone ? ProjectStatus.InProgress : ProjectStatus.Done;
         if (next == ProjectStatus.Done)
         {

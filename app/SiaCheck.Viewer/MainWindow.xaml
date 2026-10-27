@@ -131,6 +131,10 @@
                                                                 <DataTrigger Binding="{Binding IsDone}" Value="True">
                                                                     <Setter Property="Foreground" Value="{DynamicResource BrushStatusSeen}" />
                                                                 </DataTrigger>
+                                                                <!-- Traité · modifié : à republier (⇥ ou clic sur le statut dans le projet) -->
+                                                                <DataTrigger Binding="{Binding IsModified}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
+                                                                </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
                                                     </TextBlock.Style>
@@ -509,6 +513,10 @@
                                                 <Setter Property="BorderBrush" Value="{DynamicResource BrushStatusSeen}" />
                                                 <Setter Property="Background" Value="{DynamicResource BrushStatusSeen}" />
                                             </DataTrigger>
+                                            <!-- Traité · modifié : contour seul, la publication est à refaire -->
+                                            <DataTrigger Binding="{Binding IsProjectModified}" Value="True">
+                                                <Setter Property="BorderBrush" Value="{DynamicResource BrushStatusSeen}" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Border.Style>
@@ -523,6 +531,10 @@
                                                         <Setter Property="Symbol" Value="Checkmark16" />
                                                         <Setter Property="Foreground" Value="{DynamicResource BrushOnAccent}" />
                                                     </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsProjectModified}" Value="True">
+                                                        <Setter Property="Symbol" Value="CloudArrowUp16" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource BrushStatusSeen}" />
+                                                    </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </ui:SymbolIcon.Style>
@@ -534,6 +546,9 @@
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsProjectDone}" Value="True">
                                                         <Setter Property="Foreground" Value="{DynamicResource BrushOnAccent}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsProjectModified}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource BrushStatusSeen}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>

@@ -126,6 +126,7 @@ public sealed partial class MainViewModel : ObservableObject
     internal async Task<ProjectSheet?> EditSheetAsync(string path, string folderName)
     {
         var known = KnownIdentity(path, folderName);
+        var saved = System.Text.Json.JsonSerializer.Serialize(_settings.FindMdpProject(path));
         var sheet = await _shell.AskProjectSheetAsync(new ProjectSheet(ProjectFolder.Normalize(path), known), IdentityLists,
                                                       creating: false, s => CheckSheet(s, path));
         if (sheet is null || Refused(CheckSheet(sheet, path))) return null;
@@ -151,6 +152,8 @@ public sealed partial class MainViewModel : ObservableObject
         }
         _settings.SetMdpProject(sheet.Folder, sheet.Identity);
         _settings.Save(_paths);
+        // Projet traité : nouvelle identité ou nouveau dossier = MDP de la base à republier
+        if (moved || saved != System.Text.Json.JsonSerializer.Serialize(sheet.Identity)) MarkModifiedIfDone(sheet.Folder);
         var isOpen = HasDocument && ProjectDir is not null && ProjectFolder.Same(ProjectDir, path);
         if (isOpen && moved)
         {

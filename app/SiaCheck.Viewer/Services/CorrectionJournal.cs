@@ -54,11 +54,15 @@ public sealed class CorrectionJournal
     }
 
     /// <summary>Enregistre une décision (statut, ou correction modifiée) ; « proposée » non modifiée efface l'entrée.</summary>
+    /// <summary>Une décision a été enregistrée : le MDP qu'on exporterait a changé.</summary>
+    public event Action? Changed;
+
     public void Decide(Correction c)
     {
         _data.Corrections.RemoveAll(x => x.Id == c.Id);
         if (c.Status != Correction.Proposed || c.Origin == "manuel") _data.Corrections.Add(c.Clone());
         Save();
+        Changed?.Invoke();
     }
 
     /// <summary>Décisions qui ne correspondent plus à aucune proposition (cible disparue d'une livraison à l'autre).</summary>

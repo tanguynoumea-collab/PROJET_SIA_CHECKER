@@ -106,11 +106,11 @@ Les trois derniers sont des propositions pour le MDP (action « proposer », `pr
 - Une décision invalide (identifiant inconnu, correction incomplète, cible absente) est écartée et signalée.
 - Tout reste « proposée » : l'utilisateur accepte.
 
-Sur L'Orée, la revue v2 (`docs/revue-ia/L_OREE_2026-10-22.verdicts.json`) donne 31 décisions appliquées et aucune écartée, réparties en S1 (9 découpes), S2 (22 exclusions), S4 et S5 à vérifier, S6 faux positifs. La revue lancée depuis la visionneuse écrit le même bloc.
+Sur L'Orée, la revue v2 (`docs/revue-ia/L_OREE_2026-10-22.verdicts.json`) donne 31 décisions appliquées et aucune écartée, réparties en S1 (9 découpes), S2 (22 exclusions), S4 et S5 à vérifier, S6 faux positifs. Avec la V2.2, les exclusions de S2 n'ont plus de cible (toitures déjà retirées par leur SPT) et sont signalées comme décisions écartées. La revue lancée depuis la visionneuse écrit le même bloc.
 
 Aires et tracés viennent de la géométrie (shapely). Sans elle, les aires viennent des bilans de niveau et les découpes n'ont pas de tracé.
 
-Sur L'Orée, sans IA : `toitures` propose 7 280 m² (S2 de la revue IA : 7 279) et `abords` 1 812,65 m² pour B03 N00. Une fois toutes les propositions appliquées, l'écart R3 du projet passe de 15 091 m² à 250 m². Il reste les petits écarts d'étage, que la revue laissait à confirmer. A1 reste une alerte sur les terrasses du rez gardées en SEU/SED : la question est posée, la réponse se donne point par point.
+Sur L'Orée, sans IA : `abords` propose 1 812,65 m² pour B03 N00. Depuis la V2.2, les 7 280 m² de toitures sont retirés de la SEP par leur SPT, sans correction : le sujet `toitures` ne vise plus que de la SEP hors SPT au-dessus du dernier plancher (aucune sur L'Orée). Une fois toutes les propositions appliquées, l'écart R3 du projet passe de 7 811 m² à moins de 300 m². Il reste les petits écarts d'étage, que la revue laissait à confirmer. A1 reste une alerte sur les terrasses du rez gardées en SEU/SED : la question est posée, la réponse se donne point par point.
 
 ## Ratios informatifs
 

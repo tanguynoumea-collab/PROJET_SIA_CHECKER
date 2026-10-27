@@ -192,7 +192,10 @@ def zone(etage, decoupage=None) -> str | None:
     if d.startswith("sous"):
         return "SS"
     e = _key(etage) if not _empty(etage) else ""
-    if re.fullmatch(r"s\d+", e):
+    # Sous-sol : un S ou un « - » dans le nom (S01, SS1, S-1, 2SS, -1, N-1, Niveau -1), « Sous-sol », UG1 / U1
+    # (mêmes formes que levels.order de config.yaml, que le moteur de fiabilisation applique)
+    if (re.fullmatch(r"s{1,2} ?-? ?\d+|\d+ ?s{1,2}|ug? ?\d+", e) or e.startswith("sous")
+            or re.search(r"- ?\d+$", e)):
         return "SS"
     if re.fullmatch(r"n\d+", e) or e.startswith(("att", "toi", "rdc", "comble")):
         return "HS"

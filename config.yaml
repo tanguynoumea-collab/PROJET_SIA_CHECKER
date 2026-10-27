@@ -155,8 +155,15 @@ levels:
   technical: []                                # regex des niveaux exemptés de R5
   # Rang d'un niveau d'après son nom, quand la source ne donne pas d'altitude (A2).
   # rang = factor * (1er groupe capturé) + offset
+  # Sous-sols : un S ou un « - » dans le nom (S01, SS1, S-1, 2SS, -1, N-1, Niveau -1, Parking -2), « Sous-sol »,
+  # UG1 / U1 (Untergeschoss). Un nom inconnu reste hors-sol : ces formes sont donc reconnues explicitement.
   order:
-    - {pattern: '^S(\d+)$', factor: -1}
+    - {pattern: '(?i)^S{1,2}\s*-?\s*(\d+)$', factor: -1}
+    - {pattern: '(?i)^(\d+)\s*S{1,2}$', factor: -1}
+    - {pattern: '(?i)^UG?\s*(\d+)$', factor: -1}
+    - {pattern: '(?i)^sous[- ]?sol\s*(\d+)$', factor: -1}
+    - {pattern: '(?i)^sous[- ]?sol', offset: -1}
+    - {pattern: '-\s*(\d+)\s*$', factor: -1}
     - {pattern: '^N(\d+)$', factor: 1}
     - {pattern: '(?i)^toit', offset: 1000}
 

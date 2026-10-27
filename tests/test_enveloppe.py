@@ -110,3 +110,19 @@ def test_envelope_in_level_balance(cfg):
     env = report.envelope_by_level(rules.run(df, cfg))
     assert env.loc[("A", "N00")].to_dict() == {"SFN": 120, "SFN_NETTE": 90, "SFN_RESERVATIONS": 30, "SRV": 29.5}
     assert ("A", "N01") not in env.index                       # pas de façade : pas de ligne
+
+
+SOUS_SOLS = ["S01", "S1", "SS1", "S-1", "2SS", "-1", "N-1", "Niveau -1", "Parking -2", "Sous-sol", "Sous Sol 2", "UG1"]
+HORS_SOL = ["N00", "N07", "RDC", "Rez Superieur", "Attique", "Toiture"]
+
+
+def test_basements_are_recognised(cfg):
+    # Un S ou un « - » dans le nom : sous-sol, donc hors du coefficient de forme et des ratios hors-sol
+    from sia_check import benchmark
+    for name in SOUS_SOLS:
+        assert rules.level_rank(name, cfg) < 0, name
+        assert benchmark.zone(name) == "SS", name
+    for name in HORS_SOL:
+        rank = rules.level_rank(name, cfg)
+        assert rank is None or rank >= 0, name
+        assert benchmark.zone(name) != "SS", name

@@ -21,6 +21,7 @@ sia-check "L OREE.tgm" --sujets sujets.json   # sujets et corrections proposées
 sia-check "L OREE.tgm" --revue L_OREE_2026-10-22.verdicts.json --sujets sujets.json   # sujets réorientés par la revue IA
 sia-check "L OREE.tgm" --corrections journal.json --out report/ --mdp MDP.xlsx   # surfaces corrigées
 sia-check "L OREE.tgm" --corrections journal.json --corrections-xlsx 1778-Corrections.xlsx   # Excel de correction
+sia-check --benchmark 03-DataBase-DonneesProjets --benchmark-json benchmark.json   # base du benchmark (MDP)
 ```
 
 - Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet) ou `.ifc` (mapping dans `config.yaml > sources.ifc`).

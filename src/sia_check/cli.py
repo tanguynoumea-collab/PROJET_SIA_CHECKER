@@ -16,6 +16,8 @@ réorientent ces sujets et leurs corrections.
 avec --surfaces-cache, les surfaces lues (avant corrections) sont gardées pour l'aperçu ; avec --depuis-cache et
 --apercu, le journal est réappliqué à ces surfaces sans relire le .tgm ni le cache VWR, et seuls le bilan par
 niveau et les ratios sont écrits (aperçu en direct de la visionneuse, quelques secondes).
+avec --benchmark, la base des tableaux MDP d'un dossier est lue (sia_check.benchmark) et écrite dans
+--benchmark-json (défaut : benchmark.json du dossier --out, sinon du dossier courant), sans projet Treegram.
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -31,7 +33,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import config as config_mod
-from . import corrections, geom, mdp, propositions, reader, report, rules, sujets, treegram, viewer
+from . import benchmark, corrections, geom, mdp, propositions, reader, report, rules, sujets, treegram, viewer
 
 log = logging.getLogger("sia_check")
 
@@ -57,6 +59,8 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--surfaces-cache", type=Path, help="surfaces lues, avant corrections, gardées pour --depuis-cache")
     ap.add_argument("--depuis-cache", type=Path, help="surfaces gardées par --surfaces-cache, au lieu de relire le projet")
     ap.add_argument("--apercu", type=Path, help="bilan par niveau et ratios (JSON), avec --depuis-cache et --corrections")
+    ap.add_argument("--benchmark", type=Path, help="dossier des tableaux MDP de la base du benchmark")
+    ap.add_argument("--benchmark-json", type=Path, help="fichier du benchmark à écrire (avec --benchmark)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -134,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.reconfigure(encoding="utf-8")  # console Windows cp1252 par défaut
     if args.apercu or args.depuis_cache:
         return _preview(args)
+    if args.benchmark:
+        return _benchmark(args)
     if not args.models:
         log.error("fichier .tgm, .ifc ou dossier de projet attendu")
         return 2
@@ -242,6 +248,26 @@ def main(argv: list[str] | None = None) -> int:
         log.error("écriture impossible : %s", ex)
         return 2
     return result.exit_code
+
+
+def _benchmark(args: argparse.Namespace) -> int:
+    if not args.benchmark.is_dir():
+        log.error("dossier de la base introuvable : %s", args.benchmark)
+        return 2
+    projets, erreurs = benchmark.lire_dossier(args.benchmark)
+    for e in erreurs:
+        log.warning("%s", e)
+    out = args.benchmark_json or (args.out or Path(".")) / "benchmark.json"
+    try:
+        benchmark.ecrire(benchmark.construire(projets, erreurs), out)
+    except OSError as ex:
+        log.error("%s", ex)
+        return 2
+    for p in projets:
+        manque = ", ".join(c.label for c in p.controles if not c.ok)
+        print(f"{p.id:>6}  {p.nom[:28]:28}  {'fiable ' if p.fiable else 'écarté '}  {p.score:4.0%}  {manque}")
+    print(f"{sum(p.fiable for p in projets)}/{len(projets)} projets dans les références -> {out}")
+    return 0
 
 
 def _preview(args: argparse.Namespace) -> int:

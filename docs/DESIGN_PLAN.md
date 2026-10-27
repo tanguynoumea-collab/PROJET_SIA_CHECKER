@@ -778,7 +778,7 @@ Un seul écran, deux colonnes de même largeur, séparées par un filet vertical
 
 Hiérarchie : **1er** les deux titres et leurs boutons (le choix du travail) · **2e** les listes (l'état de chaque côté) · **3e** les légendes (chemin, date de lecture).
 
-- **Projets actifs** (les récents, renommés puisqu'ils portent un statut) : « En traitement » d'abord, puis « Traité ». Même ligne qu'aujourd'hui. Sur une ligne « Traité », une action **⇥ Ajouter à la base** exporte le MDP du projet directement dans le dossier de la base (ID et nom HRS demandés comme à l'export MDP), puis relit la base.
+- **Projets actifs** (les récents, renommés puisqu'ils portent un statut) : « En traitement » d'abord, puis « Traité ». Même ligne qu'aujourd'hui. Sur une ligne « Traité », une action **⇥ Ajouter à la base** exporte le MDP du projet directement dans le dossier de la base (ID et nom HRS demandés comme à l'export MDP), puis relit la base. **Depuis le 27.10.2026, passer un projet en traité fait cet export automatiquement** (identité prise dans la fiche projet ; fiche ouverte s'il manque un champ requis ; confirmation avant de remplacer un MDP de même ID). Le statut « traité » est enregistré d'abord : si l'export n'a pas lieu (identité incomplète, pas de dossier de base, erreur), un message le dit et ⇥ permet de réessayer.
 - **Base de données** : une ligne par MDP, fiables d'abord, puis par score. ID en mono, nom, canton (mono, « — » s'il manque), empreinte de fiabilité, verdict. Survol : la liste des données manquantes. Clic : rien en phase 10 (la fiche projet vient avec le dashboard). [↻] relit la base, [📁] change de dossier.
 
 ### Élément signature — l'empreinte de fiabilité

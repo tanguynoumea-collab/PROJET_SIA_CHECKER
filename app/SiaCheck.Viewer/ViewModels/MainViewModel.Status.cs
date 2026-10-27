@@ -40,7 +40,8 @@ public sealed partial class MainViewModel
     public string ProjectStatusLabel => ProjectRecord.Label(_projectStatus);
     public string ProjectStatusTooltip => (IsProjectDone
         ? "Projet vérifié et corrigé. Cliquer pour le remettre en traitement."
-        : "Vérification en cours. Cliquer pour passer le projet en traité.") + _projectStatusChanged;
+        : "Vérification en cours. Cliquer pour passer le projet en traité : son MDP est alors exporté dans la base du benchmark.")
+        + _projectStatusChanged;
 
     /// <summary>Points ouverts encore « à traiter », hors agrégats.</summary>
     internal int OpenIssuesToReview => Issues.Count(i => !i.IsResolved && !i.IsAggregate && i.Status == ReviewStatus.ToReview);
@@ -86,7 +87,9 @@ public sealed partial class MainViewModel
             _shell.Notify($"Statut non enregistré : {ex.Message}", isError: true);
             return;
         }
-        _shell.Notify(next == ProjectStatus.Done ? $"« {ProjectName} » passé en traité." : $"« {ProjectName} » remis en traitement.");
+        // Projet validé : son MDP rejoint la base du benchmark (le statut reste « traité » même si l'export n'a pas lieu)
+        if (next == ProjectStatus.Done) await AddProjectToBaseAsync(ProjectDir, Document.Project, onValidation: true);
+        else _shell.Notify($"« {ProjectName} » remis en traitement.");
     }
 
     /// <summary>Projets actifs de l'accueil : en traitement d'abord, puis traités, chacun dans l'ordre des récents.</summary>

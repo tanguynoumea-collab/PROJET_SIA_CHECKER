@@ -322,34 +322,66 @@ public sealed partial class MainViewModel
     /// ID déjà présent est remplacé : le moteur ne garde qu'un fichier par ID.
     /// </summary>
     [RelayCommand]
-    private async Task AddToBaseAsync(RecentItem recent)
+    private Task AddToBaseAsync(RecentItem recent) => AddProjectToBaseAsync(recent.Path, recent.Name, onValidation: false);
+
+    /// <summary>
+    /// Exporte le MDP du projet (surfaces corrigées, identité de la fiche) dans le dossier de la base, puis relit la base.
+    /// <paramref name="onValidation"/> : appelé au passage en traité ; le projet reste traité si l'export n'a pas lieu,
+    /// et chaque cas le dit (le bouton ⇥ de l'accueil permet de réessayer). true si le MDP est dans la base.
+    /// </summary>
+    internal async Task<bool> AddProjectToBaseAsync(string projectDir, string name, bool onValidation)
     {
-        if (_engine is null || IsBenchmarkLoading) return;
+        // Messages : le nom de la fiche projet ; name (dossier) reste le repli de l'identité
+        var label = _settings.FindMdpProject(projectDir)?.Name is { Length: > 0 } n ? n : name;
+        var done = onValidation ? $"« {label} » passé en traité, " : "";
+        void NotAdded(string why) => _shell.Notify($"{done}MDP non ajouté à la base : {why}" +
+                                                   (onValidation ? " Réessayez avec ⇥ sur l'accueil." : ""), isError: true);
+        if (_engine is null)
+        {
+            if (onValidation) NotAdded("moteur d'analyse introuvable.");
+            return false;
+        }
+        if (IsBenchmarkLoading)
+        {
+            if (onValidation) NotAdded("la base est en cours de lecture.");
+            return false;
+        }
         if (!HasBenchmarkFolder)
         {
             await ChooseBenchmarkFolderAsync();
-            if (!HasBenchmarkFolder) return;
+            if (!HasBenchmarkFolder)
+            {
+                if (onValidation) NotAdded("aucun dossier de base choisi.");
+                return false;
+            }
         }
-        var hrs = await AskMdpProjectAsync(recent.Path, recent.Name, IdentityMode.Base);
-        if (hrs is null) return;
+        var hrs = await AskMdpProjectAsync(projectDir, name, IdentityMode.Base);
+        if (hrs is null)
+        {
+            if (onValidation) NotAdded("l'identité du projet est incomplète.");
+            return false;
+        }
         var existing = BenchmarkBase.FindById(BenchmarkFolder, hrs.Id);
         if (existing is not null && !await _shell.ConfirmAsync($"Remplacer {Path.GetFileName(existing)} ?",
-                $"La base contient déjà un MDP pour le projet {hrs.Id}. Il sera remplacé par celui de « {recent.Name} », " +
-                "exporté avec les surfaces corrigées.", "Remplacer", "Annuler"))
-            return;
+                $"La base contient déjà un MDP pour le projet {hrs.Id}. Il sera remplacé par celui de « {label} », " +
+                "exporté avec les surfaces corrigées.", "Remplacer", "Garder l'ancien"))
+        {
+            if (onValidation) _shell.Notify($"{done}le MDP déjà dans la base est gardé.");
+            return false;
+        }
         var path = existing ?? Path.Combine(BenchmarkFolder, $"MDP-{hrs.Id}-{AiReviewFiles.Prefix(hrs.Name)}.xlsx");
         IsBenchmarkLoading = true;
-        BenchmarkActivity = $"Export du MDP de « {recent.Name} »…";
+        BenchmarkActivity = $"Export du MDP de « {label} » dans la base…";
         EngineRun r;
         try
         {
-            r = await _engine.ExportMdpAsync(recent.Path, path, null, hrs.Id, hrs.Name, CurrentEngineInputs(recent.Path),
+            r = await _engine.ExportMdpAsync(projectDir, path, null, hrs.Id, hrs.Name, CurrentEngineInputs(projectDir),
                                              CancellationToken.None, ProjectIdentity.WriteEngineFile(hrs, IdentityFile));
         }
         catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            _shell.Notify(ex.Message, isError: true);
-            return;
+            NotAdded(ex.Message);
+            return false;
         }
         finally
         {
@@ -358,11 +390,12 @@ public sealed partial class MainViewModel
         }
         if (!r.Succeeded)
         {
-            _shell.Notify(r.ErrorMessage ?? "Export du MDP impossible.", isError: true);
-            return;
+            NotAdded(r.ErrorMessage ?? "export du MDP impossible.");
+            return false;
         }
-        _shell.Notify($"« {recent.Name} » ajouté à la base : {Path.GetFileName(path)}.");
+        _shell.Notify($"{(onValidation ? done + "et ajouté" : $"« {label} » ajouté")} à la base : {Path.GetFileName(path)}.");
         await RefreshBenchmarkAsync();
+        return true;
     }
 
     private BenchmarkProject? BaseProject(string id) =>

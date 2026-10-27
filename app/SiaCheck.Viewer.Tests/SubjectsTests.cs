@@ -542,6 +542,8 @@ public class ProjectStatusTests
         await vm.ToggleProjectStatusCommand.ExecuteAsync(null);
         Assert.True(vm.IsProjectDone);
         Assert.Equal(ProjectStatus.Done, new ProjectRegistry(new AppPaths(tmp.Path, tmp.Path).ProjectsFile).StatusOf(tmp.Path));
+        // validé : le MDP part vers la base ; sans moteur, le projet reste traité et le message le dit
+        Assert.Contains(shell.Notes, n => n.Contains("passé en traité, MDP non ajouté à la base : moteur d'analyse introuvable"));
 
         await vm.ToggleProjectStatusCommand.ExecuteAsync(null);                           // retour sans question
         Assert.False(vm.IsProjectDone);

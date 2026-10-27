@@ -39,7 +39,35 @@
             <ul class="liste secondaire"></ul>
           </details>
         </aside>
-        <div id="regles" class="regles"></div>
+        <div class="colonne">
+          <!-- Mon projet : saisie rapide ou projet envoyé par SIA Check (DESIGN_PLAN, Évolution 3.2) -->
+          <section id="saisie" class="saisie" hidden aria-labelledby="titre-saisie">
+            <div class="saisie-entete">
+              <h2 id="titre-saisie">Mon projet</h2>
+              <span id="saisie-source" class="secondaire"></span>
+              <button type="button" id="saisie-replier" class="lien" aria-expanded="true">Replier</button>
+            </div>
+            <form id="saisie-form" autocomplete="off">
+              <div class="champs">
+                <label>Nom <input name="nom" type="text" maxlength="80"></label>
+                <label>Catégorie <select name="categorie"></select></label>
+                <label>Intervention <select name="intervention"></select></label>
+                <label>Canton <input name="canton" type="text" maxlength="2" class="court"></label>
+              </div>
+              <h3>Surfaces (m²)</h3>
+              <div class="champs" id="champs-surfaces"></div>
+              <h3>Programme</h3>
+              <div class="champs" id="champs-programme"></div>
+              <h3>Prix de vente (facultatif)</h3>
+              <div class="champs">
+                <label>CHF / m² de SVN <input name="prix" type="number" min="0" step="100" inputmode="numeric"></label>
+              </div>
+              <p id="saisie-bilan" class="secondaire"></p>
+              <button type="button" id="saisie-effacer" class="lien">Effacer la saisie</button>
+            </form>
+          </section>
+          <div id="regles" class="regles"></div>
+        </div>
       </div>
     </section>
 

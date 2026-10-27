@@ -984,3 +984,95 @@ Page servie en local (`dashboard/`, base des 10 MDP) : 1 440 px en sombre, 375 p
 | À 800 px, la grille Comparer débordait en largeur | Bloquant | Corrigé : sous 1 000 px, la liste des similaires passe au-dessus et chaque KPI tient sur deux lignes ; aucun défilement horizontal à 375 px |
 | Typologies : effectifs coupés (« 14 logements, 2 pro… ») | Bloquant | Corrigé : colonne de droite élargie |
 | Trait de référence caché sous le point du projet quand les deux coïncident (SN / SP de La Bâtie) : il semble pointillé | Mineur | Accepté : l'écart chiffré (± 0,1 pt) lève l'ambiguïté |
+
+---
+
+## Évolution 3.2 — Mon projet (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (27.10.2026) ☑ Implémenté
+> Version : 3.2 — 27.10.2026 · Phase 12 de `docs/V3_PLAN.md`
+
+### Ancrage
+
+Jusqu'ici on ne compare que des projets déjà dans la base. Le vrai besoin du développement immobilier est en amont : **un projet en conception, qui n'a pas encore de MDP**. Deux portes d'entrée :
+
+1. **Saisie rapide** dans le dashboard (faisabilité, concours) : quelques chiffres tirés d'un tableau de surfaces d'architecte. Fonctionne aussi sur le web.
+2. **Projet ouvert dans SIA Check** (avant-projet modélisé dans Treegram) : ses surfaces, corrections comprises, envoyées au dashboard d'un clic.
+
+Dans les deux cas, le projet est comparé exactement comme un projet de la base (mêmes ratios, mêmes projets similaires, même règle), mais il n'entre jamais dans les références.
+
+### Emplacement — décision
+
+Pas de nouvel onglet : « Mon projet » est un **choix de plus dans la liste Projet** de la vue Comparer, en tête de liste (groupe « Mon projet »). Le choisir ouvre, au-dessus des règles, un **panneau de saisie repliable** ; les règles se mettent à jour à chaque champ saisi.
+
+```
+COMPARER ─────────────────────────────────────────────────────────────────────────────────────
+  Projet  [★ Mon projet : Chemin des Vignes ▾]   Référence : 5 projets similaires · ratios combinés
+
+┌ PROJETS SIMILAIRES ──────────┐  ┌ MON PROJET ─────────────────────────────────────── [Replier ▴] ┐
+│ ☑ 1712 La Myonaz      ●●●●○  │  │ Nom [Chemin des Vignes      ]  Catégorie [Logement ▾]  Intervention [Neuve ▾]  Canton [VD]│
+│ ☑ 1746 Avallons       ●●●●○  │  │ SURFACES (m²)                                                                 │
+│ …                            │  │ SP hors-sol [4 200]  SP sous-sol [1 600]  SUP hors-sol [3 050]  SD hors-sol [  ]│
+│                              │  │ SI [  ]  SUS hors-sol [  ]  SVN [  ]  Façade [  ]  VB (m³) [  ]               │
+│                              │  │ PROGRAMME   Logements : studio [2] 1 ch. [10] 2 ch. [12] 3 ch. [8] 4 ch. [0] · étages hors-sol [5] │
+│                              │  │ PRIX DE VENTE (facultatif)  [9 500] CHF / m² de SVN                           │
+│                              │  │ 7 ratios calculables sur 13 · les champs vides laissent la ligne « donnée absente » │
+│                              │  └───────────────────────────────────────────────────────────────────────────────┘
+│                              │  ┌ RENDEMENT ──────────────────────────────────────────────────────────────────┐
+│                              │  │ SUP hors-sol / SP hors-sol  ce projet 72,6 %  réf. 71,8 %   ▲ +0,8 pt         │
+│                              │  │ ─────·──[▒▒│▒◉▒]──·──────                       +34 m² de SUP · ≈ +323 000 CHF │
+└──────────────────────────────┘  └─────────────────────────────────────────────────────────────────────────────┘
+```
+
+- Champs **facultatifs** sauf SP hors-sol : chaque ratio ne s'affiche que si ses deux termes sont saisis (« donnée absente » sinon, comme pour un MDP incomplet). Un compteur dit combien de ratios sont calculables.
+- **Projets similaires** : calculés dans la page avec la même formule que le moteur (écart moyen normalisé sur SP hors-sol, logements, étages, part de sous-sol, part de grands logements), d'où la nécessité de saisir au moins deux de ces cinq valeurs ; sinon « Saisissez au moins la SP hors-sol et le nombre de logements pour trouver des projets similaires. »
+- **CHF** : seulement sur la famille Rendement (m² de SUP ou de SVN × prix de vente saisi), précédé de « ≈ » et arrondi au millier. Les pertes restent en m² : les convertir demanderait un coût de construction, qui n'est pas l'objet ici.
+- La saisie est gardée dans le navigateur (le poste de chacun), pas dans la base. Bouton « Effacer la saisie ».
+
+**Depuis SIA Check** : dans l'espace de revue, menu **Exporter → Comparer au benchmark**. L'app calcule les totaux du projet ouvert (corrections appliquées, même lecture que le MDP) et ouvre le dashboard sur « ★ Mon projet : *nom* (SIA Check) », panneau de saisie prérempli et en lecture seule (les surfaces viennent du modèle).
+
+### Tokens
+
+Aucun nouveau. Le ★ et le panneau de saisie utilisent `--surface` et `--accent` (focus) ; les champs suivent le style des contrôles de la page (32 px, filet, rayon 4).
+
+### États non-nominaux
+
+| Zone | État | Rendu |
+|---|---|---|
+| Saisie | Aucun champ rempli | Panneau ouvert, règles « donnée absente », invitation : « Saisissez la SP hors-sol et le nombre de logements pour commencer. » |
+| Saisie | Valeur impossible (SUP > SP, négatif) | Champ bordé VerdictError + phrase sous le champ (« La SUP dépasse la SP hors-sol. ») ; le ratio n'est pas calculé |
+| Similaires | Moins de 2 caractéristiques | Message ci-dessus, pas de référence |
+| SIA Check | Projet non analysé ou analyse périmée | Le menu lance d'abord l'analyse (comme l'export MDP) |
+
+### Passe B — auto-critique
+
+- **Générique ?** Premier jet : un formulaire long de 30 champs calqué sur le MDP. Rejeté : en faisabilité on a 4 ou 5 chiffres. Neuf surfaces, le mix et un prix suffisent ; tout est facultatif.
+- **Deux formules de distance (Python et JS)** : risque de divergence. Parade : la page recalcule au chargement les distances entre projets de la base et les compare à celles du moteur ; un écart est signalé dans la console de développement et par un test.
+- **Charge** : le panneau de saisie pousse les règles vers le bas ; il est repliable et se replie seul quand le projet vient de SIA Check.
+- **Accessoire retiré** : plusieurs « Mes projets » enregistrés sous des noms. Utile plus tard (V3_PLAN, phase web) ; ici une seule saisie suffit à tester l'usage.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Onglet « Mon projet » séparé | Dupliquerait la vue Comparer ; un projet saisi se compare comme les autres | 27.10.2026 |
+| CHF sur tous les ratios | Les pertes demandent un coût de construction, pas un prix de vente ; mélange trompeur | 27.10.2026 |
+| Saisie enregistrée dans la base (dossier MDP) | La base ne contient que des MDP contrôlés ; un projet saisi n'est pas fiabilisé | 27.10.2026 |
+| Liste de projets saisis nommés | Prématuré ; une saisie suffit pour la V3 | 27.10.2026 |
+
+### Écarts au plan, décidés à l'implémentation
+
+- **Retour du dashboard** : la flèche ← ramène au projet ouvert quand on vient de « Comparer au benchmark », à l'accueil sinon (au lieu de ⌂ Accueil, qui fermait le projet).
+- **Pas d'analyse préalable** : « Comparer au benchmark » relit le .tgm avec le journal de corrections, comme l'export MDP ; le projet comparé est donc toujours à jour, analysé ou non.
+
+### Revue visuelle (Phase 2, 27.10.2026)
+
+Saisie testée dans la page (1 440 px, sombre) ; parcours complet testé dans l'application (thème clair) : L'Orée ouvert → Exporter → Comparer au benchmark → dashboard sur « ★ Mon projet : L OREE (SIA Check) ».
+
+| Constat | Classe | Suite |
+|---|---|---|
+| Concordance des distances page / moteur sur les 10 MDP | Vérifié | Écart maximal 0,0005 (arrondi du moteur au millième) ; la page le recalcule à chaque chargement |
+| Ligne sans donnée d'un projet saisi : « Donnée absente du MDP » | Mineur | Corrigé : « Non saisi » |
+| L'Orée (16 % de commerces, « Logement mixte ») : aucun projet similaire avec le filtre de catégorie, la base fiable ne comptant que du logement | Accepté | Comportement voulu ; « Retirer les filtres » donne la comparaison. À revoir quand la base aura des projets mixtes fiables |
+| En-tête « cochez au moins un projet similaire » alors que la liste est vide | Mineur | Corrigé : « aucun projet similaire » |
+| Saisie : SUP supérieure à la SP hors-sol | Vérifié | Champ signalé, ratio non calculé |

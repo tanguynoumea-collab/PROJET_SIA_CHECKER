@@ -382,15 +382,16 @@ def lire(path: Path) -> Projet:
             x = pd.ExcelFile(path)
     except (OSError, ValueError) as ex:
         raise MdpError(f"{path.name} : illisible ({ex})") from ex
-    if "SurfacesNettesSIA416" not in x.sheet_names:
-        raise MdpError(f"{path.name} : pas de feuille SurfacesNettesSIA416, ce n'est pas un MDP")
-    infos = _infos(_sheet(x, "InfosProjet"))
-    t: dict[str, float] = {}
-    _brutes(_sheet(x, "SurfacesBrutesVolumeSIA416"), t)
-    nettes = _nettes(_sheet(x, "SurfacesNettesSIA416"), t)
-    _uspi(_sheet(x, "SurfacesUSPI"), t)
-    _enveloppe(_sheet(x, "SurfacesEnveloppe"), t)
-    logements = _logements(_sheet(x, "ListeLogements"), nettes)
+    with x:     # classeur fermé après lecture : un MDP temporaire (--benchmark-projet) doit pouvoir être effacé
+        if "SurfacesNettesSIA416" not in x.sheet_names:
+            raise MdpError(f"{path.name} : pas de feuille SurfacesNettesSIA416, ce n'est pas un MDP")
+        infos = _infos(_sheet(x, "InfosProjet"))
+        t: dict[str, float] = {}
+        _brutes(_sheet(x, "SurfacesBrutesVolumeSIA416"), t)
+        nettes = _nettes(_sheet(x, "SurfacesNettesSIA416"), t)
+        _uspi(_sheet(x, "SurfacesUSPI"), t)
+        _enveloppe(_sheet(x, "SurfacesEnveloppe"), t)
+        logements = _logements(_sheet(x, "ListeLogements"), nettes)
     if t.get("SP") is not None and t.get("SN") is not None and t["SP"] >= t["SN"]:
         t["SC"] = t["SP"] - t["SN"]
     if logements or infos.get("logements"):
@@ -495,9 +496,8 @@ def typologies(projets: list[Projet]) -> list[dict]:
 
 # --- export --------------------------------------------------------------------------------------------------
 
-def _projet_json(p: Projet, projets: list[Projet], k: int) -> dict:
-    groupe = similaires(p, projets, k=k)
-    membres = [q for q, _ in groupe]
+def projet_json(p: Projet) -> dict:
+    """Un projet tel que le lit le dashboard, sans sa comparaison (projet de la base ou « Mon projet »)."""
     mix = {}
     for lg in p.logements:
         if lg["chambres"] is not None:
@@ -508,6 +508,14 @@ def _projet_json(p: Projet, projets: list[Projet], k: int) -> dict:
         "totaux": {k_: round(v, 2) for k_, v in p.totaux.items()}, "features": p.features(), "mix": mix,
         "kpis": {kpi.id: (None if (r := p.ratio(kpi)) is None else
                           {"num": round(r[0], 2), "den": round(r[1], 2), "valeur": r[0] / r[1]}) for kpi in KPIS},
+    }
+
+
+def _projet_json(p: Projet, projets: list[Projet], k: int) -> dict:
+    groupe = similaires(p, projets, k=k)
+    membres = [q for q, _ in groupe]
+    return {
+        **projet_json(p),
         "similaires": [{"id": q.id, "distance": round(d, 3)} for q, d in groupe],
         # distances à tous les projets fiables, sans filtre : la page refait le groupe quand on change les filtres
         "distances": {q.id: round(d, 3) for q, d in similaires(p, projets, filtres=(), k=len(projets))},

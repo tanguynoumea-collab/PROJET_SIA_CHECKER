@@ -21,7 +21,8 @@ public partial class MainWindow
         {
             if (!_dashboardReady) await InitDashboardAsync();
             // Rechargée à chaque entrée et à chaque relecture de la base : données et thème à jour
-            DashboardView.CoreWebView2.Navigate($"https://{DashboardHost}/index.html?theme={ViewModel.DashboardTheme}");
+            var mine = ViewModel.MyProjectJson is null ? "" : "&projet=mien";
+            DashboardView.CoreWebView2.Navigate($"https://{DashboardHost}/index.html?theme={ViewModel.DashboardTheme}{mine}");
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -50,6 +51,7 @@ public partial class MainWindow
             if (e.TryGetWebMessageAsString() != "pret") return;
             var json = File.Exists(ViewModel.BenchmarkFile) ? File.ReadAllText(ViewModel.BenchmarkFile) : "{}";
             core.PostWebMessageAsString(json);
+            if (ViewModel.MyProjectJson is { } mine) core.PostWebMessageAsString($"{{\"monProjet\":{mine}}}");
         };
         // Liens externes éventuels : jamais dans le cadre de l'application
         core.NewWindowRequested += (_, e) => e.Handled = true;

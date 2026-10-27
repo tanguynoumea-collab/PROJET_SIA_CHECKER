@@ -131,6 +131,12 @@ def test_dossier_et_json(tmp_path):
     assert data["typologies"][0]["chambres"] == 1 and data["typologies"][0]["n"] == 2
 
 
+def test_projet_json_sans_comparaison(projet):
+    j = b.projet_json(projet)
+    assert j["kpis"]["SUP/SP_HS"]["valeur"] == pytest.approx(650 / 800) and j["mix"] == {"1": 1, "3": 1}
+    assert "similaires" not in j and j["features"]["SP_HS"] == 800
+
+
 @pytest.mark.skipif(not BASE.is_dir(), reason="base MDP de référence absente (00_RESSOURCES)")
 def test_base_de_reference():
     projets, erreurs = b.lire_dossier(BASE)

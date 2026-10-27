@@ -108,6 +108,11 @@ public sealed partial class AnalysisService(string enginePath)
     public Task<EngineRun> BenchmarkAsync(string folder, string json, CancellationToken ct) =>
         RunAsync(["--benchmark", folder, "--benchmark-json", json], null, ct);
 
+    /// <summary>Totaux et ratios du projet (corrections comprises) au format d'un projet du benchmark (« Mon projet »).</summary>
+    public Task<EngineRun> BenchmarkProjectAsync(string projectDir, string json, string projectName, EngineInputs inputs,
+                                                 CancellationToken ct) =>
+        RunAsync(["-q", projectDir, "--benchmark-projet", json, "--project-name", projectName, .. inputs.Args()], null, ct);
+
     private async Task<EngineRun> RunAsync(IEnumerable<string> args, IProgress<AnalysisProgress>? progress,
                                            CancellationToken ct)
     {

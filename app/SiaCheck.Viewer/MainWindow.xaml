@@ -246,8 +246,8 @@
                     <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon ArrowClockwise20}"
                                MinHeight="{StaticResource TargetSize}" Command="{Binding RefreshBenchmarkCommand}"
                                ToolTip="Relire la base" AutomationProperties.Name="Relire la base" />
-                    <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon Home20}" Command="{Binding GoHomeCommand}"
-                               ToolTip="Retour à l'accueil" AutomationProperties.Name="Accueil"
+                    <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ArrowLeft20}" Command="{Binding CloseDashboardCommand}"
+                               ToolTip="{Binding CloseDashboardTooltip}" AutomationProperties.Name="Retour"
                                MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
                     <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextTitle}" Text="Benchmark" />
                     <TextBlock Margin="16,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextCaption}" Text="{Binding BenchmarkSummary}" />
@@ -268,7 +268,7 @@
         </Grid>
 
         <!-- ================================================================ ESPACE DE REVUE -->
-        <Grid Grid.Row="1" Visibility="{Binding HasDocument, Converter={StaticResource BoolToVisibility}}">
+        <Grid Grid.Row="1" Visibility="{Binding IsReviewing, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -306,6 +306,9 @@
                                               ToolTip="SurfacesNettes et SurfacesBrutes au gabarit Excel Treegram, surfaces corrigées" />
                                     <MenuItem Header="Excel de correction…" Command="{Binding ExportCorrectionsCommand}"
                                               ToolTip="Gabarit Treegram tel que lu, avec la catégorie et l'aire corrigées, la correction et son explication, et le journal" />
+                                    <Separator />
+                                    <MenuItem Header="Comparer au benchmark" Command="{Binding CompareToBenchmarkCommand}"
+                                              ToolTip="Ouvre le dashboard sur ce projet (surfaces corrigées), comparé aux projets similaires de la base" />
                                 </ContextMenu>
                             </ui:DropDownButton.Flyout>
                         </ui:DropDownButton>

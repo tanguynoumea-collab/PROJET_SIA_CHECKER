@@ -54,7 +54,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<RecentItem> Recents { get; } = [];
     [ObservableProperty] private string? _projectDir;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasDocument), nameof(IsHome))] private ViewerDocument? _document;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasDocument), nameof(IsHome), nameof(IsReviewing))] private ViewerDocument? _document;
     [ObservableProperty] private SceneController? _scene;
     [ObservableProperty] private SiaPalette? _palette;
     [ObservableProperty] private string? _homeError;
@@ -63,6 +63,8 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string? _lastLogFile;
 
     public bool HasDocument => Document is not null;
+    /// <summary>Espace de revue visible : un projet est ouvert et le dashboard n'est pas affiché par-dessus.</summary>
+    public bool IsReviewing => HasDocument && !IsDashboard;
     public bool IsHome => Document is null && !IsDashboard;
     public string ProjectName => Document?.Project ?? "";
     public string AnalysedAt => Document is null ? "" : $"analysé le {File.GetLastWriteTime(_paths.AnalysisFile(ProjectDir!)):dd.MM HH:mm}";

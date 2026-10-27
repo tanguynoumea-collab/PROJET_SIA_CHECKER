@@ -17,7 +17,9 @@ avec --surfaces-cache, les surfaces lues (avant corrections) sont gardées pour 
 --apercu, le journal est réappliqué à ces surfaces sans relire le .tgm ni le cache VWR, et seuls le bilan par
 niveau et les ratios sont écrits (aperçu en direct de la visionneuse, quelques secondes).
 avec --benchmark, la base des tableaux MDP d'un dossier est lue (sia_check.benchmark) et écrite dans
---benchmark-json (défaut : benchmark.json du dossier --out, sinon du dossier courant), sans projet Treegram.
+--benchmark-json (défaut : benchmark.json du dossier --out, sinon du dossier courant), sans projet Treegram ;
+avec --benchmark-projet, les totaux et ratios du projet lu (corrections comprises), au format d'un projet du
+benchmark : la visionneuse les envoie au dashboard (« Mon projet »).
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -28,6 +30,7 @@ import datetime as dt
 import json
 import logging
 import sys
+import tempfile
 from pathlib import Path
 
 import pandas as pd
@@ -61,6 +64,7 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--apercu", type=Path, help="bilan par niveau et ratios (JSON), avec --depuis-cache et --corrections")
     ap.add_argument("--benchmark", type=Path, help="dossier des tableaux MDP de la base du benchmark")
     ap.add_argument("--benchmark-json", type=Path, help="fichier du benchmark à écrire (avec --benchmark)")
+    ap.add_argument("--benchmark-projet", type=Path, help="totaux et ratios du projet lu, au format du benchmark (JSON)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -199,6 +203,16 @@ def main(argv: list[str] | None = None) -> int:
             pid = int(args.project_id) if args.project_id and args.project_id.isdigit() else args.project_id
             infos = applied.infos if applied is not None else None
             log.info("tableau MDP écrit : %s", mdp.write(result, cfg, args.mdp, args.mdp_template, pid, args.project_name or project, infos))
+        if args.benchmark_projet:
+            # Même lecture qu'un MDP de la base : le projet passe par le tableau MDP, puis par benchmark.lire
+            with tempfile.TemporaryDirectory() as tmp:
+                x = Path(tmp) / "MDP-projet.xlsx"
+                mdp.write(result, cfg, x, args.mdp_template, None, args.project_name or project,
+                          applied.infos if applied is not None else None)
+                p = benchmark.lire(x)
+            p.nom = args.project_name or project
+            benchmark.ecrire({"version": benchmark.VERSION, "projet": benchmark.projet_json(p)}, args.benchmark_projet)
+            log.info("projet pour le benchmark écrit : %s", args.benchmark_projet)
         if args.corrections_xlsx:
             if applied is None:
                 log.error("--corrections-xlsx demande un journal (--corrections)")

@@ -43,7 +43,14 @@ public sealed partial class MainViewModel
     [ObservableProperty] private string? _benchmarkEmptyMessage;
 
     /// <summary>Écran Dashboard affiché (page HTML dans WebView2, docs/DESIGN_PLAN.md Évolution 3.1).</summary>
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsHome))] private bool _isDashboard;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsHome), nameof(IsReviewing), nameof(CloseDashboardTooltip))]
+    private bool _isDashboard;
+    /// <summary>
+    /// « Mon projet » venu de SIA Check : le projet ouvert lu par le moteur (sia-check --benchmark-projet), au format d'un
+    /// projet du benchmark ; null quand le dashboard est ouvert depuis l'accueil (la page reprend alors la saisie).
+    /// </summary>
+    public string? MyProjectJson { get; private set; }
+    public string CloseDashboardTooltip => HasDocument ? $"Retour au projet « {ProjectName} »" : "Retour à l'accueil";
     /// <summary>Change à chaque lecture de la base : la vue recharge alors la page.</summary>
     [ObservableProperty] private int _dashboardVersion;
     /// <summary>Le dashboard ne peut pas s'afficher (composant WebView2 absent) : dit pourquoi et comment corriger.</summary>
@@ -67,7 +74,57 @@ public sealed partial class MainViewModel
     private void OpenBenchmark()
     {
         HomeError = null;
+        MyProjectJson = null;
         IsDashboard = true;
+    }
+
+    /// <summary>Quitte le dashboard : retour au projet ouvert s'il y en a un, sinon à l'accueil.</summary>
+    [RelayCommand]
+    private void CloseDashboard()
+    {
+        IsDashboard = false;
+        if (!HasDocument) GoHome();
+    }
+
+    /// <summary>
+    /// Le projet ouvert, corrections comprises, comparé aux projets similaires de la base : le moteur relit le .tgm comme
+    /// pour l'export MDP (toujours à jour, sans réanalyse), puis le dashboard s'ouvre sur « Mon projet ».
+    /// </summary>
+    [RelayCommand]
+    private async Task CompareToBenchmarkAsync()
+    {
+        if (ProjectDir is null || _engine is null || Document is null || IsBenchmarkLoading) return;
+        if (!HasBenchmarkFolder || BenchmarkProjects.Count == 0)
+        {
+            _shell.Notify("Base du benchmark vide : choisissez son dossier depuis l'accueil.", isError: true);
+            return;
+        }
+        var json = Path.Combine(Path.GetDirectoryName(_paths.BenchmarkFile)!, "mon-projet.json");
+        MyProjectJson = null;
+        IsDashboard = true;
+        IsBenchmarkLoading = true;
+        BenchmarkActivity = $"Lecture des surfaces de « {ProjectName} »…";
+        try
+        {
+            var r = await _engine.BenchmarkProjectAsync(ProjectDir, json, ProjectName, CurrentEngineInputs(ProjectDir), CancellationToken.None);
+            if (!r.Succeeded)
+            {
+                _shell.Notify(r.ErrorMessage ?? "Lecture du projet impossible.", isError: true);
+                return;
+            }
+            MyProjectJson = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(json))?["projet"]?.ToJsonString();
+            DashboardVersion++;
+        }
+        catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception or InvalidOperationException
+                                       or System.Text.Json.JsonException)
+        {
+            _shell.Notify(ex.Message, isError: true);
+        }
+        finally
+        {
+            IsBenchmarkLoading = false;
+            BenchmarkActivity = null;
+        }
     }
 
     private bool CanOpenBenchmark() => BenchmarkProjects.Count > 0;

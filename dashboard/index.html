@@ -10,13 +10,37 @@
   <!-- Dashboard du benchmark (docs/DESIGN_PLAN.md, Évolution 3.1). Sans dépendance : la même page tourne dans
        SIA Check (WebView2, données transmises par l'application) et sur un serveur web (benchmark.json à côté). -->
   <nav class="tabs" role="tablist" aria-label="Vues du benchmark">
-    <button role="tab" id="tab-comparer" aria-controls="vue-comparer" aria-selected="true">Comparer</button>
+    <button role="tab" id="tab-ratios" aria-controls="vue-ratios" aria-selected="true">Ratios</button>
+    <button role="tab" id="tab-comparer" aria-controls="vue-comparer" aria-selected="false" tabindex="-1">Comparer</button>
     <button role="tab" id="tab-programmer" aria-controls="vue-programmer" aria-selected="false" tabindex="-1">Programmer</button>
     <button role="tab" id="tab-base" aria-controls="vue-base" aria-selected="false" tabindex="-1">Base</button>
     <button role="tab" id="tab-typologies" aria-controls="vue-typologies" aria-selected="false" tabindex="-1">Typologies</button>
   </nav>
+  <!-- Sélection commune à toutes les vues (DESIGN_PLAN, Évolution 3.5) -->
+  <form id="selection" class="selection" aria-label="Sélection des projets" autocomplete="off">
+    <label>Typologie <select name="typologie"></select></label>
+    <label>Canton <select name="canton"></select></label>
+    <label>Intervention <select name="intervention"></select></label>
+    <span id="selection-resume" class="secondaire"></span>
+    <button type="button" id="selection-reinit" class="lien" hidden>Réinitialiser</button>
+  </form>
 
   <main>
+    <section id="vue-ratios" role="tabpanel" aria-labelledby="tab-ratios" hidden>
+      <header class="entete">
+        <h2 id="ratios-titre" class="titre-vue"></h2>
+        <p id="ratios-resume" class="secondaire"></p>
+      </header>
+      <p id="ratios-bandeau" class="bandeau" hidden></p>
+      <section class="cles" aria-labelledby="titre-cles">
+        <h2 id="titre-cles">KPI clés</h2>
+        <div id="ratios-cles"></div>
+      </section>
+      <div id="ratios-familles" class="regles"></div>
+      <h2>Projets de la sélection</h2>
+      <div class="defile"><table id="ratios-projets"></table></div>
+    </section>
+
     <p id="etat" class="etat" hidden></p>
 
     <section id="vue-comparer" role="tabpanel" aria-labelledby="tab-comparer" hidden>
@@ -32,9 +56,7 @@
           <h2>Projets similaires</h2>
           <ul id="similaires" class="liste"></ul>
           <p id="aucun-similaire" class="secondaire" hidden></p>
-          <h2>Filtres</h2>
-          <label class="case"><input type="checkbox" id="filtre-categorie" checked> même catégorie d'ouvrage</label>
-          <label class="case"><input type="checkbox" id="filtre-intervention" checked> même type d'intervention</label>
+          <p class="secondaire">Cherchés parmi les projets fiables de la sélection.</p>
           <details id="ecartes">
             <summary></summary>
             <ul class="liste secondaire"></ul>
@@ -79,8 +101,6 @@
         <div class="champs">
           <label>SP hors-sol (m²) <input name="SP_HS" type="number" min="0" step="any" inputmode="decimal"></label>
           <label>Étages hors-sol <input name="ETAGES_HS" type="number" min="0" step="1" inputmode="numeric"></label>
-          <label>Catégorie <select name="categorie"></select></label>
-          <label>Intervention <select name="intervention"></select></label>
         </div>
         <h3>Mix visé</h3>
         <div class="champs" id="prog-mix"></div>

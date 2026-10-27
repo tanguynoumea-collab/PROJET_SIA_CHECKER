@@ -1256,3 +1256,100 @@ Accueil capturé après relecture de la base (thème clair) : colonne Typologie 
 |---|---|---|
 | L'ID d'un MDP de la base est modifiable | Évité | Lecture seule dans la fiche ouverte depuis la base : il relie toutes les tables du MDP |
 | Anciennes valeurs hors liste (MDP rempli à la main) | Prévu | Affichées en tête de liste pour être corrigées, jamais effacées en silence |
+
+---
+
+## Évolution 3.5 — Sélection et onglet Ratios (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (27.10.2026) ☑ Implémenté
+> Version : 3.5 — 27.10.2026 · Phase 16 de `docs/V3_PLAN.md` (§9)
+
+### Ancrage
+
+Le parcours de l'équipe : *« nouveau projet de santé à Vaud → je choisis Santé, je lis les ratios ; puis j'affine sur Vaud »*. La sélection vient **avant** tout le reste ; le dashboard actuel la cache dans des filtres de similarité.
+
+### Emplacement — décision
+
+1. Une **barre de sélection** sous les onglets, toujours visible, commune à toutes les vues.
+2. Un nouvel onglet **« Ratios »**, en premier et ouvert par défaut : ce que donne la sélection.
+3. Les autres onglets travaillent **dans** la sélection.
+
+```
+  Ratios · Comparer · Programmer · Base · Typologies
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Typologie [Santé (4) ▾]   Canton [VD (2) ▾]   Intervention [Toutes ▾]      2 projets fiables · Réinitialiser │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+
+RATIOS ─ Santé · VD ──────────────────────────────────────────────────────── 2 projets fiables sur 3
+ ⚠ 2 projets : référence fragile. Élargir : retirer le canton (4 projets)
+
+ KPI CLÉS
+ ┌──────────────────────────────────────────────────────────────────────────────────────────┐
+ │ SUP hors-sol / SP hors-sol          71,8 %   médiane 72,1 % · quartiles 69,5 – 74,0 % · n = 4 │
+ │ 60 % ───────·──[▒▒▒▒│▒▒▒]──·─────── 85 %                                                  │
+ │ Vitrage / façade                    34,0 %   …                                            │
+ │ Façade / SP hors-sol (compacité)    88,2 %   …                                            │
+ └──────────────────────────────────────────────────────────────────────────────────────────┘
+ RENDEMENT · PERTES · SOUS-SOL · COMPACITÉ · PROGRAMME   (mêmes règles, plus compactes)
+
+ PROJETS DE LA SÉLECTION
+  1714 Le Clos des Hêtres   Logement  VD   SUP/SP 81,1 %   meilleur quart   [Comparer →]
+  1467 La Bâtie             Logement  GE   72,1 %          2e quart
+  …   (écartés en grisé, pour mémoire)
+```
+
+Hiérarchie : **1er** les KPI clés de la sélection (valeur combinée en grand, puis dispersion) · **2e** la position des projets (la règle et la liste) · **3e** les autres familles.
+
+### La barre de sélection
+
+- Listes alimentées par les valeurs présentes dans la base, chacune avec son nombre de projets fiables (« Santé (4) »), recalculé selon les autres choix. « Toutes / Tous » par défaut ; « Non identifiée » existe dans Typologie pour retrouver les MDP à compléter.
+- Résumé à droite : « n projets fiables » ; « Réinitialiser » quand une sélection est active.
+- La sélection est gardée (navigateur) et inscrite dans l'adresse de la page (`?typologie=Santé&canton=VD`) : un lien partagé ouvre la même sélection, utile pour la version web.
+
+### L'onglet Ratios
+
+- **KPI clés en tête** : SUP / SP hors-sol, vitrage, compacité. Tant que la phase 17 n'a pas fixé « vitrée / pleine » et le coefficient de forme, ce sont « Vitrage / façade » et « Façade / SP hors-sol », signalés comme provisoires. Valeur combinée en grand, médiane, quartiles et *n* à côté ; dessous, la règle avec **chaque projet** (point neutre ; survol : nom et valeur ; clic : Comparer ce projet).
+- **Autres familles** : les mêmes règles, plus compactes.
+- **Projets de la sélection** : tableau avec la position de chacun sur SUP / SP dans la sélection (meilleur quart… dernier quart, selon le sens du ratio : V3_PLAN §9, « indice de performance »). Écartés en grisé.
+
+### Les autres onglets dans la sélection
+
+| Onglet | Effet |
+|---|---|
+| Comparer | Projets similaires cherchés parmi les fiables de la sélection ; les cases « même catégorie / même intervention » disparaissent (remplacées par la barre) |
+| Programmer | Idem ; ses listes Catégorie et Intervention disparaissent |
+| Base | Ne liste que la sélection ; « Ensemble » = ratios combinés de la sélection |
+| Typologies | Calculées sur les logements des projets de la sélection ; hors logement : « Les typologies de logement ne concernent pas cette sélection. » |
+
+### États non-nominaux
+
+| État | Rendu |
+|---|---|
+| Aucun projet fiable dans la sélection | « Aucun projet fiable pour Santé · VD. » + suggestion d'élargissement chiffrée (« sans le canton : 4 projets ») + Réinitialiser |
+| 1 ou 2 projets | Valeurs affichées, bandeau « référence fragile » et la même suggestion |
+| Projet ouvert dans Comparer hors de la sélection | Il reste comparé ; mention « hors sélection » sous son nom |
+
+### Passe B — auto-critique
+
+- **Générique ?** Premier jet : des filtres façon Power BI (segments cliquables à gauche). Rejeté : prend une colonne entière pour trois listes, et le Power BI montrait un seul projet. Une barre fine et des comptes par valeur disent tout de suite si la sélection tient.
+- **Comptes dans les listes** : le chiffre entre parenthèses évite le cul-de-sac (choisir « Santé · TI » pour trouver zéro projet).
+- **Accessoire retiré** : un graphique de répartition des projets par canton. Les comptes dans la liste suffisent.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Panneau de filtres latéral (segments) | Occupe une colonne pour trois listes | 27.10.2026 |
+| Filtres propres à chaque onglet | Le contexte se perd en changeant d'onglet ; une sélection commune suit l'utilisateur | 27.10.2026 |
+| Tuiles KPI à grand chiffre seules | Déjà rejetées (3.1) ; ici le grand chiffre reste, mais toujours avec sa règle et son *n* | 27.10.2026 |
+
+### Revue visuelle (Phase 2, 27.10.2026)
+
+Page servie en local (base des 10 MDP) : 1 440 px en sombre et en clair, 375 px en clair. Sélection testée : Logement (100-90 % SU) · VD → 2 projets fiables, bandeau « référence fragile » et « Élargir : sans le canton (3 projets) » ; adresse de la page mise à jour (`?typologie=…&canton=VD`) ; Comparer, Programmer, Base et Typologies restreints à la sélection ; Comparer signale « ce projet est hors sélection ».
+
+| Constat | Classe | Suite |
+|---|---|---|
+| À 375 px, la rangée d'onglets débordait (« Typologies » coupé) | Bloquant | Corrigé : onglets défilants en largeur réduite ; aucun défilement horizontal de la page |
+| « 1 projets » dans le titre des Typologies | Mineur | Corrigé |
+| Position par quart vide sous 4 projets fiables | Voulu | Un quart n'a pas de sens sur 2 ou 3 valeurs |
+| La sélection est gardée d'une visite à l'autre : un « Comparer au benchmark » depuis SIA Check peut s'ouvrir sur une sélection restreinte | À surveiller | La mention « hors sélection » et « Réinitialiser » le rendent visible |

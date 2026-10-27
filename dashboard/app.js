@@ -1,4 +1,4 @@
-// Dashboard du benchmark (docs/DESIGN_PLAN.md, Évolution 3.1 ; docs/V3_PLAN.md §4).
+// Dashboard du benchmark (docs/DESIGN_PLAN.md, Évolutions 3.1 à 3.5 ; docs/V3_PLAN.md §4 et §9).
 // Données : benchmark.json de `sia-check --benchmark`. Dans SIA Check, l'application les transmet par WebView2
 // (window.chrome.webview) ; sur un serveur, la page les lit à côté d'elle (?data=… pour un autre chemin).
 // Le moteur fait foi pour les totaux, la fiabilité et les distances ; la page ne refait que les ratios combinés
@@ -11,7 +11,7 @@ const TAILLE_GROUPE = 5;
 const SVG = "http://www.w3.org/2000/svg";
 const MIEN = "mien";
 
-const etat = { data: null, projets: new Map(), kpis: [], projetId: null, coches: new Set(), filtres: { categorie: true, intervention: true }, tri: null,
+const etat = { data: null, projets: new Map(), kpis: [], projetId: null, coches: new Set(), tri: null,
                 mien: null, mienSource: "saisie", prix: null, groupeCle: "" };
 
 /** Un projet de la base, ou « Mon projet » (id « mien »). */
@@ -71,13 +71,11 @@ function combiner(projets, kpi) {
   return { n: valeurs.length, combine: sn / sd, q1: q(0.25), mediane: q(0.5), q3: q(0.75), valeurs };
 }
 
-/** Les projets fiables les plus proches, filtres appliqués : une valeur inconnue n'écarte pas (comme le moteur). */
+/** Les projets fiables de la sélection les plus proches de `ref` (Évolution 3.5 : la sélection remplace les filtres). */
 function candidats(ref) {
-  const memes = (f) => !etat.filtres[f] || !ref.infos[f];
   return Object.entries(ref.distances || {})
     .map(([id, d]) => ({ p: etat.projets.get(id), d }))
-    .filter(({ p }) => p && p.fiable && p.id !== ref.id)
-    .filter(({ p }) => ["categorie", "intervention"].every((f) => memes(f) || !p.infos[f] || norm(p.infos[f]) === norm(ref.infos[f])))
+    .filter(({ p }) => p && p.fiable && p.id !== ref.id && dansSelection(p))
     .sort((a, b) => a.d - b.d)
     .slice(0, TAILLE_GROUPE);
 }
@@ -92,6 +90,202 @@ function domaine(kpi, extra) {
   let lo = Math.min(...v), hi = Math.max(...v);
   const marge = (hi - lo) * 0.08 || Math.abs(hi) * 0.1 || 1;
   return [lo - marge, hi + marge];
+}
+
+// ------------------------------------------------------------------ Sélection (Évolution 3.5)
+
+const CLE_SELECTION = "benchmark.selection";
+const CRITERES = [["typologie", "categorie", "Toutes"], ["canton", "canton", "Tous"], ["intervention", "intervention", "Toutes"]];
+const NON_IDENTIFIEE = "__non_identifiee";
+const KPI_CLES = [["SUP/SP_HS", ""], ["VITRE/FACADE", "provisoire, en attendant « vitrée / pleine »"],
+                  ["FACADE/SP_HS", "provisoire, en attendant le coefficient de forme"]];
+const sel = { typologie: "", canton: "", intervention: "" };
+
+/** Le projet passe la sélection ; `sauf` ignore un critère (comptes des listes, suggestions d'élargissement). */
+function dansSelection(p, sauf = null, s = sel) {
+  return CRITERES.every(([cle, info]) => {
+    if (cle === sauf || !s[cle]) return true;
+    if (s[cle] === NON_IDENTIFIEE) return !p.infos?.[info];
+    return p.infos?.[info] != null && norm(p.infos[info]) === norm(s[cle]);
+  });
+}
+
+const projetsSelection = () => etat.data.projets.filter((p) => dansSelection(p));
+const fiablesSelection = () => projetsSelection().filter((p) => p.fiable);
+const selectionActive = () => CRITERES.some(([cle]) => sel[cle]);
+
+function libelleSelection() {
+  const parts = CRITERES.filter(([cle]) => sel[cle]).map(([cle]) => sel[cle] === NON_IDENTIFIEE ? "Typologie non identifiée" : sel[cle]);
+  return parts.length ? parts.join(" · ") : "Tous les projets";
+}
+
+function initSelection() {
+  try { Object.assign(sel, JSON.parse(localStorage.getItem(CLE_SELECTION) || "{}")); } catch { /* stockage indisponible */ }
+  for (const [cle] of CRITERES) if (PARAMS.has(cle)) sel[cle] = PARAMS.get(cle);     // un lien partagé fait foi
+  const form = document.getElementById("selection");
+  form.addEventListener("change", (e) => { sel[e.target.name] = e.target.value; majSelection(); });
+  form.addEventListener("submit", (e) => e.preventDefault());
+  document.getElementById("selection-reinit").addEventListener("click", () => {
+    for (const [cle] of CRITERES) sel[cle] = "";
+    majSelection();
+  });
+  remplirSelection();
+}
+
+/** Listes de la barre : valeurs présentes dans la base, chacune avec son nombre de projets fiables selon les autres choix. */
+function remplirSelection() {
+  const form = document.getElementById("selection").elements;
+  for (const [cle, info, tous] of CRITERES) {
+    const base = etat.data.projets.filter((p) => p.fiable && dansSelection(p, cle));
+    const compte = (v) => base.filter((p) => v === NON_IDENTIFIEE ? !p.infos?.[info] : p.infos?.[info] && norm(p.infos[info]) === norm(v)).length;
+    const valeurs = [...new Set(etat.data.projets.map((p) => p.infos?.[info]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
+    if (sel[cle] && sel[cle] !== NON_IDENTIFIEE && !valeurs.some((v) => norm(v) === norm(sel[cle]))) valeurs.push(sel[cle]);
+    const options = [el("option", { value: "", text: `${tous} (${base.length})` }),
+      ...valeurs.map((v) => el("option", { value: v, text: `${v} (${compte(v)})` }))];
+    if (cle === "typologie" && etat.data.projets.some((p) => !p.infos?.categorie))
+      options.push(el("option", { value: NON_IDENTIFIEE, text: `Non identifiée (${compte(NON_IDENTIFIEE)})` }));
+    form[cle].replaceChildren(...options);
+    form[cle].value = valeurs.find((v) => norm(v) === norm(sel[cle])) ?? sel[cle];
+  }
+  const n = fiablesSelection().length;
+  document.getElementById("selection-resume").textContent = `${n} projet${n > 1 ? "s" : ""} fiable${n > 1 ? "s" : ""}`;
+  document.getElementById("selection-reinit").hidden = !selectionActive();
+}
+
+function majSelection() {
+  try { localStorage.setItem(CLE_SELECTION, JSON.stringify(sel)); } catch { /* stockage indisponible */ }
+  const url = new URL(location.href);
+  for (const [cle] of CRITERES) sel[cle] ? url.searchParams.set(cle, sel[cle]) : url.searchParams.delete(cle);
+  try { history.replaceState(null, "", url); } catch { /* adresse non modifiable (aperçu) */ }
+  remplirSelection();
+  dessinerRatios();
+  if (etat.projetId) choisirProjet(etat.projetId);
+  dessinerProgramme();
+  dessinerBase();
+  dessinerTypologies();
+}
+
+/** Élargissement qui redonne le plus de projets fiables, en retirant un seul critère (canton d'abord). */
+function suggestionElargir() {
+  for (const cle of ["canton", "intervention", "typologie"]) {
+    if (!sel[cle]) continue;
+    const n = etat.data.projets.filter((p) => p.fiable && dansSelection(p, cle)).length;
+    if (n > fiablesSelection().length) return { cle, n };
+  }
+  return null;
+}
+
+// ------------------------------------------------------------------ Ratios
+
+const NOMS_CRITERES = { typologie: "la typologie", canton: "le canton", intervention: "le type d'intervention" };
+
+function dessinerRatios() {
+  const fiables = fiablesSelection(), tous = projetsSelection();
+  document.getElementById("ratios-titre").textContent = `Ratios — ${libelleSelection()}`;
+  document.getElementById("ratios-resume").textContent =
+    `${fiables.length} projet${fiables.length > 1 ? "s" : ""} fiable${fiables.length > 1 ? "s" : ""} sur ${tous.length} dans la sélection`;
+
+  const bandeau = document.getElementById("ratios-bandeau");
+  bandeau.hidden = fiables.length >= MIN_REFERENCE;
+  if (!bandeau.hidden) {
+    bandeau.replaceChildren(fiables.length ? `${fiables.length} projet${fiables.length > 1 ? "s" : ""} : référence fragile.`
+                                            : `Aucun projet fiable pour ${libelleSelection()}.`);
+    const s = suggestionElargir();
+    if (s) {
+      const b = el("button", { type: "button", class: "lien", text: `Élargir : sans ${NOMS_CRITERES[s.cle]} (${s.n} projets)` });
+      b.addEventListener("click", () => { sel[s.cle] = ""; majSelection(); });
+      bandeau.append(" ", b);
+    }
+  }
+
+  const cles = document.getElementById("ratios-cles");
+  cles.replaceChildren(...KPI_CLES.map(([id, provisoire]) => {
+    const kpi = etat.kpis.find((k) => k.id === id);
+    const c = combiner(fiables, kpi);
+    const tete = el("div", { class: "cle-tete" }, el("span", { class: "cle-libelle", text: kpi.label, title: kpi.note || kpi.label }));
+    if (provisoire) tete.append(el("span", { class: "provisoire", text: provisoire }));
+    const chiffres = el("div", { class: "cle-chiffres" });
+    if (c.n) chiffres.append(el("span", { class: "cle-valeur", text: valeur(kpi, c.combine) }),
+      el("span", { class: "secondaire", text: `médiane ${valeur(kpi, c.mediane)} · quartiles ${valeur(kpi, c.q1)} – ${valeur(kpi, c.q3)} · n = ${c.n}` }));
+    else chiffres.append(el("span", { class: "absent", text: "Aucun projet de la sélection n'a ce ratio" }));
+    return el("div", { class: "cle" }, tete, chiffres, c.n ? regleGroupe(kpi, c) : null);
+  }));
+
+  const familles = document.getElementById("ratios-familles");
+  familles.replaceChildren();
+  const autres = etat.kpis.filter((k) => !KPI_CLES.some(([id]) => id === k.id));
+  for (const famille of [...new Set(autres.map((k) => k.famille))]) {
+    const bloc = el("section", { class: "famille" }, el("h2", { text: famille }));
+    for (const kpi of autres.filter((k) => k.famille === famille)) {
+      const c = combiner(fiables, kpi);
+      const libelle = el("div", { class: "libelle", text: kpi.label, title: kpi.note || kpi.label });
+      libelle.append(el("br"), el("span", { class: "valeurs", text: c.n ? `${valeur(kpi, c.combine)} · n = ${c.n}` : "—" }));
+      bloc.append(el("div", { class: "kpi compact" }, libelle, c.n ? regleGroupe(kpi, c) : el("div", { class: "absent", text: "Aucune donnée" }), el("div")));
+    }
+    familles.append(bloc);
+  }
+  dessinerProjetsSelection(tous, fiables);
+}
+
+/** Règle d'une sélection : chaque projet en point (clic : le comparer), quartiles et ratio combiné. */
+function regleGroupe(kpi, c) {
+  const dom = domaine(kpi);
+  const x = (t) => `${((t - dom[0]) / (dom[1] - dom[0])) * 100}%`;
+  const r = el("div", { class: "regle", role: "img", "aria-label": `${kpi.label} : ${valeur(kpi, c.combine)}, ${c.n} projets` });
+  r.append(el("span", { class: "axe" }), el("span", { class: "graduation debut", text: valeur(kpi, Math.max(dom[0], 0)) }),
+           el("span", { class: "graduation fin", text: valeur(kpi, dom[1]) }));
+  r.append(el("span", { class: "quartiles", title: `Quartiles : ${valeur(kpi, c.q1)} à ${valeur(kpi, c.q3)}`,
+                        style: `left:${x(c.q1)};width:calc(${x(c.q3)} - ${x(c.q1)})` }));
+  r.append(el("span", { class: "reference" + (c.n < MIN_REFERENCE ? " fragile" : ""), style: `left:${x(c.combine)}`,
+                        title: `Ratio combiné de ${c.n} projet${c.n > 1 ? "s" : ""} : ${valeur(kpi, c.combine)}` }));
+  for (const { p, v } of c.valeurs) {
+    const point = el("span", { class: "pair cliquable", style: `left:${x(v)}`, title: `${nomProjet(p)} : ${valeur(kpi, v)} · cliquer pour le comparer` });
+    point.addEventListener("click", () => { montrerVue("comparer"); choisirProjet(p.id); });
+    r.append(point);
+  }
+  return r;
+}
+
+/** Position d'un projet dans la sélection sur SUP / SP hors-sol, dans le sens favorable du ratio. */
+function quartDe(p, fiables) {
+  const kpi = etat.kpis.find((k) => k.id === "SUP/SP_HS");
+  const v = fiables.filter((q) => q.kpis[kpi.id]).map((q) => q.kpis[kpi.id].valeur * kpi.sens).sort((a, b) => b - a);
+  const mien = p.kpis[kpi.id];
+  if (!mien || !p.fiable || v.length < 4) return "";
+  const rang = v.indexOf(mien.valeur * kpi.sens) + 1;
+  return ["meilleur quart", "2e quart", "3e quart", "dernier quart"][Math.min(3, Math.floor(((rang - 1) / v.length) * 4))];
+}
+
+function dessinerProjetsSelection(tous, fiables) {
+  const kpi = etat.kpis.find((k) => k.id === "SUP/SP_HS");
+  const tete = el("tr", {}, ...["Projet", "Typologie", "Canton", "SUP / SP hors-sol", "Position", ""].map((t) => el("th", { scope: "col", text: t })));
+  const lignes = [...tous].sort((a, b) => b.fiable - a.fiable || (b.kpis[kpi.id]?.valeur ?? -1) - (a.kpis[kpi.id]?.valeur ?? -1));
+  const corps = lignes.map((p) => {
+    const tr = el("tr", { class: p.fiable ? "" : "ecarte", tabindex: "0", title: p.fiable ? "Comparer ce projet" : "Écarté des références : comparer pour mémoire" },
+      el("td", {}, el("span", { class: "mono", text: p.id }), ` ${p.nom}${p.fiable ? "" : " (écarté)"}`),
+      el("td", { text: p.infos?.categorie || "Non identifiée" }), el("td", { class: "mono", text: p.infos?.canton || "—" }),
+      el("td", { text: valeur(kpi, p.kpis[kpi.id]?.valeur) }), el("td", { text: quartDe(p, fiables) }), el("td", { class: "lien-ligne", text: "Comparer →" }));
+    const ouvrir = () => { montrerVue("comparer"); choisirProjet(p.id); };
+    tr.addEventListener("click", ouvrir);
+    tr.addEventListener("keydown", (e) => { if (e.key === "Enter") ouvrir(); });
+    return tr;
+  });
+  document.getElementById("ratios-projets").replaceChildren(el("thead", {}, tete), el("tbody", {}, ...corps));
+}
+
+/** SUP par logement selon le nombre de chambres, sur les projets fiables de la sélection (même calcul que benchmark.typologies). */
+function typologiesSelection() {
+  const par = new Map();
+  for (const p of fiablesSelection())
+    for (const lg of p.logements || []) {
+      if (!par.has(lg.chambres)) par.set(lg.chambres, []);
+      par.get(lg.chambres).push({ id: p.id, sup: lg.sup });
+    }
+  return [...par.entries()].sort((a, b) => a[0] - b[0]).map(([chambres, v]) => {
+    const s = v.map((x) => x.sup).sort((a, b) => a - b);
+    const q = (f) => { const i = (s.length - 1) * f, lo = Math.floor(i), hi = Math.min(lo + 1, s.length - 1); return s[lo] + (s[hi] - s[lo]) * (i - lo); };
+    return { chambres, n: s.length, projets: new Set(v.map((x) => x.id)).size, min: s[0], q1: q(0.25), mediane: q(0.5), q3: q(0.75), max: s[s.length - 1] };
+  });
 }
 
 // ------------------------------------------------------------------ Comparer
@@ -145,20 +339,21 @@ function dessinerComparer() {
   aucun.hidden = liste.length > 0;
   if (!liste.length) {
     const comparable = Object.keys(ref.distances || {}).length > 0;
-    const filtre = comparable && (etat.filtres.categorie || etat.filtres.intervention);
-    aucun.replaceChildren(filtre ? "Aucun projet ne passe ces filtres."
+    const filtre = comparable && selectionActive();
+    aucun.replaceChildren(filtre ? "Aucun projet similaire dans la sélection."
       : ref.id === MIEN ? "Saisissez au moins la SP hors-sol et le nombre de logements pour trouver des projets similaires."
       : "Aucun projet comparable : il manque au projet des caractéristiques (SP hors-sol, logements…).");
     if (filtre) {
-      const b = el("button", { class: "lien", type: "button", text: "Retirer les filtres" });
-      b.addEventListener("click", () => { etat.filtres.categorie = etat.filtres.intervention = false; syncFiltres(); choisirProjet(ref.id); });
+      const b = el("button", { class: "lien", type: "button", text: "Réinitialiser la sélection" });
+      b.addEventListener("click", () => { for (const [cle] of CRITERES) sel[cle] = ""; majSelection(); });
       aucun.append(" ", b);
     }
   }
 
   document.getElementById("resume-reference").textContent = groupe.length
     ? `Référence : ${groupe.length} projet${groupe.length > 1 ? "s" : ""} similaire${groupe.length > 1 ? "s" : ""} · ratios combinés` +
-      (groupe.length < MIN_REFERENCE ? " · référence fragile" : "")
+      (groupe.length < MIN_REFERENCE ? " · référence fragile" : "") +
+      (ref.id !== MIEN && !dansSelection(ref) ? " · ce projet est hors sélection" : "")
     : liste.length ? "Aucune référence : cochez au moins un projet similaire." : "Aucune référence : aucun projet similaire.";
 
   const regles = document.getElementById("regles");
@@ -225,11 +420,6 @@ function regle(kpi, v, c, ref) {
   return r;
 }
 
-function syncFiltres() {
-  document.getElementById("filtre-categorie").checked = etat.filtres.categorie;
-  document.getElementById("filtre-intervention").checked = etat.filtres.intervention;
-}
-
 function remplirEcartes() {
   const ecartes = etat.data.projets.filter((p) => !p.fiable);
   const d = document.getElementById("ecartes");
@@ -245,10 +435,11 @@ function remplirEcartes() {
 
 function dessinerBase() {
   const t = document.getElementById("table-base");
-  const base = etat.data.base;
+  const fiables = fiablesSelection();
+  const base = Object.fromEntries(etat.kpis.map((k) => [k.id, combiner(fiables, k)]));     // ensemble de la sélection
   const colonnes = [{ id: "nom", label: "Projet" }, { id: "canton", label: "Canton" }, ...etat.kpis.map((k) => ({ id: k.id, label: k.id, kpi: k }))];
   const cle = (p, col) => col.id === "nom" ? Number(p.id) || p.id : col.id === "canton" ? (p.infos.canton || "") : p.kpis[col.id]?.valeur ?? -Infinity;
-  let lignes = [...etat.data.projets].sort((a, b) => b.fiable - a.fiable || String(a.id).localeCompare(String(b.id), "fr", { numeric: true }));
+  let lignes = projetsSelection().sort((a, b) => b.fiable - a.fiable || String(a.id).localeCompare(String(b.id), "fr", { numeric: true }));
   if (etat.tri) {
     const col = colonnes.find((c) => c.id === etat.tri.id);
     lignes.sort((a, b) => { const x = cle(a, col), y = cle(b, col); return (x > y ? 1 : x < y ? -1 : 0) * etat.tri.sens; });
@@ -263,7 +454,7 @@ function dessinerBase() {
     return th;
   }));
 
-  const ensemble = el("tr", { class: "ensemble" }, el("td", { text: "Ensemble des projets fiables" }), el("td"),
+  const ensemble = el("tr", { class: "ensemble" }, el("td", { text: `Ensemble de la sélection (${fiables.length} fiable${fiables.length > 1 ? "s" : ""})` }), el("td"),
     ...etat.kpis.map((k) => el("td", { title: base[k.id]?.n ? `n = ${base[k.id].n}` : "", text: base[k.id]?.n ? `${valeur(k, base[k.id].combine)} (${base[k.id].n})` : "—" })));
 
   const corps = lignes.map((p) => {
@@ -296,17 +487,20 @@ function celluleBase(kpi, p, b) {
 // ------------------------------------------------------------------ Typologies
 
 function dessinerTypologies() {
-  const typos = etat.data.typologies || [];
+  const typos = typologiesSelection();
   const boites = document.getElementById("boites");
   const titreTypo = document.getElementById("titre-typologies");
   if (!typos.length) {
     titreTypo.textContent = "SUP par logement selon le nombre de chambres";
-    boites.replaceChildren(el("p", { class: "secondaire", text: "Aucun MDP fiable ne donne les chambres de ses logements." }));
+    const logement = !sel.typologie || norm(sel.typologie).startsWith("logement");
+    boites.replaceChildren(el("p", { class: "secondaire", text: logement
+      ? "Aucun projet fiable de la sélection ne donne les chambres de ses logements."
+      : "Les typologies de logement ne concernent pas cette sélection." }));
     return;
   }
   const nLog = typos.reduce((s, t) => s + t.n, 0);
-  const nProj = new Set(etat.data.projets.filter((p) => p.fiable && Object.keys(p.mix || {}).length).map((p) => p.id)).size;
-  titreTypo.textContent = `SUP par logement selon le nombre de chambres (${nProj} projets, ${nLog} logements)`;
+  const nProj = fiablesSelection().filter((p) => (p.logements || []).length).length;
+  titreTypo.textContent = `SUP par logement selon le nombre de chambres (${nProj} projet${nProj > 1 ? "s" : ""}, ${nLog} logements)`;
 
   const W = 900, G = 70, D = 230, L = 40, haut = 20 + typos.length * L;     // D : colonne de droite (médiane, effectifs)
   const max = Math.ceil(Math.max(...typos.map((t) => t.max)) / 20) * 20 + 20;
@@ -550,10 +744,6 @@ function initProgrammer() {
     el("label", {}, label, el("input", { name, type: "number", min: "0", step: "any", inputmode: "decimal", ...attrs }));
   document.getElementById("prog-mix").replaceChildren(...MIX.map(([k, l]) => nombre(`mix${k}`, `${l} (%)`, { max: "100" })),
     el("span", { id: "prog-mix-total", class: "total" }));
-  for (const f of ["categorie", "intervention"]) {
-    const valeurs = [...new Set(etat.data.projets.map((p) => p.infos[f]).filter(Boolean))].sort();
-    form.elements[f].replaceChildren(el("option", { value: "", text: "Inconnue" }), ...valeurs.map((v) => el("option", { value: v, text: v })));
-  }
   form.addEventListener("submit", (e) => e.preventDefault());
   form.addEventListener("input", () => {
     try { localStorage.setItem(CLE_PROGRAMME, JSON.stringify(Object.fromEntries(new FormData(form)))); } catch { /* stockage indisponible */ }
@@ -571,8 +761,7 @@ function lireHypotheses() {
   const num = (n) => { const v = f[n].value.trim(); return v === "" ? null : Number(v); };
   const mix = {};
   for (const [k] of MIX) { const v = num(`mix${k}`); if (v > 0) mix[k] = v; }
-  return { SP_HS: num("SP_HS"), ETAGES_HS: num("ETAGES_HS"), categorie: f.categorie.value, intervention: f.intervention.value,
-           mix, prix: num("prix") };
+  return { SP_HS: num("SP_HS"), ETAGES_HS: num("ETAGES_HS"), mix, prix: num("prix") };
 }
 
 /** Projets similaires à une constructibilité : SP hors-sol, étages et part de grands logements du mix visé. */
@@ -582,8 +771,7 @@ function groupeProgramme(h) {
   if (h.ETAGES_HS > 0) features.ETAGES_HS = h.ETAGES_HS;
   const totalMix = Object.values(h.mix).reduce((a, b) => a + b, 0);
   if (totalMix > 0) features.PART_GRANDS = ((h.mix["3"] || 0) + (h.mix["4"] || 0)) / totalMix;
-  const passe = (p) => ["categorie", "intervention"].every((f) => !h[f] || !p.infos[f] || norm(p.infos[f]) === norm(h[f]));
-  const fiables = etat.data.projets.filter((p) => p.fiable && passe(p));
+  const fiables = fiablesSelection();
   const d = distancesA(features);
   const proches = fiables.filter((p) => d[p.id] != null).sort((a, b) => d[a.id] - d[b.id]).slice(0, TAILLE_GROUPE);
   return proches.length ? { liste: proches.map((p) => ({ p, d: d[p.id] })), parDefaut: false }
@@ -601,7 +789,7 @@ function fourchette(groupe, kpiId, base) {
 
 /** Surface moyenne d'un logement du mix visé, chaque typologie à sa médiane de SUP (onglet Typologies). */
 function surfaceMoyenneMix(mix) {
-  const typos = new Map((etat.data.typologies || []).map((t) => [String(Math.min(t.chambres, 4)), t]));
+  const typos = new Map(typologiesSelection().map((t) => [String(Math.min(t.chambres, 4)), t]));
   let parts = 0, somme = 0;
   for (const [k, part] of Object.entries(mix)) {
     const t = typos.get(k);
@@ -673,8 +861,8 @@ function dessinerProgramme() {
 function dessinerGroupeProgramme(liste, parDefaut) {
   const ul = document.getElementById("prog-groupe");
   const titre = document.getElementById("prog-groupe-titre");
-  titre.textContent = parDefaut ? "Faute de caractéristiques, tous les projets fiables (saisissez les étages ou le mix)"
-                                : `D'après ${liste.length} projet${liste.length > 1 ? "s" : ""} similaire${liste.length > 1 ? "s" : ""}`;
+  titre.textContent = parDefaut ? "Faute de caractéristiques, tous les projets fiables de la sélection (saisissez les étages ou le mix)"
+                                : `D'après ${liste.length} projet${liste.length > 1 ? "s" : ""} similaire${liste.length > 1 ? "s" : ""} de la sélection`;
   ul.replaceChildren(...liste.map(({ p, d }) => {
     const cb = el("input", { type: "checkbox", "aria-label": `Inclure ${nomProjet(p)} dans l'estimation` });
     cb.checked = progEtat.coches.has(p.id);
@@ -717,7 +905,7 @@ function dessinerTableProgramme(lignes) {
 
 // ------------------------------------------------------------------ onglets et démarrage
 
-const VUES = ["comparer", "programmer", "base", "typologies"];
+const VUES = ["ratios", "comparer", "programmer", "base", "typologies"];
 
 function montrerVue(nom) {
   for (const v of VUES) {
@@ -740,8 +928,6 @@ function brancherOnglets() {
       document.getElementById(`tab-${suivant}`).focus();
     });
   });
-  for (const f of ["categorie", "intervention"])
-    document.getElementById(`filtre-${f}`).addEventListener("change", (e) => { etat.filtres[f] = e.target.checked; choisirProjet(etat.projetId); });
 }
 
 function afficherEtat(message) {
@@ -760,6 +946,7 @@ function demarrer(data) {
   etat.kpis = data.kpis;
   etat.projets = new Map(data.projets.map((p) => [String(p.id), p]));
   document.getElementById("etat").hidden = true;
+  initSelection();
   remplirProjets();
   remplirEcartes();
   initSaisie();
@@ -768,10 +955,12 @@ function demarrer(data) {
   if (ecart > 0.002) console.warn(`Distances de la page et du moteur différentes (écart max ${ecart}) : formules à réaligner.`);
   dessinerBase();
   dessinerTypologies();
-  montrerVue("comparer");
+  dessinerRatios();
   const premier = data.projets.find((p) => p.fiable) || data.projets[0];
   const demande = PARAMS.get("projet");
-  choisirProjet(demande === MIEN || etat.projets.has(demande) ? demande : String(premier.id));
+  const direct = demande === MIEN || etat.projets.has(demande);
+  choisirProjet(direct ? demande : String(premier.id));
+  montrerVue(direct ? "comparer" : "ratios");     // un projet demandé (SIA Check, lien) s'ouvre en comparaison
 }
 
 function charger() {

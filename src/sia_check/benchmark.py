@@ -506,6 +506,9 @@ def projet_json(p: Projet) -> dict:
         "id": p.id, "nom": p.nom, "fichier": p.fichier, "infos": p.infos, "score": round(p.score, 3), "fiable": p.fiable,
         "controles": [dataclasses.asdict(c) for c in p.controles],
         "totaux": {k_: round(v, 2) for k_, v in p.totaux.items()}, "features": p.features(), "mix": mix,
+        # logements (chambres, SUP) : la page recalcule l'onglet Typologies sur la sélection de l'utilisateur
+        "logements": [{"chambres": lg["chambres"], "sup": round(lg["sup"], 2)} for lg in p.logements
+                      if lg["chambres"] is not None and lg["sup"]],
         "kpis": {kpi.id: (None if (r := p.ratio(kpi)) is None else
                           {"num": round(r[0], 2), "den": round(r[1], 2), "valeur": r[0] / r[1]}) for kpi in KPIS},
     }

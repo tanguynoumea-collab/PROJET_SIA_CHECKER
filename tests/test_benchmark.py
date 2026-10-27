@@ -162,3 +162,7 @@ def test_listes_dans_le_json(tmp_path):
     mdp(tmp_path / "MDP-1-A.xlsx", infos={"ID projet": 1})
     data = b.construire(*b.lire_dossier(tmp_path))
     assert "VD" in data["listes"]["Canton"]
+
+
+def test_logements_dans_le_json(projet):
+    assert b.projet_json(projet)["logements"] == [{"chambres": 1, "sup": 50.0}, {"chambres": 3, "sup": 90.0}]

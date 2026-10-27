@@ -19,3 +19,6 @@ app/**/bin/
 app/**/obj/
 app/dist/
 *.user
+
+# Base du benchmark régénérée (sia-check --benchmark), posée à côté du dashboard pour le servir en local
+dashboard/benchmark.json

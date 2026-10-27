@@ -847,3 +847,140 @@ Capture en thème clair, fenêtre maximisée (1 456 px), base des 10 MDP de `00_
 | En clair, les segments vides de l'empreinte (contour Divider) étaient presque invisibles : une donnée manquante se lisait comme un simple espace | Bloquant | Corrigé : contour TextSecondary à 45 % d'opacité ; rendu corrigé non recapturé |
 | Grand vide sous « Projets actifs » quand il n'y a qu'un projet | Accepté | La colonne se remplit avec l'usage ; pas de contenu de remplissage |
 | Chemin complet de la base affiché en entier | À surveiller | Tient à 1 456 px ; points de suspension au-delà |
+
+---
+
+## Évolution 3.1 — Dashboard du benchmark (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (27.10.2026) ☑ Implémenté
+> Version : 3.1 — 27.10.2026 · Phase 11 de `docs/V3_PLAN.md`
+
+### Ancrage
+
+- **Utilisateur** : développement immobilier (chef de projet, analyste), pas forcément familier de Treegram ; connaît la SIA 416 de nom, raisonne en m² vendables et en rentabilité.
+- **Job de l'écran** : *voir où un projet se place face aux projets qui lui ressemblent, ratio par ratio, et ce que l'écart représente en m².*
+- **Contrainte qui pilote tout** : le dashboard partira sur le web. Il est donc écrit en **HTML/CSS/JS sans dépendance** (pas de CDN, pas de build), graphiques en SVG dessinés à la main, données lues dans `benchmark.json` (même fichier en local et sur un serveur). L'application WPF n'est qu'un cadre : barre de titre + WebView2.
+
+### Emplacement — décision
+
+Un **écran Dashboard** dans l'application, au même niveau que l'espace de revue : on y entre par « Ouvrir le benchmark » (accueil), on en sort par ⌂ Accueil. Pas de fenêtre séparée : une seule fenêtre, comme aujourd'hui.
+
+### Écran hôte (WPF)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│ [⌂]  Benchmark   5 projets de référence sur 10 · lue le 27.10.2026 10:32         [↻]     │  ← barre Surface, comme l'espace de revue
+├──────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                          │
+│                         WebView2 : dashboard/index.html                                  │
+│                                                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+Le thème (clair / sombre) de l'application est transmis à la page ; [↻] relit la base puis recharge la page.
+
+### Page HTML — trois vues, un onglet chacune
+
+```
+  Comparer · Base · Typologies                                                    (onglets texte, soulignés en accent)
+
+COMPARER ──────────────────────────────────────────────────────────────────────────────────
+  Projet  [1784 · Sauvabelines        ▾]     Référence : 4 projets similaires · ratios combinés
+
+┌ PROJETS SIMILAIRES ──────────┐  ┌ RENDEMENT ────────────────────────────────────────────────────────┐
+│ ☑ 1467 La Bâtie       ●●●●○  │  │ SUP hors-sol / SP hors-sol                                        │
+│ ☑ 1712 La Myonaz      ●●●●○  │  │   ce projet 74,0 %   référence 73,1 %   +0,9 pt   ▲ +39 m² de SUP │
+│ ☑ 1746 Avallons       ●●●○○  │  │   60 %  ─────────·──[▒▒▒▒│▒▒▒]──◉──────────────────  85 %          │
+│ ☑ 1714 Clos des Hêtres●●○○○  │  │                    ·  ·    │    ·                                   │
+│                              │  │ SVN / SP hors-sol   …                                              │
+│ Filtres                      │  ├ PERTES ───────────────────────────────────────────────────────────┤
+│ ☑ même catégorie d'ouvrage   │  │ Construction : SC / SP   10,5 %  réf. 16,4 %  −5,9 pts  ▲ −360 m² │
+│ ☑ même type d'intervention   │  │ …                                                                 │
+│                              │  ├ SOUS-SOL · COMPACITÉ · PROGRAMME ─────────────────────────────────┤
+│ Écartés de la base (5) ▸     │  │ …                                                                 │
+└──────────────────────────────┘  └───────────────────────────────────────────────────────────────────┘
+   280 px                             reste ; une ligne par KPI, groupées par famille (V3_PLAN §4.2)
+```
+
+Hiérarchie : **1er** la position du projet sur chaque règle (le point accent) · **2e** l'écart chiffré et sa traduction en m² · **3e** la liste des projets similaires (sur quoi repose la référence).
+
+- **Projets similaires** : les 5 plus proches calculés par le moteur, cochés. Décocher un projet recalcule à l'instant les ratios combinés (Σ num / Σ den, dans la page). La proximité s'affiche en 5 pastilles (plus il y en a, plus le projet est proche), avec la distance au survol. Les filtres retirent les projets d'une autre catégorie ou d'un autre type d'intervention (une valeur inconnue ne retire pas, comme dans le moteur).
+- **Projets écartés** (SP et SN incohérentes) : repliés, pour mémoire ; on peut les choisir comme projet à comparer (avec un bandeau « données incohérentes ») mais jamais comme référence.
+- Moins de 3 projets dans la référence : la référence est affichée en pointillé avec « 2 projets : référence fragile ».
+
+```
+BASE ──────────────────────────────────────────────────────────────────────────────────────
+  Projet              Canton  SUP/SP hs  SVN/SP hs  SC/SP   SD/SP hs  …   SUP/log
+  ─────────────────────────────────────────────────────────────────────────────────────
+  Ensemble (n)                73,2 % (5) 93,3 % (4) 15,8 %  7,1 %         75 m²     ← ratios combinés de la base
+  1714 Clos des Hêtres  VD    81,1 %     119,6 %    18,6 %  1,0 %   …     82 m²
+  …
+  1778 L'Orée (écarté)  —     49,9 %     —          56,1 %  …                       ← grisé, hors « Ensemble »
+```
+
+Tableau triable (clic sur un en-tête), une ligne par MDP ; un clic sur une ligne ouvre Comparer sur ce projet. Les valeurs ne sont pas colorées : un petit ▲/▼ à côté de la valeur dit seulement si elle est au-dessus ou au-dessous de l'ensemble, dans le sens favorable ou défavorable du ratio (glyphe + infobulle, jamais la couleur seule).
+
+```
+TYPOLOGIES ────────────────────────────────────────────────────────────────────────────────
+  SUP par logement selon le nombre de chambres (4 projets, 248 logements)
+  Studio    ├────[████|██]──────┤          40 m²   (21 logements, 3 projets)
+  1 ch.          ├──[█|█]───┤              55 m²   (97, 4)
+  2 ch.                ├──[██|███]────┤    75 m²   (75, 4)
+  3 ch.                       ├─[█|██]───┤ 96 m²   (53, 4)
+  4 ch.                           |        94 m²   (2, 1)  ← moins de 3 projets : grisé
+        20      40      60      80      100     120 m²
+```
+
+Boîtes horizontales (min, quartiles, médiane, max) sur une seule échelle en m² ; la médiane est écrite en bout de ligne.
+
+### Élément signature — la règle
+
+Chaque KPI est une **règle graduée** : les projets similaires y sont de petits points neutres, la boîte des quartiles un aplat léger, le **ratio combiné un trait vertical**, et le projet étudié **le seul point en accent**. On lit d'un coup d'œil s'il est dans le peloton, en tête ou décroché, sans lire un chiffre. À droite, l'écart traduit en m² : c'est ce qui parle au développement immobilier (« 360 m² de construction en moins que la référence »). Toutes les règles d'une famille partagent la même largeur, pas la même échelle (chaque ratio a son domaine) : l'échelle est écrite aux deux bouts.
+
+### Tokens
+
+Mêmes rôles que l'application, déclarés une fois en variables CSS (`--surface`, `--text`, `--text-2`, `--accent`, `--divider`, `--ok`, `--warning`) avec leurs valeurs claires et sombres (§2). Aucune couleur de série : seul l'accent distingue le projet étudié ; les autres projets sont en `--text-2`. ▲ favorable en `--ok`, ▼ défavorable en `--warning`, toujours avec le glyphe et le mot dans l'infobulle. Polices : Segoe UI Variable, chiffres tabulaires ; ID et codes SIA en Cascadia Mono.
+
+### Sens des ratios (contrat moteur → page)
+
+Chaque KPI reçoit un **sens** dans `benchmark.json` : `+1` plus haut = favorable (SUP/SP, SVN/SP, SN/SP), `−1` plus bas = favorable (SC, SD, SI, SUS hors-sol, sous-sol, façade/SP), `0` neutre (vitrage, hauteur, programme). La traduction en m² n'existe que pour les ratios de surface : écart × dénominateur du projet.
+
+### États non-nominaux
+
+| Zone | État | Rendu |
+|---|---|---|
+| Page | benchmark.json absent ou illisible | « La base n'a pas encore été lue. Revenez à l'accueil et relisez la base. » |
+| Comparer | Projet sans le ratio (ex. pas d'USPI) | Ligne présente, « donnée absente du MDP » en secondaire, pas de règle |
+| Comparer | Moins de 3 projets dans la référence | Trait de référence en pointillé + « référence fragile » |
+| Comparer | Aucun projet similaire (filtres) | « Aucun projet ne passe ces filtres. » + « Retirer les filtres » |
+| Typologies | Aucun logement avec chambres | « Aucun MDP fiable ne donne les chambres de ses logements. » |
+| Hôte | WebView2 absent | Message dans l'écran : « Le composant Microsoft Edge WebView2 est requis » + lien d'installation |
+
+### Passe B — auto-critique
+
+- **Générique ?** Premier jet : une grille de tuiles KPI avec un grand chiffre chacune (style Power BI). Rejeté : un chiffre seul ne dit pas où l'on se situe ; la règle montre la position dans le groupe, et le m² dit ce que ça coûte.
+- **Charge cognitive** : 13 règles sur un écran. Groupées en 5 familles avec titre, la famille Rendement en premier ; les règles sont fines (une ligne de 44 px), l'écran tient sans défiler à 1 080 px de haut.
+- **Peu de données (5 projets fiables)** : jamais de moyenne seule ni d'histogramme ; tous les points sont visibles et le *n* est toujours écrit.
+- **Clavier** : onglets, liste déroulante, cases et tableau atteignables au clavier ; focus visible en accent.
+- **Accessoire retiré** : un radar des familles de KPI (spectaculaire, illisible avec 13 axes de domaines différents) et une carte des cantons (4 cantons, aucune information spatiale utile).
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Bibliothèque de graphiques (ECharts, Chart.js) | Dépendance à embarquer et à suivre ; les formes nécessaires (règles, boîtes) se dessinent en SVG en quelques lignes | 27.10.2026 |
+| Tuiles KPI à grand chiffre | Pas de position relative, pas de *n* | 27.10.2026 |
+| Tableau Base coloré en carte de chaleur | Avec 5 projets fiables, la couleur exagère des écarts non significatifs ; glyphe ▲/▼ plus honnête | 27.10.2026 |
+| Fenêtre séparée pour le dashboard | Deuxième fenêtre à gérer ; l'app fonctionne déjà en écrans successifs | 27.10.2026 |
+| Radar des KPI | 13 axes de domaines différents, illisible | 27.10.2026 |
+
+### Revue visuelle (Phase 2, 27.10.2026)
+
+Page servie en local (`dashboard/`, base des 10 MDP) : 1 440 px en sombre, 375 px (téléphone) en clair, trois vues. Écran hôte WPF compilé et lancé ; affichage de la page dans WebView2 confirmé par l'utilisateur dans l'application.
+
+| Constat | Classe | Suite |
+|---|---|---|
+| Règles en SVG étiré (`preserveAspectRatio="none"`) : points ovales, graduations écrasées | Bloquant | Corrigé : règle en HTML positionné en %, points ronds à toutes les largeurs |
+| À 800 px, la grille Comparer débordait en largeur | Bloquant | Corrigé : sous 1 000 px, la liste des similaires passe au-dessus et chaque KPI tient sur deux lignes ; aucun défilement horizontal à 375 px |
+| Typologies : effectifs coupés (« 14 logements, 2 pro… ») | Bloquant | Corrigé : colonne de droite élargie |
+| Trait de référence caché sous le point du projet quand les deux coïncident (SN / SP de La Bâtie) : il semble pointillé | Mineur | Accepté : l'écart chiffré (± 0,1 pt) lève l'ambiguïté |

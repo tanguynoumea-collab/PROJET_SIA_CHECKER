@@ -30,11 +30,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Dashboard du benchmark : la page web du dépôt (dashboard/), affichée par WebView2 et publiée telle quelle sur le web -->
+    <Content Include="..\..\dashboard\*.html;..\..\dashboard\*.css;..\..\dashboard\*.js" Link="dashboard\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Anthropic" Version="13.1.0" />
     <PackageReference Include="Clipper2" Version="2.0.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="HelixToolkit.Wpf" Version="3.1.2" />
     <PackageReference Include="LibTessDotNet" Version="1.1.15" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 

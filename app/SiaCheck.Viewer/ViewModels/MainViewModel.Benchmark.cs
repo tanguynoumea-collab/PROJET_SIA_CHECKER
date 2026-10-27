@@ -42,6 +42,16 @@ public sealed partial class MainViewModel
     [ObservableProperty] private string? _benchmarkWarning;
     [ObservableProperty] private string? _benchmarkEmptyMessage;
 
+    /// <summary>Écran Dashboard affiché (page HTML dans WebView2, docs/DESIGN_PLAN.md Évolution 3.1).</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsHome))] private bool _isDashboard;
+    /// <summary>Change à chaque lecture de la base : la vue recharge alors la page.</summary>
+    [ObservableProperty] private int _dashboardVersion;
+    /// <summary>Le dashboard ne peut pas s'afficher (composant WebView2 absent) : dit pourquoi et comment corriger.</summary>
+    [ObservableProperty] private string? _dashboardError;
+
+    public string BenchmarkFile => _paths.BenchmarkFile;
+    public string DashboardTheme => _settings.Theme == "Dark" ? "dark" : "light";
+
     public bool HasBenchmarkFolder => BenchmarkFolder.Length > 0;
     private bool IsBenchmarkStale => HasBenchmarkFolder && Directory.Exists(BenchmarkFolder) &&
                                      BenchmarkBase.IsStale(BenchmarkFolder, _paths.BenchmarkFile);
@@ -53,11 +63,14 @@ public sealed partial class MainViewModel
         if (IsBenchmarkStale) _ = RefreshBenchmarkAsync();
     }
 
-    /// <summary>Le dashboard arrive en phase 11 (HTML dans WebView2).</summary>
     [RelayCommand(CanExecute = nameof(CanOpenBenchmark))]
-    private void OpenBenchmark() { }
+    private void OpenBenchmark()
+    {
+        HomeError = null;
+        IsDashboard = true;
+    }
 
-    private static bool CanOpenBenchmark() => false;
+    private bool CanOpenBenchmark() => BenchmarkProjects.Count > 0;
 
     [RelayCommand]
     private async Task ChooseBenchmarkFolderAsync()
@@ -110,6 +123,7 @@ public sealed partial class MainViewModel
     private void ShowBenchmark(BenchmarkData? data)
     {
         BenchmarkProjects.Clear();
+        OpenBenchmarkCommand.NotifyCanExecuteChanged();
         BenchmarkError = null;
         BenchmarkWarning = null;
         BenchmarkSummary = null;
@@ -127,6 +141,8 @@ public sealed partial class MainViewModel
             BenchmarkWarning = $"{reliable} projet{S(reliable)} de référence : trop peu pour comparer.";
         if (data.Errors.Count > 0)
             BenchmarkError = $"{data.Errors.Count} fichier{S(data.Errors.Count)} ignoré{S(data.Errors.Count)} : " + string.Join(" · ", data.Errors);
+        OpenBenchmarkCommand.NotifyCanExecuteChanged();
+        DashboardVersion++;
     }
 
     /// <summary>

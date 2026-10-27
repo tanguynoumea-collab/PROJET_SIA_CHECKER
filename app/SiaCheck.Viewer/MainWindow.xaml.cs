@@ -54,6 +54,7 @@ public partial class MainWindow : FluentWindow, IShell
     {
         if (e.PropertyName is nameof(MainViewModel.Scene) or "")
             SceneVisual.Content = ViewModel.Scene?.Root;
+        OnDashboardChanged(e.PropertyName);
     }
 
     // ------------------------------------------------------------------ IShell

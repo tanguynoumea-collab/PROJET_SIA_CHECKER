@@ -7,6 +7,7 @@
                  xmlns:h="http://helix-toolkit.org/wpf"
                  xmlns:c="clr-namespace:SiaCheck.Viewer.Controls"
                  xmlns:vm="clr-namespace:SiaCheck.Viewer.ViewModels"
+                 xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
                  mc:Ignorable="d"
                  d:DataContext="{d:DesignInstance vm:MainViewModel}"
                  Title="SIA Check Viewer"
@@ -133,7 +134,8 @@
                         <ui:Button Margin="0,24,0,0" Appearance="Primary" Icon="{ui:SymbolIcon ChartMultiple20}"
                                    Content="Ouvrir le benchmark" Command="{Binding OpenBenchmarkCommand}"
                                    MinHeight="{StaticResource TargetSize}"
-                                   ToolTipService.ShowOnDisabled="True" ToolTip="Disponible avec le dashboard (phase 11)" />
+                                   ToolTipService.ShowOnDisabled="True"
+                                   ToolTip="Comparer les projets de la base (choisissez d'abord le dossier de la base)" />
                         <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}" Text="{Binding BenchmarkSummary}"
                                    Visibility="{Binding BenchmarkSummary, Converter={StaticResource VisibleWhen}}" />
                         <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushVerdictWarning}"
@@ -231,6 +233,38 @@
                     </ScrollViewer>
                 </DockPanel>
             </Grid>
+        </Grid>
+
+        <!-- ================================================================ DASHBOARD (plan §Évolution 3.1) -->
+        <Grid Grid.Row="1" Visibility="{Binding IsDashboard, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Border Background="{DynamicResource BrushSurface}" Padding="16,8">
+                <DockPanel>
+                    <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon ArrowClockwise20}"
+                               MinHeight="{StaticResource TargetSize}" Command="{Binding RefreshBenchmarkCommand}"
+                               ToolTip="Relire la base" AutomationProperties.Name="Relire la base" />
+                    <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon Home20}" Command="{Binding GoHomeCommand}"
+                               ToolTip="Retour à l'accueil" AutomationProperties.Name="Accueil"
+                               MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
+                    <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextTitle}" Text="Benchmark" />
+                    <TextBlock Margin="16,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextCaption}" Text="{Binding BenchmarkSummary}" />
+                    <StackPanel Margin="16,0,0,0" Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding IsBenchmarkLoading, Converter={StaticResource BoolToVisibility}}">
+                        <ui:ProgressRing Width="16" Height="16" IsIndeterminate="True" />
+                        <TextBlock Margin="8,0,0,0" Style="{StaticResource TextCaption}" Text="{Binding BenchmarkActivity}" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+            <!-- La page dashboard/index.html ; données transmises par la vue (MainWindow.Dashboard.cs) -->
+            <wv2:WebView2 x:Name="DashboardView" Grid.Row="1" DefaultBackgroundColor="Transparent" />
+            <Border Grid.Row="1" MaxWidth="560" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource Banner}"
+                    BorderBrush="{DynamicResource BrushVerdictError}"
+                    Visibility="{Binding DashboardError, Converter={StaticResource VisibleWhen}}">
+                <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding DashboardError}" />
+            </Border>
         </Grid>
 
         <!-- ================================================================ ESPACE DE REVUE -->

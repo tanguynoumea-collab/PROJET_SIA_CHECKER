@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Benchmark des surfaces</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Dashboard du benchmark (docs/DESIGN_PLAN.md, Évolution 3.1). Sans dépendance : la même page tourne dans
+       SIA Check (WebView2, données transmises par l'application) et sur un serveur web (benchmark.json à côté). -->
+  <nav class="tabs" role="tablist" aria-label="Vues du benchmark">
+    <button role="tab" id="tab-comparer" aria-controls="vue-comparer" aria-selected="true">Comparer</button>
+    <button role="tab" id="tab-base" aria-controls="vue-base" aria-selected="false" tabindex="-1">Base</button>
+    <button role="tab" id="tab-typologies" aria-controls="vue-typologies" aria-selected="false" tabindex="-1">Typologies</button>
+  </nav>
+
+  <main>
+    <p id="etat" class="etat" hidden></p>
+
+    <section id="vue-comparer" role="tabpanel" aria-labelledby="tab-comparer" hidden>
+      <header class="entete">
+        <label class="choix">Projet
+          <select id="projet"></select>
+        </label>
+        <p id="resume-reference" class="secondaire"></p>
+      </header>
+      <p id="bandeau-projet" class="bandeau" hidden></p>
+      <div class="comparer">
+        <aside class="groupe" aria-label="Projets similaires">
+          <h2>Projets similaires</h2>
+          <ul id="similaires" class="liste"></ul>
+          <p id="aucun-similaire" class="secondaire" hidden></p>
+          <h2>Filtres</h2>
+          <label class="case"><input type="checkbox" id="filtre-categorie" checked> même catégorie d'ouvrage</label>
+          <label class="case"><input type="checkbox" id="filtre-intervention" checked> même type d'intervention</label>
+          <details id="ecartes">
+            <summary></summary>
+            <ul class="liste secondaire"></ul>
+          </details>
+        </aside>
+        <div id="regles" class="regles"></div>
+      </div>
+    </section>
+
+    <section id="vue-base" role="tabpanel" aria-labelledby="tab-base" hidden>
+      <p class="secondaire">Une ligne par MDP. « Ensemble » : ratios combinés des projets fiables (Σ numérateurs / Σ dénominateurs).
+        ▲ / ▼ : au-dessus ou au-dessous de l'ensemble, dans le sens favorable ou défavorable du ratio.</p>
+      <div class="defile"><table id="table-base"></table></div>
+    </section>
+
+    <section id="vue-typologies" role="tabpanel" aria-labelledby="tab-typologies" hidden>
+      <h2 id="titre-typologies"></h2>
+      <div id="boites"></div>
+      <p class="secondaire">Boîte : quartiles ; trait : médiane ; moustaches : minimum et maximum. Grisé : moins de 3 projets.</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

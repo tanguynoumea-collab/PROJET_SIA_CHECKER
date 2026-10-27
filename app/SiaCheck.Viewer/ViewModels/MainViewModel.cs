@@ -63,7 +63,7 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string? _lastLogFile;
 
     public bool HasDocument => Document is not null;
-    public bool IsHome => Document is null;
+    public bool IsHome => Document is null && !IsDashboard;
     public string ProjectName => Document?.Project ?? "";
     public string AnalysedAt => Document is null ? "" : $"analysé le {File.GetLastWriteTime(_paths.AnalysisFile(ProjectDir!)):dd.MM HH:mm}";
     public bool CacheIsStale => Document?.Cache.Stale ?? false;
@@ -326,6 +326,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         Document = null;
         Scene = null;
+        IsDashboard = false;
         FillRecents();
         if (IsBenchmarkStale) _ = RefreshBenchmarkAsync();
     }

@@ -73,6 +73,13 @@ def test_sc_hors_fourchette_ecarte_le_projet(tmp_path):
     assert b.combiner([p], b.KPI_BY_ID["SUP/SP_HS"])["n"] == 0
 
 
+def test_sens_et_objet_des_kpis():
+    for k in b.KPIS:
+        assert k.sens in (-1, 0, 1)
+        assert bool(k.objet) == (k.sens != 0)     # un écart orienté se traduit en m²
+    assert b.KPI_BY_ID["SUP/SP_HS"].sens == 1 and b.KPI_BY_ID["SD/SP_HS"].sens == -1
+
+
 def test_codes_et_zones():
     assert b.code("Surface Utile Principale (SUP)") == "SUP" and b.code("SD") == "SD"
     assert b.code("SEP-Toiture") == "SPT" and b.code("Volume Bâti (VB)") == "VB" and b.code(None) is None
@@ -120,6 +127,7 @@ def test_dossier_et_json(tmp_path):
     assert len(data["projets"]) == 2 and len(data["erreurs"]) == 1
     p1 = data["projets"][0]
     assert p1["fiable"] and p1["similaires"][0]["id"] == "2" and p1["reference"]["SUP/SP_HS"]["n"] == 1
+    assert p1["distances"] == {"2": p1["similaires"][0]["distance"]}
     assert data["typologies"][0]["chambres"] == 1 and data["typologies"][0]["n"] == 2
 
 

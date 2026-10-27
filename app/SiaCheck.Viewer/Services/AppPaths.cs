@@ -34,6 +34,9 @@ public sealed class AppPaths(string roamingRoot, string localRoot)
     /// <summary>Base du benchmark lue par le moteur (sia-check --benchmark) : régénérable, reste locale.</summary>
     public string BenchmarkFile => Path.Combine(localRoot, "benchmark", "benchmark.json");
 
+    /// <summary>Profil du navigateur intégré (WebView2) du dashboard : cache, régénérable, local.</summary>
+    public string WebViewDataDir => Path.Combine(localRoot, "webview2");
+
     public string LogFile(string projectDir) => Path.Combine(localRoot, "analyses", $"{Slug(projectDir)}.log");
 
     /// <summary>Revues IA lancées depuis l'app (rapport, verdicts, preuves) : suivent l'utilisateur, comme les statuts.</summary>

@@ -1,0 +1,148 @@
+/* Rôles de couleur de SIA Check (docs/DESIGN_PLAN.md §2), clairs et sombres. Une seule couleur de donnée : l'accent,
+   pour le projet étudié ; tout le reste en tons neutres. */
+:root {
+  color-scheme: light;
+  --fond: #F3F4F6;
+  --surface: #FFFFFF;
+  --surface-2: #E9EBEF;
+  --texte: #1B1E24;
+  --texte-2: #5D6470;
+  --accent: #5A50D6;
+  --sur-accent: #FFFFFF;
+  --filet: #DADDE3;
+  --ok: #1E7F52;
+  --alerte: #9A6700;
+  --erreur: #C62F2F;
+  --police: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --police-forte: "Segoe UI Variable Display Semibold", "Segoe UI Semibold", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --fond: #15171C; --surface: #1E2128; --surface-2: #272B33; --texte: #E7E9EE; --texte-2: #9BA1AD;
+    --accent: #8B83FF; --sur-accent: #15171C; --filet: #2E323B; --ok: #59C28F; --alerte: #E8B04A; --erreur: #F27272;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --fond: #15171C; --surface: #1E2128; --surface-2: #272B33; --texte: #E7E9EE; --texte-2: #9BA1AD;
+  --accent: #8B83FF; --sur-accent: #15171C; --filet: #2E323B; --ok: #59C28F; --alerte: #E8B04A; --erreur: #F27272;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--fond); color: var(--texte);
+  font: 13px/1.4 var(--police); font-variant-numeric: tabular-nums;
+}
+h2 {
+  margin: 16px 0 8px; font: 12px var(--police-forte); color: var(--texte-2);
+  font-variant-caps: all-small-caps; letter-spacing: .02em;
+}
+.secondaire { color: var(--texte-2); font-size: 12px; }
+.mono { font-family: var(--mono); font-size: 12px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+/* Onglets texte, soulignés en accent */
+.tabs { display: flex; gap: 24px; padding: 0 24px; background: var(--surface); border-bottom: 1px solid var(--filet); }
+.tabs button {
+  border: 0; background: none; color: var(--texte-2); font: 14px var(--police-forte);
+  padding: 12px 0 10px; border-bottom: 2px solid transparent; cursor: pointer; min-height: 32px;
+}
+.tabs button[aria-selected="true"] { color: var(--texte); border-bottom-color: var(--accent); }
+main { padding: 16px 24px 24px; }
+.etat { font-size: 14px; margin: 48px auto; max-width: 560px; text-align: center; }
+.bandeau {
+  border: 1px solid var(--alerte); border-radius: 4px; background: var(--surface);
+  padding: 6px 8px; margin: 0 0 12px;
+}
+
+/* Comparer */
+.entete { display: flex; align-items: baseline; gap: 24px; flex-wrap: wrap; margin-bottom: 12px; }
+.choix { font: 14px var(--police-forte); display: flex; align-items: center; gap: 8px; }
+select {
+  font: 13px var(--police); color: var(--texte); background: var(--surface); border: 1px solid var(--filet);
+  border-radius: 4px; padding: 5px 8px; min-height: 32px; min-width: 280px;
+}
+.comparer { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
+.groupe { background: var(--surface); border-radius: 6px; padding: 4px 12px 12px; position: sticky; top: 12px; }
+.liste { list-style: none; margin: 0; padding: 0; }
+.liste li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.liste label { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; }
+.liste .nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.case { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
+input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.proximite { display: inline-flex; gap: 2px; margin-left: auto; flex: none; }
+.proximite i { width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--texte-2); opacity: .45; }
+.proximite i.plein { background: var(--texte-2); opacity: 1; }
+details { margin-top: 16px; }
+summary { cursor: pointer; color: var(--texte-2); font-size: 12px; }
+details .liste li { padding: 2px 0; }
+
+.regles { background: var(--surface); border-radius: 6px; padding: 4px 16px 12px; }
+.famille h2 { border-bottom: 1px solid var(--filet); padding-bottom: 4px; }
+.kpi { display: grid; grid-template-columns: minmax(200px, 1.1fr) minmax(200px, 2fr) minmax(170px, 1fr); gap: 16px;
+       align-items: center; padding: 4px 0; min-height: 44px; }
+/* Écran étroit (web, téléphone) : la liste des similaires passe au-dessus, chaque KPI sur deux lignes */
+@media (max-width: 1000px) {
+  .comparer { grid-template-columns: 1fr; }
+  .groupe { position: static; }
+  .kpi { grid-template-columns: 1fr auto; }
+  .kpi .regle { grid-column: 1 / -1; grid-row: 2; }
+  select { min-width: 0; max-width: 100%; }
+  main { padding: 12px 16px; }
+}
+.kpi .libelle { font-size: 13px; }
+.kpi .valeurs { font-size: 12px; color: var(--texte-2); }
+.kpi .valeurs b { color: var(--texte); font-weight: 600; }
+.kpi .ecart { font-size: 12px; text-align: right; }
+.kpi .ecart .m2 { display: block; color: var(--texte-2); }
+/* La règle : axe, quartiles, pairs, référence, projet étudié ; positions en % du domaine (app.js, regle) */
+.regle { position: relative; height: 36px; margin: 0 6px; }
+.regle > span { position: absolute; }
+.regle .axe { left: 0; right: 0; top: 14px; border-top: 1px solid var(--filet); }
+.regle .graduation { top: 24px; font-size: 11px; color: var(--texte-2); }
+.regle .debut { left: 0; } .regle .fin { right: 0; }
+.regle .quartiles { top: 8px; height: 13px; background: var(--surface-2); border-radius: 2px; min-width: 2px; }
+.regle .pair, .regle .etudie { border-radius: 50%; border: 2px solid var(--surface); transform: translateX(-50%); }
+.regle .pair { top: 9px; width: 11px; height: 11px; background: var(--texte-2); }
+.regle .etudie { top: 6px; width: 17px; height: 17px; background: var(--accent); z-index: 1; }
+.regle .reference { top: 3px; height: 23px; border-left: 2px solid var(--texte); transform: translateX(-1px); }
+.regle .reference.fragile { border-left-style: dashed; }
+.favorable { color: var(--ok); }
+.defavorable { color: var(--alerte); }
+.absent { color: var(--texte-2); font-size: 12px; font-style: italic; }
+
+/* SVG : règles et boîtes */
+.axe { stroke: var(--filet); stroke-width: 1; }
+.graduation { fill: var(--texte-2); font-size: 11px; }
+.quartiles { fill: var(--surface-2); }
+.reference { stroke: var(--texte); stroke-width: 2; }
+.reference.fragile { stroke-dasharray: 3 3; }
+.pair { fill: var(--texte-2); stroke: var(--surface); stroke-width: 2; }
+.etudie { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.moustache { stroke: var(--texte-2); stroke-width: 1.5; }
+.boite { fill: var(--surface-2); stroke: var(--texte-2); stroke-width: 1; }
+.mediane { stroke: var(--texte); stroke-width: 2; }
+.grise { opacity: .45; }
+
+/* Base */
+.defile { overflow-x: auto; background: var(--surface); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 6px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--filet); }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+th { font: 12px var(--police-forte); color: var(--texte-2); cursor: pointer; position: sticky; top: 0; background: var(--surface); }
+th[aria-sort] { color: var(--texte); }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--surface-2); }
+tr.ensemble td { font-weight: 600; background: var(--surface-2); cursor: default; }
+tr.ecarte td { color: var(--texte-2); }
+td .signe { display: inline-block; width: 12px; margin-left: 4px; font-size: 10px; }
+
+/* Typologies */
+#boites { background: var(--surface); border-radius: 6px; padding: 12px 16px; max-width: 980px; }
+#boites svg { width: 100%; display: block; }
+.ligne-typo text { fill: var(--texte); font-size: 12px; }
+.ligne-typo text.secondaire { fill: var(--texte-2); }
+.lien { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }

@@ -48,20 +48,26 @@ class Kpi:
     den: tuple[str, ...]
     unite: str = "%"
     note: str = ""
+    sens: int = 0          # +1 plus haut = favorable, −1 plus bas = favorable, 0 neutre
+    objet: str = ""        # ce que mesure le numérateur, pour traduire un écart en m² (« de SUP hors-sol »)
 
 
 KPIS = [
     Kpi("SUP/SP_HS", "Rendement", "SUP hors-sol / SP hors-sol", ("SUP_HS",), ("SP_HS",),
-        note="Le m² qui rapporte par m² construit au-dessus du sol."),
-    Kpi("SVN/SP_HS", "Rendement", "SVN / SP hors-sol", ("SVN",), ("SP_HS",), note="Rendement commercial (USPI)."),
-    Kpi("SN/SP", "Rendement", "SN / SP", ("SN",), ("SP",)),
-    Kpi("SC/SP", "Pertes", "Construction : SC / SP", ("SC",), ("SP",), note="SC = SP − SN."),
-    Kpi("SD/SP_HS", "Pertes", "Circulations : SD hors-sol / SP hors-sol", ("SD_HS",), ("SP_HS",)),
-    Kpi("SI/SP", "Pertes", "Installations : SI / SP", ("SI",), ("SP",)),
-    Kpi("SUS_HS/SP_HS", "Pertes", "Utile secondaire hors-sol / SP hors-sol", ("SUS_HS",), ("SP_HS",)),
+        note="Le m² qui rapporte par m² construit au-dessus du sol.", sens=1, objet="de SUP hors-sol"),
+    Kpi("SVN/SP_HS", "Rendement", "SVN / SP hors-sol", ("SVN",), ("SP_HS",), note="Rendement commercial (USPI).",
+        sens=1, objet="de surface de vente nette"),
+    Kpi("SN/SP", "Rendement", "SN / SP", ("SN",), ("SP",), sens=1, objet="de surface nette"),
+    Kpi("SC/SP", "Pertes", "Construction : SC / SP", ("SC",), ("SP",), note="SC = SP − SN.",
+        sens=-1, objet="de construction"),
+    Kpi("SD/SP_HS", "Pertes", "Circulations : SD hors-sol / SP hors-sol", ("SD_HS",), ("SP_HS",),
+        sens=-1, objet="de circulations"),
+    Kpi("SI/SP", "Pertes", "Installations : SI / SP", ("SI",), ("SP",), sens=-1, objet="d'installations"),
+    Kpi("SUS_HS/SP_HS", "Pertes", "Utile secondaire hors-sol / SP hors-sol", ("SUS_HS",), ("SP_HS",),
+        sens=-1, objet="de SUS hors-sol"),
     Kpi("SP_SS/SUP", "Sous-sol", "SP sous-sol / SUP", ("SP_SS",), ("SUP",),
-        note="m² de sous-sol construits par m² utile principal."),
-    Kpi("FACADE/SP_HS", "Compacité", "Façade / SP hors-sol", ("FACADE",), ("SP_HS",)),
+        note="m² de sous-sol construits par m² utile principal.", sens=-1, objet="de sous-sol"),
+    Kpi("FACADE/SP_HS", "Compacité", "Façade / SP hors-sol", ("FACADE",), ("SP_HS",), sens=-1, objet="de façade"),
     Kpi("VITRE/FACADE", "Compacité", "Vitrage / façade", ("VITRE",), ("FACADE",)),
     Kpi("VB/SP", "Compacité", "Hauteur brute moyenne : VB / SP", ("VB",), ("SP",), unite="m"),
     Kpi("SUP/LOG", "Programme", "SUP par logement", ("SUP",), ("LOG",), unite="m²"),
@@ -503,6 +509,8 @@ def _projet_json(p: Projet, projets: list[Projet], k: int) -> dict:
         "kpis": {kpi.id: (None if (r := p.ratio(kpi)) is None else
                           {"num": round(r[0], 2), "den": round(r[1], 2), "valeur": r[0] / r[1]}) for kpi in KPIS},
         "similaires": [{"id": q.id, "distance": round(d, 3)} for q, d in groupe],
+        # distances à tous les projets fiables, sans filtre : la page refait le groupe quand on change les filtres
+        "distances": {q.id: round(d, 3) for q, d in similaires(p, projets, filtres=(), k=len(projets))},
         "reference": {kpi.id: combiner(membres, kpi) for kpi in KPIS},
     }
 

@@ -33,6 +33,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from . import mdp
+
 VERSION = 1
 NETTES = ("SUP", "SUS", "SD", "SI")
 CANTONS = {"vaud": "VD", "geneve": "GE", "fribourg": "FR", "valais": "VS", "neuchatel": "NE", "jura": "JU",
@@ -396,10 +398,8 @@ def lire(path: Path) -> Projet:
         t["SC"] = t["SP"] - t["SN"]
     if logements or infos.get("logements"):
         t["LOG"] = float(len(logements) or infos["logements"])
-    if not infos.get("categorie") and t.get("PART_AUTRES_SUP") is not None:
-        infos["categorie"] = ("Logement Mixte (>10% autres affectations)" if t["PART_AUTRES_SUP"] > 0.10
-                              else "Logement (100-90% SU)")
-        infos["categorie_deduite"] = True
+    # La typologie n'est jamais déduite des affectations (logique propre au logement) : absente, elle reste vide
+    # et le projet est « non identifié » (V3_PLAN §9).
     nom = infos.get("nom") or re.sub(r"^MDP-[\d.]+[-_ ]*", "", path.stem).replace("_", " ").strip()
     return Projet(_id(infos.get("id"), path.name), str(nom), path.name, infos,
                   {k: v for k, v in t.items() if v is not None}, logements, _controles(t, infos, logements))
@@ -531,6 +531,7 @@ def construire(projets: list[Projet], erreurs: list[str] | None = None, k: int =
         "projets": [_projet_json(p, projets, k) for p in projets],
         "base": {kpi.id: combiner(projets, kpi) for kpi in KPIS},
         "typologies": typologies(projets), "erreurs": erreurs or [],
+        "listes": mdp.listes(),     # listes déroulantes de la fiche « Identité du projet »
     }
 
 

@@ -23,6 +23,8 @@ sia-check "L OREE.tgm" --corrections journal.json --out report/ --mdp MDP.xlsx  
 sia-check "L OREE.tgm" --corrections journal.json --corrections-xlsx 1778-Corrections.xlsx   # Excel de correction
 sia-check --benchmark 03-DataBase-DonneesProjets --benchmark-json dashboard/benchmark.json   # base du benchmark (MDP), lue par dashboard/index.html
 sia-check "L OREE.tgm" --corrections journal.json --benchmark-projet mon-projet.json   # le projet au format du benchmark (« Mon projet »)
+sia-check "L OREE.tgm" --mdp MDP-1778-Loree.xlsx --identite identite.json   # MDP avec sa fiche d'identité (typologie, canton…)
+sia-check --mdp-identite MDP-1746.00-Avallons.xlsx --identite identite.json   # identité écrite dans un MDP existant
 ```
 
 - Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet) ou `.ifc` (mapping dans `config.yaml > sources.ifc`).

@@ -113,6 +113,85 @@ public partial class MainWindow : FluentWindow, IShell
             ? boxes.Select(b => b.Text.Trim()).ToArray() : null;
     }
 
+    /// <summary>
+    /// Fiche « Identité du projet » (docs/DESIGN_PLAN.md, Évolution 3.4) : listes du gabarit MDP là où elles existent,
+    /// pour que la sélection du benchmark (typologie, canton) reste fiable ; * = nécessaire pour entrer dans la base.
+    /// </summary>
+    public async Task<MdpProject?> AskIdentityAsync(MdpProject initial, IdentityLists lists, IdentityMode mode, string ok)
+    {
+        var grid = new Grid { MinWidth = 560 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var row = 0;
+        T Add<T>(string label, T control) where T : FrameworkElement
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var text = new System.Windows.Controls.TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 6, 16, 6) };
+            Grid.SetRow(text, row);
+            Grid.SetRow(control, row);
+            Grid.SetColumn(control, 1);
+            control.Margin = new Thickness(0, 6, 0, 6);
+            grid.Children.Add(text);
+            grid.Children.Add(control);
+            row++;
+            return control;
+        }
+        System.Windows.Controls.ComboBox Liste(IReadOnlyList<string> items, string value, bool optional)
+        {
+            // Une ancienne valeur hors liste (MDP rempli à la main) reste visible, en tête, pour être corrigée
+            var all = new List<string>();
+            if (optional) all.Add("");
+            if (value.Length > 0 && !items.Contains(value)) all.Add(value);
+            all.AddRange(items);
+            return new System.Windows.Controls.ComboBox { ItemsSource = all, SelectedItem = value.Length > 0 ? value : (optional ? "" : null) };
+        }
+        var id = Add("ID projet HRS *", new System.Windows.Controls.TextBox { Text = initial.Id, IsReadOnly = mode == IdentityMode.EditBase });
+        var nom = Add("Nom du projet *", new System.Windows.Controls.TextBox { Text = initial.Name });
+        var typologie = Add("Typologie *", Liste(lists.Typologies, initial.Typologie, false));
+        var canton = Add("Canton *", Liste(lists.Cantons, initial.Canton, false));
+        var commune = Add("Commune", new System.Windows.Controls.TextBox { Text = initial.Commune });
+        var intervention = Add("Type d'intervention *", Liste(lists.Interventions, initial.Intervention, false));
+        var phase = Add("Phase SIA", Liste(lists.Phases, initial.Phase, true));
+        if (mode == IdentityMode.EditBase) id.ToolTip = "L'ID relie toutes les tables du MDP : il ne se modifie pas ici.";
+
+        var rappel = new System.Windows.Controls.TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0) };
+        rappel.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "BrushTextSecondary");
+        Grid.SetRow(rappel, row);
+        Grid.SetColumnSpan(rappel, 2);
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.Children.Add(rappel);
+
+        MdpProject Read() => new()
+        {
+            Id = id.Text.Trim(), Name = nom.Text.Trim(), Typologie = typologie.SelectedItem as string ?? "",
+            Canton = canton.SelectedItem as string ?? "", Commune = commune.Text.Trim(),
+            Intervention = intervention.SelectedItem as string ?? "", Phase = phase.SelectedItem as string ?? "",
+        };
+        var dlg = new Wpf.Ui.Controls.MessageBox
+        {
+            Title = "Identité du projet", Content = grid, PrimaryButtonText = ok, CloseButtonText = "Annuler", Owner = this,
+        };
+        void Check()
+        {
+            var current = Read();
+            var forBase = ProjectIdentity.Missing(current, forBase: true);
+            rappel.Text = forBase.Count == 0
+                ? "* nécessaire pour entrer dans le benchmark : tout est renseigné."
+                : $"* nécessaire pour entrer dans le benchmark. Il manque : {string.Join(", ", forBase)}.";
+            dlg.IsPrimaryButtonEnabled = mode switch
+            {
+                IdentityMode.Base => forBase.Count == 0,
+                IdentityMode.Export => current.Id.Length > 0,
+                _ => true,
+            };
+        }
+        foreach (var box in new[] { id, nom, commune }) box.TextChanged += (_, _) => Check();
+        foreach (var list in new[] { typologie, canton, intervention, phase }) list.SelectionChanged += (_, _) => Check();
+        Check();
+        dlg.Loaded += (_, _) => (mode == IdentityMode.EditBase ? (FrameworkElement)typologie : id).Focus();
+        return await dlg.ShowDialogAsync() == Wpf.Ui.Controls.MessageBoxResult.Primary ? Read() : null;
+    }
+
     public void OpenFile(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
 
     public void Frame(Rect3D? bounds)

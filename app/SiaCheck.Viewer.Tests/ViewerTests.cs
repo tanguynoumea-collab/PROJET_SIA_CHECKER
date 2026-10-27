@@ -240,6 +240,13 @@ internal sealed class FakeShell : IShell
     public string[]? AskAnswer { get; set; }
     public Task<string[]?> AskAsync(string title, string message, IReadOnlyList<(string Label, string Value)> fields, string ok) =>
         Task.FromResult(AskAnswer);
+    public MdpProject? IdentityAnswer { get; set; }
+    public IdentityMode? IdentityMode { get; private set; }
+    public Task<MdpProject?> AskIdentityAsync(MdpProject initial, IdentityLists lists, IdentityMode mode, string ok)
+    {
+        IdentityMode = mode;
+        return Task.FromResult(IdentityAnswer);
+    }
     public void OpenFile(string path) { }
     public void Frame(Rect3D? bounds) { }
     public void ApplyTheme(string theme) { }

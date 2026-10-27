@@ -115,3 +115,37 @@ def test_compact_strings_drops_unused(tmp_path):
     with zipfile.ZipFile(TEMPLATE) as z:
         assert n == z.read("xl/sharedStrings.xml").count(b"<si>")   # gabarit déjà compact : rien de perdu
     assert _load(out)["InfosProjet"]["B2"].value == "ID projet"
+
+
+IDENTITE = {"ID projet": "1778", "Nom Projet HRS": "L'Orée", "Canton": "VD", "Commune": "Lausanne",
+            "Categorie d'Ouvrage": "Santé", "Type d'intervention": "Nouvelle construction", "Phase du projet": "53"}
+
+
+def _infos(path) -> dict:
+    ws = _load(path, data_only=True)["InfosProjet"]
+    return {r[1]: r[2] for r in ws.iter_rows(values_only=True) if r[1]}
+
+
+def test_identite_in_exported_mdp(result, cfg, tmp_path):
+    path = mdp.write(result, cfg, tmp_path / "MDP.xlsx", project_id=42, project_name="Synth", identite=IDENTITE)
+    infos = _infos(path)
+    assert infos["ID projet"] == 1778 and infos["Phase du projet"] == 53     # nombres, pour la jointure Power BI
+    assert infos["Canton"] == "VD" and infos["Categorie d'Ouvrage"] == "Santé" and infos["Nom Projet HRS"] == "L'Orée"
+    rows = list(_load(path, data_only=True)["SurfacesNettesSIA416"].iter_rows(min_row=2, max_row=2, values_only=True))
+    assert rows[0][0] == 1778                                                # l'ID de la fiche relie les tables
+
+
+def test_identite_written_into_existing_mdp_keeps_the_rest(filled):
+    before = _ext(filled)
+    mdp.ecrire_identite(filled, {"Canton": "GE", "Commune": "", "Categorie d'Ouvrage": "EMS"})
+    infos = _infos(filled)
+    assert infos["Canton"] == "GE" and infos["Categorie d'Ouvrage"] == "EMS"
+    assert infos["Nom Projet HRS"] == "Synth" and infos["ID projet"] == 42   # valeur vide : rien d'effacé
+    assert _ext(filled) == before                                            # listes déroulantes intactes
+
+
+def test_listes_of_the_template():
+    listes = mdp.listes()
+    assert "Santé" in listes["Categorie d'Ouvrage"] and "x" not in listes["Categorie d'Ouvrage"]
+    assert "VD" in listes["Canton"] and "Abreviation" not in listes["Canton"]
+    assert listes["Phase du projet"][0] == "21"

@@ -78,12 +78,17 @@ public sealed partial class AnalysisService(string enginePath)
 
     /// <summary>Tableau MDP HRS (sia_check.mdp) ; gabarit vierge livré si <paramref name="template"/> est null.</summary>
     public Task<EngineRun> ExportMdpAsync(string projectDir, string mdpPath, string? template, string? projectId,
-                                          string? projectName, EngineInputs inputs, CancellationToken ct) =>
+                                          string? projectName, EngineInputs inputs, CancellationToken ct, string? identity = null) =>
         RunAsync(["-q", projectDir, "--mdp", mdpPath,
                   .. template is null ? Array.Empty<string>() : ["--mdp-template", template],
                   .. string.IsNullOrWhiteSpace(projectId) ? Array.Empty<string>() : ["--project-id", projectId.Trim()],
                   .. string.IsNullOrWhiteSpace(projectName) ? Array.Empty<string>() : ["--project-name", projectName.Trim()],
+                  .. identity is null ? Array.Empty<string>() : ["--identite", identity],
                   .. inputs.Args()], null, ct);
+
+    /// <summary>Fiche « Identité du projet » écrite dans un MDP existant (feuille InfosProjet), le reste intact.</summary>
+    public Task<EngineRun> WriteMdpIdentityAsync(string mdpPath, string identity, CancellationToken ct) =>
+        RunAsync(["--mdp-identite", mdpPath, "--identite", identity], null, ct);
 
     /// <summary>Excel de correction (treegram.write_corrections) : demande le journal (<paramref name="inputs"/>).</summary>
     public Task<EngineRun> ExportCorrectionsAsync(string projectDir, string xlsxPath, EngineInputs inputs, CancellationToken ct) =>

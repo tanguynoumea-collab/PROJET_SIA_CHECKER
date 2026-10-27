@@ -8,11 +8,20 @@ public sealed class RecentProject
     public int IssueCount { get; set; }
 }
 
-/// <summary>Identité HRS d'un projet, écrite dans InfosProjet du MDP (clé de jointure du benchmark Power BI).</summary>
+/// <summary>
+/// Identité HRS d'un projet, écrite dans InfosProjet du MDP : l'ID relie les tables, la typologie et le canton servent à
+/// le sélectionner dans le benchmark (fiche « Identité du projet », ProjectIdentity).
+/// </summary>
 public sealed class MdpProject
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public string Canton { get; set; } = "";
+    public string Commune { get; set; } = "";
+    /// <summary>« Catégorie d'ouvrage » du MDP, appelée typologie dans l'application.</summary>
+    public string Typologie { get; set; } = "";
+    public string Intervention { get; set; } = "";
+    public string Phase { get; set; } = "";
 }
 
 public sealed class WindowPlacement

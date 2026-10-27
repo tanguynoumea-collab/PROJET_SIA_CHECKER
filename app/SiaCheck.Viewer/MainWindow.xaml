@@ -181,21 +181,37 @@
                         <ItemsControl ItemsSource="{Binding BenchmarkProjects}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Padding="{StaticResource RowPadding}" Background="Transparent" ToolTip="{Binding Tooltip}">
+                                    <!-- Clic : fiche « Identité du projet », écrite dans le MDP (Évolution 3.4) -->
+                                    <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}" ToolTip="{Binding Tooltip}"
+                                            Command="{Binding DataContext.EditBaseIdentityCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" AutomationProperties.Name="{Binding Name}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="48" />
                                                 <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="88" />
                                                 <ColumnDefinition Width="32" />
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding Id}" />
                                             <TextBlock Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Style="{StaticResource TextBody}" Text="{Binding Name}" />
-                                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource TextMono}"
+                                            <!-- Typologie : première dimension du benchmark ; « Non identifié » invite à cliquer -->
+                                            <TextBlock Grid.Column="2" Margin="0,0,8,0" VerticalAlignment="Center" Text="{Binding Typologie}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource TextCaption}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsIdentified}" Value="False">
+                                                                <Setter Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Grid.Column="3" VerticalAlignment="Center" Style="{StaticResource TextMono}"
                                                        Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding Canton}" />
                                             <!-- Empreinte de fiabilité : un segment par contrôle du moteur, toujours dans le même ordre -->
-                                            <ItemsControl Grid.Column="3" Margin="8,0" VerticalAlignment="Center" ItemsSource="{Binding Fingerprint}"
+                                            <ItemsControl Grid.Column="4" Margin="8,0" VerticalAlignment="Center" ItemsSource="{Binding Fingerprint}"
                                                           Focusable="False" AutomationProperties.Name="Empreinte de fiabilité">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
@@ -224,9 +240,9 @@
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
-                                            <c:VerdictGlyph Grid.Column="4" VerticalAlignment="Center" Verdict="{Binding Verdict}" />
+                                            <c:VerdictGlyph Grid.Column="5" VerticalAlignment="Center" Verdict="{Binding Verdict}" />
                                         </Grid>
-                                    </Border>
+                                    </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

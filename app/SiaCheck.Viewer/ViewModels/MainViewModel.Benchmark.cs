@@ -9,14 +9,18 @@ namespace SiaCheck.Viewer.ViewModels;
 /// <summary>Un MDP de la base sur l'accueil, avec son empreinte de fiabilité (un segment par contrôle du moteur).</summary>
 public sealed class BenchmarkItem(BenchmarkProject p)
 {
+    public BenchmarkProject Project { get; } = p;
     public string Id { get; } = p.Id;
+    /// <summary>Typologie (catégorie d'ouvrage) en libellé court ; « Non identifié » sans typologie.</summary>
+    public string Typologie { get; } = ProjectIdentity.Short(p.Info("categorie"));
+    public bool IsIdentified { get; } = !string.IsNullOrWhiteSpace(p.Info("categorie"));
     public string Name { get; } = p.Name;
     public string Canton { get; } = p.Info("canton") ?? "—";
     public bool IsReliable { get; } = p.Reliable;
     public string Verdict => IsReliable ? "OK" : "ALERTE";
     public IReadOnlyList<bool> Fingerprint { get; } = p.Checks.Select(c => c.Ok).ToList();
     public string Tooltip { get; } =
-        $"{p.File}\n" + (p.Reliable ? "Dans les références" : "Écarté des références : SP et SN ne décrivent pas le même périmètre") +
+        $"{p.File} · cliquer pour compléter son identité\n" + (p.Reliable ? "Dans les références" : "Écarté des références : SP et SN ne décrivent pas le même périmètre") +
         (p.Checks.Where(c => !c.Ok).ToList() is { Count: > 0 } missing
             ? "\n\nManque :\n• " + string.Join("\n• ", missing.Select(c => c.Detail.Length > 0 ? $"{c.Label} ({c.Detail})" : c.Label))
             : "\n\nToutes les données sont présentes.");
@@ -57,11 +61,18 @@ public sealed partial class MainViewModel
     [ObservableProperty] private string? _dashboardError;
 
     public string BenchmarkFile => _paths.BenchmarkFile;
+    /// <summary>Fiche d'identité transmise au moteur (--identite) : régénérée à chaque usage.</summary>
+    private string IdentityFile => Path.Combine(Path.GetDirectoryName(_paths.BenchmarkFile)!, "identite.json");
+    private BenchmarkData? _benchmarkData;
+    /// <summary>Listes de la fiche Identité : celles du gabarit transmises par le moteur, sinon la copie livrée.</summary>
+    internal IdentityLists IdentityLists => IdentityLists.From(_benchmarkData?.Lists);
     public string DashboardTheme => _settings.Theme == "Dark" ? "dark" : "light";
 
     public bool HasBenchmarkFolder => BenchmarkFolder.Length > 0;
+    /// <summary>Base à relire : un MDP a changé, ou le moteur est plus récent que la dernière lecture (comme une analyse).</summary>
     private bool IsBenchmarkStale => HasBenchmarkFolder && Directory.Exists(BenchmarkFolder) &&
-                                     BenchmarkBase.IsStale(BenchmarkFolder, _paths.BenchmarkFile);
+                                     (BenchmarkBase.IsStale(BenchmarkFolder, _paths.BenchmarkFile) ||
+                                      _engine is not null && File.GetLastWriteTime(_paths.BenchmarkFile) < _engine.EngineModified);
 
     private void InitBenchmark()
     {
@@ -179,6 +190,7 @@ public sealed partial class MainViewModel
 
     private void ShowBenchmark(BenchmarkData? data)
     {
+        _benchmarkData = data;
         BenchmarkProjects.Clear();
         OpenBenchmarkCommand.NotifyCanExecuteChanged();
         BenchmarkError = null;
@@ -215,7 +227,7 @@ public sealed partial class MainViewModel
             await ChooseBenchmarkFolderAsync();
             if (!HasBenchmarkFolder) return;
         }
-        var hrs = await AskMdpProjectAsync(recent.Path, recent.Name);
+        var hrs = await AskMdpProjectAsync(recent.Path, recent.Name, IdentityMode.Base);
         if (hrs is null) return;
         var existing = BenchmarkBase.FindById(BenchmarkFolder, hrs.Id);
         if (existing is not null && !await _shell.ConfirmAsync($"Remplacer {Path.GetFileName(existing)} ?",
@@ -229,7 +241,7 @@ public sealed partial class MainViewModel
         try
         {
             r = await _engine.ExportMdpAsync(recent.Path, path, null, hrs.Id, hrs.Name, CurrentEngineInputs(recent.Path),
-                                             CancellationToken.None);
+                                             CancellationToken.None, ProjectIdentity.WriteEngineFile(hrs, IdentityFile));
         }
         catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
         {
@@ -247,6 +259,62 @@ public sealed partial class MainViewModel
             return;
         }
         _shell.Notify($"« {recent.Name} » ajouté à la base : {Path.GetFileName(path)}.");
+        await RefreshBenchmarkAsync();
+    }
+
+    private BenchmarkProject? BaseProject(string id) =>
+        string.IsNullOrWhiteSpace(id) ? null : _benchmarkData?.Projects.FirstOrDefault(p => p.Id == id.Trim());
+
+    /// <summary>Complète les champs vides d'une identité avec ce que porte le MDP de la base.</summary>
+    private static void FillFromBase(MdpProject id, BenchmarkProject p)
+    {
+        static string Clean(string? v) => v is null ? "" : v.EndsWith(".0") ? v[..^2] : v;     // 53.0 -> 53 (Excel)
+        if (id.Id.Length == 0) id.Id = p.Id;
+        if (id.Name.Length == 0) id.Name = p.Name;
+        if (id.Canton.Length == 0) id.Canton = Clean(p.Info("canton"));
+        if (id.Commune.Length == 0) id.Commune = Clean(p.Info("commune"));
+        if (id.Typologie.Length == 0) id.Typologie = Clean(p.Info("categorie"));
+        if (id.Intervention.Length == 0) id.Intervention = Clean(p.Info("intervention"));
+        if (id.Phase.Length == 0) id.Phase = Clean(p.Info("phase"));
+    }
+
+    /// <summary>
+    /// Identité d'un MDP déjà dans la base, complétée ou corrigée depuis l'accueil : écrite dans sa feuille InfosProjet
+    /// (le MDP fait foi), puis la base relue. L'ID ne change pas : il relie les tables du MDP.
+    /// </summary>
+    [RelayCommand]
+    private async Task EditBaseIdentityAsync(BenchmarkItem item)
+    {
+        if (_engine is null || IsBenchmarkLoading || !HasBenchmarkFolder) return;
+        var initial = new MdpProject();
+        FillFromBase(initial, item.Project);
+        var hrs = await _shell.AskIdentityAsync(initial, IdentityLists, IdentityMode.EditBase, "Enregistrer dans le MDP");
+        if (hrs is null) return;
+        hrs.Id = initial.Id;
+        var path = Path.Combine(BenchmarkFolder, item.Project.File);
+        IsBenchmarkLoading = true;
+        BenchmarkActivity = $"Écriture de l'identité dans {item.Project.File}…";
+        EngineRun r;
+        try
+        {
+            r = await _engine.WriteMdpIdentityAsync(path, ProjectIdentity.WriteEngineFile(hrs, IdentityFile), CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            _shell.Notify(ex.Message, isError: true);
+            return;
+        }
+        finally
+        {
+            IsBenchmarkLoading = false;
+            BenchmarkActivity = null;
+        }
+        if (!r.Succeeded)
+        {
+            _shell.Notify(r.ErrorMessage ?? "Identité non écrite.", isError: true);
+            return;
+        }
+        _shell.Notify($"Identité de « {hrs.Name} » enregistrée dans {item.Project.File}.");
         await RefreshBenchmarkAsync();
     }
 }

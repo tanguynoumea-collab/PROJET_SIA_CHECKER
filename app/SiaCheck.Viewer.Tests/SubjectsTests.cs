@@ -292,14 +292,39 @@ public class SubjectPointsTests
     public async Task Mdp_project_is_asked_and_remembered_per_folder()
     {
         using var tmp = new TempDir();
-        var shell = new FakeShell { AskAnswer = ["1778", "L'Orée"] };
+        var shell = new FakeShell { IdentityAnswer = new MdpProject { Id = "1778", Name = "L'Orée", Canton = "VD" } };
         var settings = new AppSettings();
         var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
-        var hrs = await vm.AskMdpProjectAsync(tmp.Path + "/", "L OREE");
-        Assert.Equal(("1778", "L'Orée"), (hrs!.Id, hrs.Name));
-        Assert.Equal("1778", settings.FindMdpProject(tmp.Path)!.Id);          // même dossier, autre écriture
-        shell.AskAnswer = ["", "x"];
-        Assert.Null(await vm.AskMdpProjectAsync(tmp.Path, "L OREE"));           // ID obligatoire : pas d'export
+        var hrs = await vm.AskMdpProjectAsync(tmp.Path + "/", "L OREE", IdentityMode.Export);
+        Assert.Equal(("1778", "L'Orée", "VD"), (hrs!.Id, hrs.Name, hrs.Canton));
+        Assert.Equal("VD", settings.FindMdpProject(tmp.Path)!.Canton);       // même dossier, autre écriture
+        shell.IdentityAnswer = new MdpProject { Name = "x" };
+        Assert.Null(await vm.AskMdpProjectAsync(tmp.Path, "L OREE", IdentityMode.Export));   // ID obligatoire : pas d'export
+    }
+
+    [Fact]
+    public async Task Adding_to_the_base_needs_the_full_identity()
+    {
+        using var tmp = new TempDir();
+        var shell = new FakeShell { IdentityAnswer = new MdpProject { Id = "1778", Name = "L'Orée", Canton = "VD" } };
+        var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), new AppSettings(), enginePath: null);
+        Assert.Null(await vm.AskMdpProjectAsync(tmp.Path, "L OREE", IdentityMode.Base));     // ni typologie ni intervention
+        Assert.Contains(shell.Notes, n => n.Contains("typologie") && n.Contains("type d'intervention"));
+        shell.IdentityAnswer = new MdpProject { Id = "1778", Name = "L'Orée", Canton = "VD", Typologie = "Santé",
+                                                Intervention = "Nouvelle construction" };
+        Assert.NotNull(await vm.AskMdpProjectAsync(tmp.Path, "L OREE", IdentityMode.Base));
+    }
+
+    [Fact]
+    public void Identity_for_the_engine_keeps_only_filled_fields()
+    {
+        using var tmp = new TempDir();
+        var path = ProjectIdentity.WriteEngineFile(new MdpProject { Id = " 1778 ", Typologie = "Santé" }, Path.Combine(tmp.Path, "id.json"));
+        var json = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path))!;
+        Assert.Equal(new Dictionary<string, string> { ["ID projet"] = "1778", ["Categorie d'Ouvrage"] = "Santé" }, json);
+        Assert.Equal("Logement", ProjectIdentity.Short("Logement (100-90% SU)"));
+        Assert.Equal("Log. mixte", ProjectIdentity.Short("Logement Mixte (>10% autres affectations)"));
+        Assert.Equal("Non identifié", ProjectIdentity.Short(null));
     }
 }
 

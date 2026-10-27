@@ -19,7 +19,9 @@ niveau et les ratios sont écrits (aperçu en direct de la visionneuse, quelques
 avec --benchmark, la base des tableaux MDP d'un dossier est lue (sia_check.benchmark) et écrite dans
 --benchmark-json (défaut : benchmark.json du dossier --out, sinon du dossier courant), sans projet Treegram ;
 avec --benchmark-projet, les totaux et ratios du projet lu (corrections comprises), au format d'un projet du
-benchmark : la visionneuse les envoie au dashboard (« Mon projet »).
+benchmark : la visionneuse les envoie au dashboard (« Mon projet ») ;
+avec --identite, la fiche « Identité du projet » (JSON : description InfosProjet -> valeur) part dans le MDP exporté ;
+avec --mdp-identite, elle est écrite dans un MDP existant, sans projet Treegram.
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -64,6 +66,8 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--apercu", type=Path, help="bilan par niveau et ratios (JSON), avec --depuis-cache et --corrections")
     ap.add_argument("--benchmark", type=Path, help="dossier des tableaux MDP de la base du benchmark")
     ap.add_argument("--benchmark-json", type=Path, help="fichier du benchmark à écrire (avec --benchmark)")
+    ap.add_argument("--identite", type=Path, help="fiche « Identité du projet » (JSON) écrite dans InfosProjet du MDP")
+    ap.add_argument("--mdp-identite", type=Path, help="MDP existant dont l'identité est remplacée par --identite")
     ap.add_argument("--benchmark-projet", type=Path, help="totaux et ratios du projet lu, au format du benchmark (JSON)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
@@ -144,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
         return _preview(args)
     if args.benchmark:
         return _benchmark(args)
+    if args.mdp_identite:
+        return _mdp_identite(args)
     if not args.models:
         log.error("fichier .tgm, .ifc ou dossier de projet attendu")
         return 2
@@ -158,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         log.info("ÉTAPE 1/%d lecture des surfaces", steps)
         frames = [reader.read(p, cfg) for p in models]
         journal = corrections.load(args.corrections) if args.corrections else None
+        identite = _lire_identite(args.identite)
         review = sujets.load_review(args.revue) if args.revue else None
     except (OSError, config_mod.ConfigError, reader.ReadError, corrections.JournalError) as ex:
         log.error("%s", ex)
@@ -202,13 +209,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.mdp:
             pid = int(args.project_id) if args.project_id and args.project_id.isdigit() else args.project_id
             infos = applied.infos if applied is not None else None
-            log.info("tableau MDP écrit : %s", mdp.write(result, cfg, args.mdp, args.mdp_template, pid, args.project_name or project, infos))
+            log.info("tableau MDP écrit : %s", mdp.write(result, cfg, args.mdp, args.mdp_template, pid,
+                                                          args.project_name or project, infos, identite))
         if args.benchmark_projet:
             # Même lecture qu'un MDP de la base : le projet passe par le tableau MDP, puis par benchmark.lire
             with tempfile.TemporaryDirectory() as tmp:
                 x = Path(tmp) / "MDP-projet.xlsx"
                 mdp.write(result, cfg, x, args.mdp_template, None, args.project_name or project,
-                          applied.infos if applied is not None else None)
+                          applied.infos if applied is not None else None, identite)
                 p = benchmark.lire(x)
             p.nom = args.project_name or project
             benchmark.ecrire({"version": benchmark.VERSION, "projet": benchmark.projet_json(p)}, args.benchmark_projet)
@@ -262,6 +270,34 @@ def main(argv: list[str] | None = None) -> int:
         log.error("écriture impossible : %s", ex)
         return 2
     return result.exit_code
+
+
+def _lire_identite(path: Path | None) -> dict | None:
+    if path is None:
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as ex:
+        raise reader.ReadError(f"fiche d'identité illisible ({path}) : {ex}") from ex
+    if not isinstance(data, dict):
+        raise reader.ReadError(f"fiche d'identité invalide ({path}) : objet JSON attendu")
+    return data
+
+
+def _mdp_identite(args: argparse.Namespace) -> int:
+    try:
+        identite = _lire_identite(args.identite)
+        if identite is None:
+            raise reader.ReadError("--mdp-identite demande la fiche --identite")
+        mdp.ecrire_identite(args.mdp_identite, identite)
+    except PermissionError:
+        log.error("%s est ouvert dans Excel : fermez-le puis réessayez.", args.mdp_identite.name)
+        return 2
+    except (OSError, reader.ReadError, mdp.TemplateError, KeyError) as ex:
+        log.error("%s", ex)
+        return 2
+    log.info("identité écrite dans %s", args.mdp_identite)
+    return 0
 
 
 def _benchmark(args: argparse.Namespace) -> int:

@@ -146,7 +146,7 @@ MDP *.xlsx (dossier base) ──► sia_check.benchmark (Python)
 | 11 ✓ | Dashboard v1 dans WebView2 : Comparer (règles, projets similaires, écarts en m²), Base, Typologies | `dashboard/` (HTML sans dépendance, servi tel quel sur le web) |
 | 12 ✓ | Mon projet : saisie rapide ou projet ouvert dans SIA Check, positionnement face aux projets similaires, écarts en m² et CHF (rendement) | Comparaison (`--benchmark-projet`, DESIGN_PLAN Évolution 3.2) |
 | 13 ✓ | Programmation inverse : d'une SP hors-sol, des étages et d'un mix au programme attendu (bas / central / haut) | Onglet Programmer (DESIGN_PLAN Évolution 3.3) |
-| 14 | Préparation web : hébergement, accès, mise à jour de la base | Hors V3 si besoin |
+| 14 | Mise en ligne web : reportée (27.10.2026) — rien n'est publié avant la fin du cycle de développement et de validation. Décidé : accès limité à un groupe restreint. Ouverts : hébergement (piste Azure Static Web Apps), mode de mise à jour de la base | Après validation de la V3 |
 
 ### Phase 9 livrée (27.10.2026)
 
@@ -163,3 +163,35 @@ En parallèle (hors code) : ré-exporter par SIA Check les MDP anciens (L'Orée 
 2. Hypothèses financières (prix de vente au m² SVN, coût au m³ VB) : à afficher en CHF ou rester en m² ?
 3. Emplacement de la base : dossier local, partage réseau ou SharePoint ?
 4. Les MDP incomplets : les ré-exporter via SIA Check, ou les garder avec un score de fiabilité bas ?
+
+## 9. Révision — un benchmark multi-typologies (27.10.2026)
+
+### Ce que l'équipe a précisé
+
+- **Utilisateurs** : les chefs de projet du développement et la prospection.
+- **Deux usages** : sortir rapidement des ratios pour établir un plan financier (onglet Programmer) ; comparer le projet dessiné par l'architecte aux benchmarks, « pour savoir si on est dans le tir » (onglet Comparer).
+- **KPI clés** : SUP / SP d'abord ; puis la surface vitrée rapportée à la surface pleine et le coefficient de forme. D'autres ratios pourront s'ajouter s'ils s'avèrent significatifs.
+- **Pas seulement du logement** : bureaux, hôtellerie, santé, EMS, écoles… Le benchmark part d'une **sélection** : « nouveau projet de santé dans le canton de Vaud → je choisis la typologie Santé, je vois ses ratios, puis j'affine sur Vaud ». Chaque projet doit donc être **clairement identifié**.
+
+### Ce qui ne colle pas dans l'existant
+
+| Sujet | Aujourd'hui | Conséquence |
+|---|---|---|
+| Identité des projets | SIA Check n'écrit ni canton, ni catégorie d'ouvrage, ni type d'intervention dans le MDP exporté ; 4 MDP sur 10 n'ont pas de canton ; la catégorie manquante est **déduite des affectations**, avec une logique pensée pour le logement | Un immeuble de bureaux serait classé « Logement mixte ». La sélection par typologie est impossible à fiabiliser |
+| Navigation | Tout part d'un projet (Comparer) ou d'une constructibilité (Programmer) ; la typologie n'est qu'un filtre de similarité | Pas de réponse directe à « montre-moi les ratios des projets de santé vaudois » |
+| KPI | Pensés pour le logement (SUP par logement, mix, onglet Typologies, similarité par nombre de logements) ; vitrage rapporté à la façade totale ; « façade / SP » comme seule compacité | Les KPI clés de l'équipe ne sont pas tous là, et ceux du logement n'ont pas de sens pour un hôpital |
+| Fiabilité | Fourchette SC / SP 8–30 % calée sur le logement | À vérifier sur les autres typologies |
+
+### Phases ajoutées
+
+| Phase | Contenu |
+|---|---|
+| 15 ✓ | **Identifier chaque projet.** Une fiche « Identité du projet » dans SIA Check : ID HRS, nom, canton, commune, catégorie d'ouvrage et type d'intervention (listes du gabarit MDP), phase, date. Obligatoire avant « Ajouter à la base », écrite dans `InfosProjet`. Les MDP déjà dans la base se complètent depuis l'accueil. Fin de la déduction automatique : une catégorie absente reste « Non identifiée » |
+| 16 | **Sélectionner, puis lire les ratios.** Une barre de sélection commune à tout le dashboard (typologie, canton, type d'intervention ; plus tard phase, période, taille). Un onglet d'entrée « Ratios » : les KPI clés de la sélection en tête (n, ratio combiné, chaque projet sur la règle), puis les autres familles, et la liste des projets retenus. Comparer et Programmer cherchent leurs projets similaires **dans** la sélection |
+| 17 | **Des KPI par typologie.** Ajout de « surface vitrée / surface pleine » et du coefficient de forme (définition à fixer). Les ratios propres au logement (par logement, mix, Typologies) ne s'affichent que pour le logement ; les autres typologies auront plus tard leurs unités (chambres, lits, postes de travail…), à définir avec l'équipe. Fourchette de fiabilité revue par typologie si besoin |
+
+Décisions (27.10.2026) : ordre 15 → 16 → 17 ; l'identité des MDP déjà dans la base s'écrit **dans le MDP** (feuille `InfosProjet`), seule source de vérité ; la définition du coefficient de forme est demandée à l'équipe (ouvert).
+
+### Indice de performance par projet
+
+Pas de note unique pour l'instant : mélanger des ratios de sens différents dans un seul chiffre masquerait ce qui fait la différence. À la place, chaque projet sera **situé dans sa typologie** sur les KPI clés (rang ou quartile : « dans le meilleur quart pour SUP / SP »). Un indice composite pourra venir quand la base sera assez grande pour pondérer les KPI de façon défendable.

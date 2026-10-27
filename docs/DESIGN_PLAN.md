@@ -1167,3 +1167,92 @@ Page servie en local, 1 440 px en sombre et 375 px en clair. Cas testé : 4 200 
 | Répartition « 13 1 chambre · 17 2 chambres » difficile à lire | Mineur | Corrigé : « 13 × 1 ch. · 17 × 2 ch. » |
 | SP seule (sans étages ni mix) : toute la base fiable, mentionnée ; logements par SP hors-sol par logement | Vérifié | — |
 | SP vide : invitation, barre et tableau masqués ; à 375 px, aucun défilement horizontal | Vérifié | — |
+
+---
+
+## Évolution 3.4 — Identité des projets (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (27.10.2026) ☑ Implémenté
+> Version : 3.4 — 27.10.2026 · Phase 15 de `docs/V3_PLAN.md` (§9)
+
+### Ancrage
+
+Le benchmark devient multi-typologies : on sélectionne « Santé » puis « Vaud ». Un projet mal identifié est donc un projet **invisible ou mal rangé**. L'identité doit être saisie une fois, au bon moment, et écrite dans le MDP (seule source de vérité, lue aussi par le Power BI).
+
+### La fiche « Identité du projet »
+
+Un dialogue unique, le même partout :
+
+```
+┌ Identité du projet ─────────────────────────────────────────────────┐
+│ ID projet HRS *   [1778      ]      Nom du projet *  [L'Orée      ] │
+│ Typologie *       [Logement (100-90% SU)                        ▾]  │
+│ Canton *          [VD ▾]            Commune          [Lausanne    ] │
+│ Type d'intervention * [Nouvelle construction                    ▾]  │
+│ Phase SIA         [53 ▾]                                             │
+│                                                                      │
+│ * nécessaire pour entrer dans le benchmark                           │
+│                                          [Annuler] [Enregistrer]     │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+- Listes déroulantes = les listes du gabarit MDP (feuille « Listes formulaire ») : typologies (Logement, Logement mixte, Activités, Industriel, École, Hôtel, Sport, EMS, Santé, Centre commercial, Autre), cantons en abréviation, types d'intervention, phases SIA. Pas de saisie libre là où une liste existe : c'est ce qui rend la sélection fiable.
+- « Typologie » est le libellé visible de la « Catégorie d'ouvrage » du MDP (le mot de l'équipe).
+- Préremplie : avec la dernière saisie pour ce dossier (comme l'ID aujourd'hui), sinon avec ce que contient le MDP.
+- **Enregistrer** reste actif même incomplet ; un rappel discret dit ce qui manque pour le benchmark.
+
+### Où elle apparaît
+
+| Point d'entrée | Rôle |
+|---|---|
+| Espace de revue → Exporter → Tableau MDP… | Remplace le petit dialogue « Projet HRS » (ID et nom) : l'identité complète part dans `InfosProjet` |
+| Accueil, Fiabilisation → ⇥ Ajouter à la base | Ouverte d'office ; les champs * sont **obligatoires** avant l'export dans la base |
+| Accueil, Benchmark → clic sur un MDP de la base | Complète ou corrige l'identité d'un MDP existant : écrit dans sa feuille `InfosProjet`, puis relit la base |
+
+### Accueil, liste de la base (delta)
+
+```
+  1714  Le Clos des Hêtres   Logement   VD   ▮▮▮▮▮▮▮▮▮▮  ✓
+  1747  Gare Casino          Log. mixte FR   ▮▮▮▮▯▮▯▯▯▮  △
+  1746  Avallons             Non identifié —  ▮▮▮▮▮▮▮▮▮▯  ✓     ← en VerdictWarning, invite à cliquer
+```
+
+- Nouvelle colonne **Typologie** (libellé court), avant le canton : c'est désormais la première dimension du benchmark.
+- Les lignes deviennent **cliquables** (style des lignes de projets actifs) : clic = fiche Identité.
+
+### Côté moteur
+
+- Fin de la déduction de la typologie à partir des affectations : une typologie absente reste vide, affichée « Non identifiée ».
+- Écriture de l'identité dans un MDP existant sans toucher au reste du classeur (même mécanisme que l'export MDP, qui conserve listes et mises en forme).
+
+### États non-nominaux
+
+| État | Rendu |
+|---|---|
+| MDP ouvert dans Excel au moment d'écrire | « Le fichier est ouvert dans Excel : fermez-le puis réessayez. » ; rien n'est écrit |
+| Ajouter à la base, identité incomplète | Enregistrer reste possible, mais « Exporter dans la base » est désactivé avec la liste de ce qui manque |
+| ID déjà utilisé par un autre MDP de la base | Avertissement : « La base contient déjà le projet 1778 (MDP-1778-Loree.xlsx). Le remplacer ? » |
+
+### Passe B — auto-critique
+
+- **Générique ?** Premier jet : ajouter les champs un à un au dialogue texte existant. Rejeté : des champs libres redonneraient « Vaud », « VD », « vaud » et la sélection redeviendrait floue. Les listes du gabarit sont la vraie valeur ajoutée.
+- **Friction** : rendre l'identité obligatoire à chaque export MDP gênerait un export de travail ; elle n'est obligatoire que pour entrer dans la base.
+- **Accessoire retiré** : les champs techniques (labellisation, système de chauffage, façade…) du Power BI. Utiles un jour comme filtres, mais pas nécessaires pour sélectionner par typologie et canton.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Champs texte libres | Variantes d'orthographe, sélection non fiable | 27.10.2026 |
+| Identité dans un fichier séparé | Deux sources à aligner ; décision : le MDP fait foi | 27.10.2026 |
+| Identité obligatoire à tout export MDP | Bloquerait les exports de travail | 27.10.2026 |
+| Déduire la typologie des affectations | Logique logement ; un immeuble de bureaux serait classé « Logement mixte » | 27.10.2026 |
+
+### Revue visuelle (Phase 2, 27.10.2026)
+
+Accueil capturé après relecture de la base (thème clair) : colonne Typologie présente, « Non identifié » en VerdictWarning pour 1746, 1784, 1280 et 1778, typologies lues pour les 6 autres (Logement, Log. mixte). La fiche Identité n'a pas pu être capturée (le bureau Windows gardait le premier plan) ; testée par l'utilisateur dans l'application.
+
+| Constat | Classe | Suite |
+|---|---|---|
+| L'ID d'un MDP de la base est modifiable | Évité | Lecture seule dans la fiche ouverte depuis la base : il relie toutes les tables du MDP |
+| Anciennes valeurs hors liste (MDP rempli à la main) | Prévu | Affichées en tête de liste pour être corrigées, jamais effacées en silence |

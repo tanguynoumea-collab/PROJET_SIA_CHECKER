@@ -241,7 +241,7 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task ExportMdpAsync(string? mode)
     {
         if (ProjectDir is null || _engine is null || Document is null) return;
-        var hrs = await AskMdpProjectAsync(ProjectDir, Document.Project);
+        var hrs = await AskMdpProjectAsync(ProjectDir, Document.Project, IdentityMode.Export);
         if (hrs is null) return;
         string? template = null;
         if (mode == "template")
@@ -251,27 +251,30 @@ public sealed partial class MainViewModel : ObservableObject
         }
         var path = _shell.PickSaveFile("Enregistrer le tableau MDP", $"MDP-{hrs.Id}-{AiReviewFiles.Prefix(hrs.Name)}.xlsx", "Classeur Excel|*.xlsx");
         if (path is null) return;
-        await RunExportAsync(() => _engine.ExportMdpAsync(ProjectDir, path, template, hrs.Id, hrs.Name, CurrentEngineInputs(ProjectDir), CancellationToken.None),
+        var identity = ProjectIdentity.WriteEngineFile(hrs, IdentityFile);
+        await RunExportAsync(() => _engine.ExportMdpAsync(ProjectDir, path, template, hrs.Id, hrs.Name, CurrentEngineInputs(ProjectDir),
+                                                          CancellationToken.None, identity),
                              $"Tableau MDP enregistré : {path}.", path);
     }
 
     /// <summary>
-    /// ID et nom HRS du projet : l'ID relie toutes les tables du MDP dans le benchmark Power BI, il est donc obligatoire.
-    /// Demandés à chaque export, préremplis avec la dernière réponse pour ce dossier ; null si annulé.
+    /// Fiche « Identité du projet » (ID, nom, typologie, canton…) : l'ID relie toutes les tables du MDP, la typologie et
+    /// le canton rangent le projet dans le benchmark. Demandée à chaque export, préremplie avec la dernière réponse pour
+    /// ce dossier, complétée par le MDP de la base de même ID ; null si annulée ou incomplète pour cet usage.
     /// </summary>
-    internal async Task<MdpProject?> AskMdpProjectAsync(string projectDir, string folderName)
+    internal async Task<MdpProject?> AskMdpProjectAsync(string projectDir, string folderName, IdentityMode mode)
     {
-        var known = _settings.FindMdpProject(projectDir);
-        var answer = await _shell.AskAsync("Projet HRS",
-            "Le MDP alimente le benchmark Power BI : l'ID projet relie toutes ses tables.",
-            [("ID projet HRS (ex. 1778)", known?.Id ?? ""), ("Nom du projet HRS", known?.Name ?? folderName)], "Continuer");
-        if (answer is null) return null;
-        if (answer[0].Length == 0)
+        var known = _settings.FindMdpProject(projectDir) ?? new MdpProject { Name = folderName };
+        if (BaseProject(known.Id) is { } inBase) FillFromBase(known, inBase);
+        if (known.Name.Length == 0) known.Name = folderName;
+        var hrs = await _shell.AskIdentityAsync(known, IdentityLists, mode, mode == IdentityMode.Base ? "Exporter dans la base" : "Continuer");
+        if (hrs is null) return null;
+        if (ProjectIdentity.Missing(hrs, mode == IdentityMode.Base) is { Count: > 0 } missing)
         {
-            _shell.Notify("ID projet HRS manquant : le MDP n'a pas été exporté.", isError: true);
+            _shell.Notify($"Identité incomplète ({string.Join(", ", missing)}) : le MDP n'a pas été exporté.", isError: true);
             return null;
         }
-        var hrs = new MdpProject { Id = answer[0], Name = answer[1].Length > 0 ? answer[1] : folderName };
+        if (hrs.Name.Length == 0) hrs.Name = folderName;
         _settings.SetMdpProject(projectDir, hrs);
         _settings.Save(_paths);
         return hrs;

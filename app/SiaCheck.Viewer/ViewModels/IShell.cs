@@ -1,4 +1,5 @@
 using System.Windows.Media;
+using SiaCheck.Viewer.Services;
 using System.Windows.Media.Media3D;
 
 namespace SiaCheck.Viewer.ViewModels;
@@ -15,6 +16,8 @@ public interface IShell
     Task<bool> ConfirmAsync(string title, string message, string yes, string no);
     /// <summary>Petit formulaire : un champ texte par libellé, prérempli ; null si l'utilisateur annule.</summary>
     Task<string[]?> AskAsync(string title, string message, IReadOnlyList<(string Label, string Value)> fields, string ok);
+    /// <summary>Fiche « Identité du projet » (docs/DESIGN_PLAN.md, Évolution 3.4) ; null si annulée.</summary>
+    Task<MdpProject?> AskIdentityAsync(MdpProject initial, IdentityLists lists, IdentityMode mode, string ok);
     void OpenFile(string path);
     /// <summary>Cadre la caméra sur ces bornes (null = tout le modèle visible).</summary>
     void Frame(Rect3D? bounds);

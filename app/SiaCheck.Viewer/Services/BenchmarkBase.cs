@@ -34,6 +34,8 @@ public sealed class BenchmarkData
     [JsonPropertyName("genere")] public DateTime Generated { get; set; }
     [JsonPropertyName("projets")] public List<BenchmarkProject> Projects { get; set; } = [];
     [JsonPropertyName("erreurs")] public List<string> Errors { get; set; } = [];
+    /// <summary>Listes déroulantes de la fiche « Identité du projet », lues dans le gabarit MDP par le moteur.</summary>
+    [JsonPropertyName("listes")] public Dictionary<string, List<string>>? Lists { get; set; }
 }
 
 public static class BenchmarkBase

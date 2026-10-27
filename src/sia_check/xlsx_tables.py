@@ -161,7 +161,10 @@ class Workbook:
             return {}
         out = {}
         for r in self._xml(rels).findall("pr:Relationship", NS):
-            out[r.get("Id")] = (r.get("Type"), posixpath.normpath(posixpath.join(d, r.get("Target"))))
+            target = r.get("Target")
+            # Cible absolue (« /xl/worksheets/sheet1.xml », classeurs écrits par openpyxl) : depuis la racine du paquet
+            path = target.lstrip("/") if target.startswith("/") else posixpath.normpath(posixpath.join(d, target))
+            out[r.get("Id")] = (r.get("Type"), path)
         return out
 
     def _shared_strings(self) -> list[str]:

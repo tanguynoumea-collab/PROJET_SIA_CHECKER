@@ -233,9 +233,74 @@ def projet_values(levels: pd.DataFrame, lots: pd.DataFrame) -> dict[str, object]
     return values
 
 
+# Identité d'un projet (fiche « Identité du projet » de la visionneuse) : descriptions de la feuille InfosProjet
+IDENTITE = ("ID projet", "Nom Projet HRS", "Canton", "Commune", "Categorie d'Ouvrage", "Type d'intervention",
+            "Phase du projet")
+# Colonnes de la feuille « Listes formulaire » qui alimentent les listes déroulantes de la fiche
+LISTES = {"Categorie d'Ouvrage": "Categorie d'Ouvrage", "Canton": "Cantons", "Type d'intervention": "Type Intervention",
+          "Phase du projet": "Phase du projet"}
+
+
+def _ligne_info(wb: Workbook, desc: str) -> int | None:
+    """Ligne de `desc` dans InfosProjet : par le tableau du gabarit, sinon en lisant la colonne B (anciens MDP)."""
+    if "InfosProjet" in wb.tables:
+        rows = [r["Description"] for r in wb.table_rows("InfosProjet")]
+        if desc in rows:
+            return wb.tables["InfosProjet"].header_row + 1 + rows.index(desc)
+    if "InfosProjet" not in wb.sheets:
+        return None
+    cle = desc.strip().lower()
+    for r in range(1, 120):
+        v = wb.cell_value("InfosProjet", f"B{r}")
+        if v is not None and str(v).strip().lower() == cle:
+            return r
+    return None
+
+
+def _valeur_identite(desc: str, v):
+    """ID et phase en nombre quand ils le sont (jointure Power BI, listes du gabarit)."""
+    if isinstance(v, str) and desc in ("ID projet", "Phase du projet") and v.strip().isdigit():
+        return int(v.strip())
+    return v.strip() if isinstance(v, str) else v
+
+
+def set_identite(wb: Workbook, identite: dict) -> None:
+    """Écrit les champs d'identité renseignés dans InfosProjet ; une valeur vide n'efface rien."""
+    for desc, v in identite.items():
+        if desc not in IDENTITE or v is None or (isinstance(v, str) and not v.strip()):
+            continue
+        r = _ligne_info(wb, desc)
+        if r is not None:
+            wb.set_cell("InfosProjet", f"C{r}", _valeur_identite(desc, v))
+
+
+def ecrire_identite(path: str | Path, identite: dict) -> Path:
+    """L'identité écrite dans un MDP existant, le reste du classeur intact (listes, mises en forme, tableaux)."""
+    wb = Workbook(path)
+    set_identite(wb, identite)
+    return wb.save(path)
+
+
+def listes(template: str | Path = DEFAULT_TEMPLATE) -> dict[str, list[str]]:
+    """Valeurs des listes déroulantes de l'identité, lues dans le gabarit (feuille « Listes formulaire »)."""
+    import re
+
+    import pandas as pd
+
+    df = pd.read_excel(template, sheet_name="Listes formulaire")
+    out = {}
+    for desc, colonne in LISTES.items():
+        col = next((c for c in df.columns if str(c).strip() == colonne), None)
+        vals = [] if col is None else df[col].dropna().tolist()
+        vals = [str(int(v)) if isinstance(v, float) and v.is_integer() else str(v).strip() for v in vals]
+        out[desc] = list(dict.fromkeys(v for v in vals if v and not re.fullmatch(r"(?i)x+|abreviation", v)))
+    return out
+
+
 def build(result: rules.Result, cfg: Config, template: str | Path, project_id=None, project_name=None,
-          infos: list[dict] | None = None) -> Workbook:
-    """`infos` : champs des corrections « renseigner » appliquées (corrections.Applied.infos)."""
+          infos: list[dict] | None = None, identite: dict | None = None) -> Workbook:
+    """`infos` : champs des corrections « renseigner » appliquées (corrections.Applied.infos) ;
+    `identite` : fiche « Identité du projet » (IDENTITE), prioritaire sur `project_id` et `project_name`."""
     wb = Workbook(template)
     missing = [c for c in ["tgm_id", *reader.EXTRA_COLUMNS] if c not in result.surfaces]
     if missing:   # source sans propriétés Treegram (IFC) : colonnes vides
@@ -247,6 +312,10 @@ def build(result: rules.Result, cfg: Config, template: str | Path, project_id=No
     pid = wb.cell_value("InfosProjet", f"C{info_row('ID projet')}") if "ID projet" in info else project_id
     if project_name and "Nom Projet HRS" in info:
         wb.set_cell("InfosProjet", f"C{info_row('Nom Projet HRS')}", project_name)
+
+    if identite:
+        set_identite(wb, identite)
+        pid = wb.cell_value("InfosProjet", f"C{info_row('ID projet')}") if "ID projet" in info else pid
 
     kinds = _decoupage(wb)
     levels, lots = _project_levels(result, kinds), _lots(result)
@@ -263,5 +332,5 @@ def build(result: rules.Result, cfg: Config, template: str | Path, project_id=No
 
 
 def write(result: rules.Result, cfg: Config, path: str | Path, template: str | Path | None = None,
-          project_id=None, project_name=None, infos: list[dict] | None = None) -> Path:
-    return build(result, cfg, template or DEFAULT_TEMPLATE, project_id, project_name, infos).save(path)
+          project_id=None, project_name=None, infos: list[dict] | None = None, identite: dict | None = None) -> Path:
+    return build(result, cfg, template or DEFAULT_TEMPLATE, project_id, project_name, infos, identite).save(path)

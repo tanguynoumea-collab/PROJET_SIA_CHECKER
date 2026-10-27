@@ -145,3 +145,20 @@ def test_base_de_reference():
     assert not next(p for p in projets if p.id == "1778").fiable     # nettes tronquées : SC / SP = 56 %
     r = b.combiner(projets, b.KPI_BY_ID["SUP/SP_HS"])
     assert r["n"] == 5 and 0.70 < r["combine"] < 0.76
+
+
+def test_identite_d_un_ancien_mdp_puis_relue(tmp_path):
+    """Les anciens MDP n'ont pas le tableau InfosProjet du gabarit : la ligne se trouve par sa description."""
+    path = mdp(tmp_path / "MDP-9001-Test.xlsx", infos={"Canton": None, "Categorie d'Ouvrage": None})
+    p = b.lire(path)
+    assert p.infos["canton"] is None and p.infos["categorie"] is None    # jamais déduite des affectations
+    from sia_check import mdp as mdp_mod
+    mdp_mod.ecrire_identite(path, {"Canton": "VD", "Categorie d'Ouvrage": "Santé"})
+    p = b.lire(path)
+    assert p.infos["canton"] == "VD" and p.infos["categorie"] == "Santé"
+
+
+def test_listes_dans_le_json(tmp_path):
+    mdp(tmp_path / "MDP-1-A.xlsx", infos={"ID projet": 1})
+    data = b.construire(*b.lire_dossier(tmp_path))
+    assert "VD" in data["listes"]["Canton"]

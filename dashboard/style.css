@@ -164,4 +164,22 @@ td .signe { display: inline-block; width: 12px; margin-left: 4px; font-size: 10p
 .champs input[aria-invalid="true"] { border-color: var(--erreur); }
 .champs .erreur { color: var(--erreur); font-size: 11px; max-width: 220px; }
 .kpi .chf { display: block; color: var(--texte-2); }
+/* Programmer */
+#vue-programmer .saisie { margin-bottom: 16px; }
+.liste.ligne { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.liste.ligne li { padding: 2px 0; }
+.champs .total { align-self: end; padding-bottom: 8px; font-size: 12px; color: var(--texte-2); }
+.barre { display: flex; gap: 2px; height: 28px; border-radius: 4px; overflow: hidden; background: var(--surface); }
+.barre .segment { min-width: 2px; }
+.reste { background: repeating-linear-gradient(135deg, var(--surface-2) 0 4px, var(--filet) 4px 8px); }
+.legende { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 0; margin: 8px 0 0; font-size: 12px; }
+.legende li { display: flex; align-items: center; gap: 6px; }
+.legende i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.legende b { font-weight: 600; }
+table.programme td.central { font-weight: 600; }
+table.programme td.source { color: var(--texte-2); font-size: 12px; text-align: left; white-space: normal; }
+table.programme th:nth-child(2), table.programme td:nth-child(2) { text-align: right; }
+table.programme th:last-child { text-align: left; }
+table.programme .detail { display: block; color: var(--texte-2); font-size: 12px; }
+table.programme tbody tr { cursor: default; }
 .lien { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }

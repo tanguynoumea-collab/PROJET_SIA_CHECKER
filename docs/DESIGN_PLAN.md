@@ -1076,3 +1076,94 @@ Saisie testée dans la page (1 440 px, sombre) ; parcours complet testé dans l'
 | L'Orée (16 % de commerces, « Logement mixte ») : aucun projet similaire avec le filtre de catégorie, la base fiable ne comptant que du logement | Accepté | Comportement voulu ; « Retirer les filtres » donne la comparaison. À revoir quand la base aura des projets mixtes fiables |
 | En-tête « cochez au moins un projet similaire » alors que la liste est vide | Mineur | Corrigé : « aucun projet similaire » |
 | Saisie : SUP supérieure à la SP hors-sol | Vérifié | Champ signalé, ratio non calculé |
+
+---
+
+## Évolution 3.3 — Programmation inverse (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (27.10.2026) ☑ Implémenté
+> Version : 3.3 — 27.10.2026 · Phase 13 de `docs/V3_PLAN.md`
+
+### Ancrage
+
+- **Moment** : acquisition, faisabilité. On connaît la constructibilité (SP hors-sol permise par le règlement), le gabarit (étages) et le programme visé (mix). On ne connaît pas encore le plan.
+- **Question** : *« Avec 4 200 m² de SP hors-sol, combien de m² vendables, de logements, de sous-sol dois-je attendre ? »*
+- **Différence avec Comparer** : Comparer part d'un projet dessiné et le juge. Programmer part d'une constructibilité et **prédit** le programme, en appliquant les ratios des projets similaires.
+
+### Emplacement — décision
+
+Un **quatrième onglet, « Programmer »**, entre Comparer et Base. C'est un autre travail (du terrain vers le programme), avec ses propres entrées ; le mettre dans Comparer mélangerait jugement et prédiction.
+
+```
+  Comparer · Programmer · Base · Typologies
+
+PROGRAMMER ───────────────────────────────────────────────────────────────────────────────────
+┌ HYPOTHÈSES ──────────────────────────────────────────────────────────────────────────────────┐
+│ SP hors-sol [4 200] m²   Étages hors-sol [5]   Catégorie [Logement ▾]  Intervention [Neuve ▾] │
+│ Mix visé (%)  studio [5] 1 ch. [30] 2 ch. [40] 3 ch. [20] 4 ch.+ [5]   = 100 %               │
+│ Prix de vente (facultatif) [9 500] CHF / m² de SVN                                            │
+│ D'après 5 projets similaires : 1712 La Myonaz · 1784 Sauvabelines · 1467 La Bâtie · … [modifier]│
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+
+OÙ VONT LES 4 200 m² DE SP HORS-SOL  (estimation centrale)
+ ███████████████████████████████████████████████▓▓▓▓▓▓░░░░░░░░░
+ SUP 3 075 m² (73 %)                              SD 300 (7 %)  construction, installations… 780 (19 %)
+
+PROGRAMME ATTENDU                       bas (P25)     central       haut (P75)    d'après
+ SUP hors-sol                            2 940 m²      3 075 m²      3 110 m²      SUP / SP hors-sol (n = 5)
+ Surface de vente nette (SVN)            3 150 m²      3 920 m²      4 160 m²      SVN / SP hors-sol (n = 4)
+ Logements (mix visé)                       41            43            44         SUP ÷ surface moyenne du mix (Typologies)
+   dont studio · 1 ch. · 2 ch. · 3 ch. · 4 ch.+    2 · 13 · 17 · 9 · 2
+ SP sous-sol                             2 340 m²      2 380 m²      2 600 m²      SP sous-sol / SUP (n = 5)
+ Façade                                  3 070 m²      3 700 m²      4 540 m²      Façade / SP hors-sol (n = 4)
+ Chiffre d'affaires (SVN × prix)         ≈ 29,9 M      ≈ 37,2 M      ≈ 39,5 M CHF
+```
+
+Hiérarchie : **1er** la barre « où vont les m² » (ce que la constructibilité devient) · **2e** le tableau bas / central / haut · **3e** la ligne « d'après » (sur quoi repose chaque chiffre).
+
+### Les règles du calcul
+
+- **Projets similaires** : la même formule que partout (§4.4), sur ce qui est connu à ce stade : SP hors-sol, étages hors-sol, part de grands logements (tirée du mix). Il en faut au moins deux ; sinon, toute la base fiable passant les filtres, avec la mention « faute de caractéristiques, tous les projets fiables ». La liste est modifiable (cases), comme dans Comparer.
+- **Central** = ratio combiné du groupe ; **bas / haut** = 1er et 3e quartiles des projets du groupe. « bas » et « haut » sont les valeurs, pas le favorable ou le défavorable.
+- **Logements** : SUP ÷ surface moyenne d'un logement du mix, chaque typologie prise à sa médiane (onglet Typologies, toute la base fiable). Sans mix : SP hors-sol ÷ (SP hors-sol par logement) du groupe. Arrondi à l'unité.
+- **Chiffre d'affaires** : SVN × prix, en millions, arrondi au 100 000 CHF, précédé de « ≈ ».
+- Une grandeur dont aucun projet du groupe n'a le ratio est absente du tableau (« pas de donnée dans les projets similaires »).
+
+### Élément signature — la barre « où vont les m² »
+
+L'arbre du m² de V3_PLAN §4.2, en une barre : la SP hors-sol découpée en SUP, SD, SUS hors-sol et le reste (construction, installations), à l'estimation centrale. Ici, et seulement ici dans le dashboard, les **couleurs de la légende SIA 416** (SUP `#D5003B`, SD `#F2E900`, SUS `#F0A900`) : c'est la même règle que dans l'application (« le remplissage dit la catégorie SIA »). Le reste est un aplat neutre hachuré. Chaque segment porte son libellé et son aire en texte (jamais la couleur seule) ; 2 px de surface entre segments.
+
+### États non-nominaux
+
+| État | Rendu |
+|---|---|
+| SP hors-sol vide | Invitation : « Saisissez la SP hors-sol constructible pour estimer le programme. » ; barre et tableau masqués |
+| Mix ≠ 100 % | Total écrit en VerdictWarning (« = 95 % ») ; le calcul normalise les parts |
+| Typologie du mix sans médiane dans la base (ex. 4 ch. : 1 projet) | Médiane utilisée quand même, marquée « (1 projet) » dans l'infobulle |
+| Groupe de moins de 3 projets | « Estimation fragile : 2 projets » au-dessus du tableau |
+
+### Passe B — auto-critique
+
+- **Générique ?** Premier jet : un formulaire qui renvoie un seul chiffre par grandeur. Rejeté : avec 5 projets, un chiffre seul promet une précision qui n'existe pas. Bas / central / haut et la ligne « d'après » disent sur quoi on s'appuie.
+- **Couleurs SIA dans le dashboard** : rompt la règle « une seule couleur de donnée » de l'Évolution 3.1. Assumé ici parce que la barre montre des catégories SIA, que l'utilisateur de SIA Check connaît ces couleurs, et que le texte porte l'information.
+- **Accessoire retiré** : un curseur « optimiste / pessimiste ». Bas / haut le disent sans interaction de plus.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Programmation dans l'onglet Comparer | Mélange jugement d'un projet dessiné et prédiction depuis une constructibilité | 27.10.2026 |
+| Un seul chiffre par grandeur | Fausse précision avec 5 projets | 27.10.2026 |
+| Fourchette min–max | Tirée par un seul projet atypique ; les quartiles sont plus stables | 27.10.2026 |
+| Curseur optimiste / pessimiste | Redondant avec bas / haut | 27.10.2026 |
+
+### Revue visuelle (Phase 2, 27.10.2026)
+
+Page servie en local, 1 440 px en sombre et 375 px en clair. Cas testé : 4 200 m² de SP hors-sol, 5 étages, mix 5 / 30 / 40 / 20 / 5 %, 9 500 CHF/m² → 5 projets similaires ; SUP 3 029 – 3 075 – 3 106 m², SVN 3 736 – 3 917 – 4 364 m², 43 logements, SP sous-sol 1 741 m², CA ≈ 37,2 M CHF.
+
+| Constat | Classe | Suite |
+|---|---|---|
+| En-tête « D'après » aligné à droite au-dessus d'une colonne de texte | Mineur | Corrigé |
+| Répartition « 13 1 chambre · 17 2 chambres » difficile à lire | Mineur | Corrigé : « 13 × 1 ch. · 17 × 2 ch. » |
+| SP seule (sans étages ni mix) : toute la base fiable, mentionnée ; logements par SP hors-sol par logement | Vérifié | — |
+| SP vide : invitation, barre et tableau masqués ; à 375 px, aucun défilement horizontal | Vérifié | — |

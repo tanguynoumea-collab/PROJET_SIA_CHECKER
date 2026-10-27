@@ -538,9 +538,186 @@ function verifierDistances() {
 }
 window.verifierDistances = verifierDistances;
 
+// ------------------------------------------------------------------ Programmer (programmation inverse, Évolution 3.3)
+
+const CLE_PROGRAMME = "benchmark.programme";
+const COULEURS_SIA = { SUP: "#D5003B", SD: "#F2E900", SUS: "#F0A900" };     // légende SIA 416, comme dans l'application
+const progEtat = { coches: new Set(), cle: "" };
+
+function initProgrammer() {
+  const form = document.getElementById("prog-form");
+  const nombre = (name, label, attrs = {}) =>
+    el("label", {}, label, el("input", { name, type: "number", min: "0", step: "any", inputmode: "decimal", ...attrs }));
+  document.getElementById("prog-mix").replaceChildren(...MIX.map(([k, l]) => nombre(`mix${k}`, `${l} (%)`, { max: "100" })),
+    el("span", { id: "prog-mix-total", class: "total" }));
+  for (const f of ["categorie", "intervention"]) {
+    const valeurs = [...new Set(etat.data.projets.map((p) => p.infos[f]).filter(Boolean))].sort();
+    form.elements[f].replaceChildren(el("option", { value: "", text: "Inconnue" }), ...valeurs.map((v) => el("option", { value: v, text: v })));
+  }
+  form.addEventListener("submit", (e) => e.preventDefault());
+  form.addEventListener("input", () => {
+    try { localStorage.setItem(CLE_PROGRAMME, JSON.stringify(Object.fromEntries(new FormData(form)))); } catch { /* stockage indisponible */ }
+    dessinerProgramme();
+  });
+  try {
+    const s = JSON.parse(localStorage.getItem(CLE_PROGRAMME) || "null");
+    if (s) for (const [k, v] of Object.entries(s)) if (form.elements[k]) form.elements[k].value = v;
+  } catch { /* stockage indisponible */ }
+  dessinerProgramme();
+}
+
+function lireHypotheses() {
+  const f = document.getElementById("prog-form").elements;
+  const num = (n) => { const v = f[n].value.trim(); return v === "" ? null : Number(v); };
+  const mix = {};
+  for (const [k] of MIX) { const v = num(`mix${k}`); if (v > 0) mix[k] = v; }
+  return { SP_HS: num("SP_HS"), ETAGES_HS: num("ETAGES_HS"), categorie: f.categorie.value, intervention: f.intervention.value,
+           mix, prix: num("prix") };
+}
+
+/** Projets similaires à une constructibilité : SP hors-sol, étages et part de grands logements du mix visé. */
+function groupeProgramme(h) {
+  const features = {};
+  if (h.SP_HS > 0) features.SP_HS = h.SP_HS;
+  if (h.ETAGES_HS > 0) features.ETAGES_HS = h.ETAGES_HS;
+  const totalMix = Object.values(h.mix).reduce((a, b) => a + b, 0);
+  if (totalMix > 0) features.PART_GRANDS = ((h.mix["3"] || 0) + (h.mix["4"] || 0)) / totalMix;
+  const passe = (p) => ["categorie", "intervention"].every((f) => !h[f] || !p.infos[f] || norm(p.infos[f]) === norm(h[f]));
+  const fiables = etat.data.projets.filter((p) => p.fiable && passe(p));
+  const d = distancesA(features);
+  const proches = fiables.filter((p) => d[p.id] != null).sort((a, b) => d[a.id] - d[b.id]).slice(0, TAILLE_GROUPE);
+  return proches.length ? { liste: proches.map((p) => ({ p, d: d[p.id] })), parDefaut: false }
+                        : { liste: fiables.map((p) => ({ p, d: null })), parDefaut: true };
+}
+
+/** Bas (1er quartile), central (ratio combiné) et haut (3e quartile) d'un KPI sur le groupe, multipliés par une base. */
+function fourchette(groupe, kpiId, base) {
+  const kpi = etat.kpis.find((k) => k.id === kpiId);
+  const c = combiner(groupe, kpi);
+  if (!c.n || base == null) return null;
+  const [bas, haut] = [c.q1 * base, c.q3 * base].sort((a, b) => a - b);
+  return { bas, central: c.combine * base, haut, n: c.n, kpi };
+}
+
+/** Surface moyenne d'un logement du mix visé, chaque typologie à sa médiane de SUP (onglet Typologies). */
+function surfaceMoyenneMix(mix) {
+  const typos = new Map((etat.data.typologies || []).map((t) => [String(Math.min(t.chambres, 4)), t]));
+  let parts = 0, somme = 0;
+  for (const [k, part] of Object.entries(mix)) {
+    const t = typos.get(k);
+    if (!t) continue;
+    parts += part;
+    somme += part * t.mediane;
+  }
+  return parts ? somme / parts : null;
+}
+
+function dessinerProgramme() {
+  const h = lireHypotheses();
+  const totalMix = Object.values(h.mix).reduce((a, b) => a + b, 0);
+  const total = document.getElementById("prog-mix-total");
+  total.textContent = totalMix ? `= ${F0.format(totalMix)} %` : "";
+  total.classList.toggle("defavorable", totalMix > 0 && Math.abs(totalMix - 100) > 0.5);
+
+  const resultat = document.getElementById("prog-resultat");
+  const invite = document.getElementById("prog-invite");
+  if (!(h.SP_HS > 0)) { resultat.hidden = true; invite.hidden = false; document.getElementById("prog-groupe").replaceChildren(); return; }
+  invite.hidden = true;
+  resultat.hidden = false;
+
+  const { liste, parDefaut } = groupeProgramme(h);
+  const cle = liste.map((c) => c.p.id).join();
+  if (cle !== progEtat.cle) { progEtat.cle = cle; progEtat.coches = new Set(liste.map((c) => c.p.id)); }
+  const groupe = liste.filter((c) => progEtat.coches.has(c.p.id)).map((c) => c.p);
+  dessinerGroupeProgramme(liste, parDefaut);
+
+  const fragile = document.getElementById("prog-fragile");
+  fragile.hidden = groupe.length >= MIN_REFERENCE;
+  fragile.textContent = groupe.length ? `Estimation fragile : ${groupe.length} projet${groupe.length > 1 ? "s" : ""}.`
+                                      : "Aucun projet coché : pas d'estimation.";
+  if (!groupe.length) { document.getElementById("prog-barre").replaceChildren(); document.getElementById("prog-table").replaceChildren(); return; }
+
+  const sup = fourchette(groupe, "SUP/SP_HS", h.SP_HS);
+  const sd = fourchette(groupe, "SD/SP_HS", h.SP_HS);
+  const sus = fourchette(groupe, "SUS_HS/SP_HS", h.SP_HS);
+  dessinerBarre(h.SP_HS, sup, sd, sus);
+
+  const lignes = [];
+  const ligne = (label, f, unite, source, detail) => lignes.push({ label, f, unite, source, detail });
+  ligne("SUP hors-sol", sup, "m²", sup && `SUP / SP hors-sol (n = ${sup.n})`);
+  const svn = fourchette(groupe, "SVN/SP_HS", h.SP_HS);
+  ligne("Surface de vente nette (SVN)", svn, "m²", svn && `SVN / SP hors-sol (n = ${svn.n})`);
+
+  const moyenne = totalMix > 0 ? surfaceMoyenneMix(h.mix) : null;
+  if (moyenne && sup) {
+    const log = { bas: sup.bas / moyenne, central: sup.central / moyenne, haut: sup.haut / moyenne };
+    const n = Math.round(log.central);
+    const court = { 0: "studio", 1: "1 ch.", 2: "2 ch.", 3: "3 ch.", 4: "4 ch. et +" };
+    const repartition = MIX.filter(([k]) => h.mix[k]).map(([k]) => `${Math.round((n * h.mix[k]) / totalMix)} × ${court[k]}`).join(" · ");
+    ligne("Logements (mix visé)", log, "", `SUP ÷ ${F0.format(moyenne)} m², surface moyenne du mix (Typologies)`, repartition);
+  } else {
+    const r = fourchette(groupe, "SP_HS/LOG", 1);
+    const log = r && { bas: h.SP_HS / r.haut, central: h.SP_HS / r.central, haut: h.SP_HS / r.bas };
+    ligne("Logements", log, "", r && `SP hors-sol ÷ SP hors-sol par logement (n = ${r.n}) ; saisissez un mix pour l'affiner`);
+  }
+  const ss = sup && fourchette(groupe, "SP_SS/SUP", sup.central);
+  ligne("SP sous-sol", ss, "m²", ss && `SP sous-sol / SUP (n = ${ss.n})`);
+  const facade = fourchette(groupe, "FACADE/SP_HS", h.SP_HS);
+  ligne("Façade", facade, "m²", facade && `Façade / SP hors-sol (n = ${facade.n})`);
+  if (h.prix > 0 && svn)
+    ligne("Chiffre d'affaires (SVN × prix)", { bas: svn.bas * h.prix, central: svn.central * h.prix, haut: svn.haut * h.prix },
+          "CHF", `${F0.format(h.prix)} CHF / m² de SVN`);
+  dessinerTableProgramme(lignes);
+}
+
+function dessinerGroupeProgramme(liste, parDefaut) {
+  const ul = document.getElementById("prog-groupe");
+  const titre = document.getElementById("prog-groupe-titre");
+  titre.textContent = parDefaut ? "Faute de caractéristiques, tous les projets fiables (saisissez les étages ou le mix)"
+                                : `D'après ${liste.length} projet${liste.length > 1 ? "s" : ""} similaire${liste.length > 1 ? "s" : ""}`;
+  ul.replaceChildren(...liste.map(({ p, d }) => {
+    const cb = el("input", { type: "checkbox", "aria-label": `Inclure ${nomProjet(p)} dans l'estimation` });
+    cb.checked = progEtat.coches.has(p.id);
+    cb.addEventListener("change", () => { cb.checked ? progEtat.coches.add(p.id) : progEtat.coches.delete(p.id); dessinerProgramme(); });
+    return el("li", {}, el("label", { title: d == null ? "" : `Distance ${F2.format(d)} (0 = identique)` }, cb,
+      el("span", { class: "mono", text: p.id }), el("span", { class: "nom", text: p.nom })));
+  }));
+}
+
+/** La SP hors-sol découpée en SUP, SD, SUS et le reste (construction, installations), à l'estimation centrale. */
+function dessinerBarre(sp, sup, sd, sus) {
+  const parts = [["SUP", "SUP", sup], ["SD", "SD", sd], ["SUS", "SUS hors-sol", sus]]
+    .filter(([, , f]) => f).map(([code, label, f]) => ({ code, label, m2: f.central }));
+  const reste = Math.max(0, sp - parts.reduce((s, x) => s + x.m2, 0));
+  parts.push({ code: "reste", label: "Construction, installations et autres", m2: reste });
+  const pct = (m2) => `${F0.format((m2 / sp) * 100)} %`;
+  document.getElementById("prog-titre-barre").textContent = `Où vont les ${F0.format(sp)} m² de SP hors-sol (estimation centrale)`;
+  const barre = el("div", { class: "barre", role: "img", "aria-label": parts.map((x) => `${x.label} ${F0.format(x.m2)} m²`).join(", ") },
+    ...parts.filter((x) => x.m2 > 0).map((x) => el("span", { class: `segment ${x.code === "reste" ? "reste" : ""}`,
+      style: `flex-grow:${x.m2};${COULEURS_SIA[x.code] ? `background:${COULEURS_SIA[x.code]}` : ""}`,
+      title: `${x.label} : ${F0.format(x.m2)} m² (${pct(x.m2)})` })));
+  const legende = el("ul", { class: "legende" }, ...parts.map((x) => el("li", {},
+    el("i", { class: x.code === "reste" ? "reste" : "", style: COULEURS_SIA[x.code] ? `background:${COULEURS_SIA[x.code]}` : "" }),
+    `${x.label} `, el("b", { text: `${F0.format(x.m2)} m²` }), ` (${pct(x.m2)})`)));
+  document.getElementById("prog-barre").replaceChildren(barre, legende);
+}
+
+function dessinerTableProgramme(lignes) {
+  const fmt = (v, unite) => unite === "CHF" ? `≈ ${F1.format(v / 1e6)} M` : unite === "m²" ? `${F0.format(v)} m²` : F0.format(v);
+  const tete = el("tr", {}, ...["", "Bas (P25)", "Central", "Haut (P75)", "D'après"].map((t) => el("th", { scope: "col", text: t })));
+  const corps = lignes.map(({ label, f, unite, source, detail }) => {
+    if (!f) return el("tr", {}, el("td", { text: label }), el("td", { colspan: "4", class: "absent", text: "Pas de donnée dans les projets similaires" }));
+    const nom = el("td", { text: label });
+    if (detail) nom.append(el("span", { class: "detail", text: `dont ${detail}` }));
+    return el("tr", {}, nom, el("td", { text: fmt(f.bas, unite) }), el("td", { class: "central", text: fmt(f.central, unite) + (unite === "CHF" ? " CHF" : "") }),
+      el("td", { text: fmt(f.haut, unite) }), el("td", { class: "source", text: source || "" }));
+  });
+  document.getElementById("prog-table").replaceChildren(el("thead", {}, tete), el("tbody", {}, ...corps));
+}
+
 // ------------------------------------------------------------------ onglets et démarrage
 
-const VUES = ["comparer", "base", "typologies"];
+const VUES = ["comparer", "programmer", "base", "typologies"];
 
 function montrerVue(nom) {
   for (const v of VUES) {
@@ -586,6 +763,7 @@ function demarrer(data) {
   remplirProjets();
   remplirEcartes();
   initSaisie();
+  initProgrammer();
   const ecart = verifierDistances();
   if (ecart > 0.002) console.warn(`Distances de la page et du moteur différentes (écart max ${ecart}) : formules à réaligner.`);
   dessinerBase();

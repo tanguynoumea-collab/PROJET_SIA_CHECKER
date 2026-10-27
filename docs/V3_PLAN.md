@@ -145,7 +145,7 @@ MDP *.xlsx (dossier base) ──► sia_check.benchmark (Python)
 | 10 ✓ | Accueil en deux sections (Fiabilisation / Benchmark), empreinte de fiabilité, « Ajouter à la base » | Accueil WPF (DESIGN_PLAN, Évolution 3.0) |
 | 11 ✓ | Dashboard v1 dans WebView2 : Comparer (règles, projets similaires, écarts en m²), Base, Typologies | `dashboard/` (HTML sans dépendance, servi tel quel sur le web) |
 | 12 ✓ | Mon projet : saisie rapide ou projet ouvert dans SIA Check, positionnement face aux projets similaires, écarts en m² et CHF (rendement) | Comparaison (`--benchmark-projet`, DESIGN_PLAN Évolution 3.2) |
-| 13 | Programmation inverse | Outil de faisabilité |
+| 13 ✓ | Programmation inverse : d'une SP hors-sol, des étages et d'un mix au programme attendu (bas / central / haut) | Onglet Programmer (DESIGN_PLAN Évolution 3.3) |
 | 14 | Préparation web : hébergement, accès, mise à jour de la base | Hors V3 si besoin |
 
 ### Phase 9 livrée (27.10.2026)

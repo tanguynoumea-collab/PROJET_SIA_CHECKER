@@ -11,6 +11,7 @@
        SIA Check (WebView2, données transmises par l'application) et sur un serveur web (benchmark.json à côté). -->
   <nav class="tabs" role="tablist" aria-label="Vues du benchmark">
     <button role="tab" id="tab-comparer" aria-controls="vue-comparer" aria-selected="true">Comparer</button>
+    <button role="tab" id="tab-programmer" aria-controls="vue-programmer" aria-selected="false" tabindex="-1">Programmer</button>
     <button role="tab" id="tab-base" aria-controls="vue-base" aria-selected="false" tabindex="-1">Base</button>
     <button role="tab" id="tab-typologies" aria-controls="vue-typologies" aria-selected="false" tabindex="-1">Typologies</button>
   </nav>
@@ -68,6 +69,37 @@
           </section>
           <div id="regles" class="regles"></div>
         </div>
+      </div>
+    </section>
+
+    <!-- Programmation inverse : d'une constructibilité au programme attendu (DESIGN_PLAN, Évolution 3.3) -->
+    <section id="vue-programmer" role="tabpanel" aria-labelledby="tab-programmer" hidden>
+      <form id="prog-form" class="saisie" autocomplete="off">
+        <h2>Hypothèses</h2>
+        <div class="champs">
+          <label>SP hors-sol (m²) <input name="SP_HS" type="number" min="0" step="any" inputmode="decimal"></label>
+          <label>Étages hors-sol <input name="ETAGES_HS" type="number" min="0" step="1" inputmode="numeric"></label>
+          <label>Catégorie <select name="categorie"></select></label>
+          <label>Intervention <select name="intervention"></select></label>
+        </div>
+        <h3>Mix visé</h3>
+        <div class="champs" id="prog-mix"></div>
+        <h3>Prix de vente (facultatif)</h3>
+        <div class="champs">
+          <label>CHF / m² de SVN <input name="prix" type="number" min="0" step="100" inputmode="numeric"></label>
+        </div>
+        <h3 id="prog-groupe-titre"></h3>
+        <ul id="prog-groupe" class="liste ligne"></ul>
+      </form>
+      <p id="prog-invite" class="etat">Saisissez la SP hors-sol constructible pour estimer le programme.</p>
+      <div id="prog-resultat" hidden>
+        <p id="prog-fragile" class="bandeau" hidden></p>
+        <h2 id="prog-titre-barre"></h2>
+        <div id="prog-barre"></div>
+        <h2>Programme attendu</h2>
+        <div class="defile"><table id="prog-table" class="programme"></table></div>
+        <p class="secondaire">Central : ratio combiné des projets cochés ; bas et haut : 1er et 3e quartiles de leurs ratios.
+          Bas et haut sont des valeurs, pas un jugement favorable ou défavorable.</p>
       </div>
     </section>
 

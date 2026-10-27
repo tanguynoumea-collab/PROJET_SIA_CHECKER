@@ -334,6 +334,13 @@ def _judge_sum(c: dict, cfg: Config) -> dict | None:
                 hint=HINTS.get((rule, code), f"Vérifier le classement des surfaces de la {code}."))
 
 
+def implicit_construction(res: pd.DataFrame) -> pd.Series:
+    """Résidus R1 (SC) et R3 (SEC) compatibles avec la surface de construction (verdict INFO) : Treegram ne crée pas
+    ces surfaces, leur résidu est attendu. Ce ne sont pas des points d'attention ; au-delà de la fourchette plausible,
+    le résidu reste une erreur (surface non classée)."""
+    return res.rule.isin(["R1", "R3"]) & (res.verdict == "INFO")
+
+
 def covered_aggregates(res: pd.DataFrame) -> pd.Series:
     """Contrôles sommés (niveau « * ») hors OK dont un niveau porte déjà un point sur la même catégorie.
 

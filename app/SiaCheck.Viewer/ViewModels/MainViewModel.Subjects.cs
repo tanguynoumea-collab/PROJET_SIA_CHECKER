@@ -28,6 +28,7 @@ public sealed partial class MainViewModel
     {
         var v = CollectionViewSource.GetDefaultView(Subjects);
         v.Filter = o => o is SubjectItem s && MatchesSubject(s);
+        v.GroupDescriptions.Add(new PropertyGroupDescription(nameof(SubjectItem.Group)));   // intertitre « Tableau MDP »
         return v;
     }
 
@@ -38,6 +39,10 @@ public sealed partial class MainViewModel
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasSelectedSubject))] private SubjectItem? _selectedSubject;
     public bool HasSelectedSubject => SelectedSubject is not null;
+    /// <summary>Points ouverts du sujet choisi, listés dans sa carte (clic : le point dans l'onglet Points).</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasSelectedSubjectPoints))]
+    private IReadOnlyList<IssueItem> _selectedSubjectPoints = [];
+    public bool HasSelectedSubjectPoints => SelectedSubjectPoints.Count > 0;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasSelectedCorrection))] private CorrectionItem? _selectedCorrection;
     public bool HasSelectedCorrection => SelectedCorrection is not null;
 
@@ -121,10 +126,13 @@ public sealed partial class MainViewModel
         var manual = unmatched.Where(c => c.Origin == "manuel" && c.Id.StartsWith("manuel-", StringComparison.Ordinal)).ToList();
         var orphans = unmatched.Except(manual).ToList();
         var subjectIds = doc.Subjects.Select(s => s.Id).ToHashSet();
+        var open = Issues.Where(i => !i.IsResolved).Select(i => i.Key).ToHashSet();
         foreach (var s in doc.Subjects)
         {
             var items = s.Corrections.Select(c => MakeCorrection(_journal.Overlay(c), log))
                 .Concat(manual.Where(c => c.Subject == s.Id).Select(c => MakeCorrection(c.Clone(), log))).ToList();
+            // Sujet sans correction dont aucun point n'est encore ouvert (résolus par les corrections) : rien à montrer
+            if (items.Count == 0 && !s.Points.Any(open.Contains)) continue;
             var ids = items.SelectMany(c => c.TargetIds)
                 .Concat(s.Points.Where(issues.ContainsKey).SelectMany(k => issues[k].SurfaceIds))
                 .Distinct().ToList();
@@ -415,6 +423,15 @@ public sealed partial class MainViewModel
         SelectedSubject = s;
     }
 
+    /// <summary>Point listé dans la carte d'un sujet : ouvert dans l'onglet Points, isolé en 3D.</summary>
+    [RelayCommand]
+    private void OpenSubjectPoint(IssueItem? issue)
+    {
+        if (issue is null) return;
+        ShowSubjects = false;
+        FocusIssue(issue);
+    }
+
     [RelayCommand]
     private void ShowAppliedCorrections()
     {
@@ -426,6 +443,7 @@ public sealed partial class MainViewModel
 
     partial void OnSelectedSubjectChanged(SubjectItem? value)
     {
+        SelectedSubjectPoints = value is null ? [] : PointsOf(value).OrderBy(i => i.SortKey).ToList();
         SelectedCorrection = null;
         if (value is not null) FocusSubject(value);
     }

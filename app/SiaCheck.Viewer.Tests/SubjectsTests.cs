@@ -49,6 +49,42 @@ internal static class SubjectFixture
     }
 }
 
+public class SubjectListTests
+{
+    private static ViewerDocument With(params string[] extra)
+    {
+        var root = JsonNode.Parse(JsonSerializer.Serialize(SubjectFixture.Doc()))!.AsObject();
+        foreach (var s in extra) root["subjects"]!.AsArray().Add(JsonNode.Parse(s));
+        return JsonSerializer.Deserialize<ViewerDocument>(root.ToJsonString())!;
+    }
+
+    [Fact]
+    public void Empty_subjects_are_hidden_and_mdp_proposals_come_last()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp, With(
+            """{"id": "R3-SEP", "titre": "SEP non classée", "action": "à vérifier", "points": ["X|nulle|part||SEP"], "corrections": []}""",
+            """{"id": "affectation", "titre": "Affectation (tableau MDP)", "action": "proposer", "points": [], "corrections": [{"id": "aff-1", "op": "renseigner", "cible": {"lot": "A"}, "statut": "proposée", "origine": "règle", "explication": "x"}]}"""));
+        Assert.DoesNotContain(vm.Subjects, s => s.Id == "R3-SEP");                 // aucun point ouvert, aucune correction
+        var mdp = vm.Subjects.Last();
+        Assert.Equal(("affectation", "Tableau MDP", "MDP"), (mdp.Id, mdp.Group, mdp.OriginLabel));
+        Assert.Equal("", vm.Subjects.First().Group);
+    }
+
+    [Fact]
+    public void Subject_card_lists_its_open_points_and_opens_one()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        vm.SelectedSubject = vm.Subjects.Single(s => s.Id == "S1");
+        Assert.True(vm.HasSelectedSubjectPoints);
+        Assert.All(vm.SelectedSubjectPoints, p => Assert.Contains(p.Key, new[] { "A1|ERR|N00||SEP", "R3|ERR|N00||SEP" }));
+        vm.OpenSubjectPointCommand.Execute(vm.SelectedSubjectPoints[0]);
+        Assert.False(vm.ShowSubjects);                                           // onglet Points
+        Assert.Same(vm.SelectedSubjectPoints[0], vm.SelectedIssue);
+    }
+}
+
 public class CorrectionDestinationTests
 {
     [Fact]

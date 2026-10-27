@@ -64,8 +64,9 @@ class Report:
 
     def __post_init__(self):
         res = self.result.residuals
-        # Points d'attention : contrôles hors OK, sans les sommes que les niveaux détaillent déjà.
-        nok = res[(res.verdict != "OK") & ~rules.covered_aggregates(res)]
+        # Points d'attention : contrôles hors OK, sans les sommes que les niveaux détaillent déjà, ni la surface de
+        # construction implicite (SC, SEC : Treegram ne la crée pas, son résidu est attendu ; il reste au bilan).
+        nok = res[(res.verdict != "OK") & ~rules.covered_aggregates(res) & ~rules.implicit_construction(res)]
         self.residuals = nok.reindex(nok.diff_m2.abs().sort_values(ascending=False).index)
         self.surfaces = _surfaces(self.result)
         self.categories = _category_summary(self.result, self.cfg)

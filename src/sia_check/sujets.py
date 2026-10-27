@@ -16,7 +16,8 @@ Causes reconnues (L'Orée, revue IA du 22.10.2026) :
 - abords : SEP non classée du niveau du terrain (A1), dalle au contact du terrain -> `découper` vers SA
   (SIA 416 §1.2) ; le tracé pré-calculé est la SEP hors plancher du niveau et hors SEU/SED ;
 - sc-implicite : résidu R1 (SC) ou R3 (SEC) compatible avec la surface de construction, que Treegram ne crée
-  pas -> aucune action ;
+  pas -> aucune action ; depuis le 27.10.2026 ce résidu n'est plus un point d'attention (rules.implicit_construction) :
+  le sujet ne se forme plus que sur des documents anciens ;
 - agrégats : contrôles sommés par bâtiment ou sur le projet (niveau « * ») que les niveaux ne détaillent pas
   (les autres ne sont plus des points : rules.covered_aggregates) ;
 - non classé : résidu R3 (SEP) ou R1 (SP) d'un niveau, hors toitures et abords -> `découper` la part non classée
@@ -330,6 +331,8 @@ def apply_review(base: dict, review: dict, surface_ids: set[str] | None = None) 
 
     - Les points dont le verdict IA cite un sujet S… passent dans ce sujet ; les autres restent dans leur
       sujet de base (faux positifs, agrégats…).
+    - Un sujet de base dont l'IA a repris toutes les propositions lui cède aussi ses points ; un sujet IA sans
+      point ni correction n'est pas gardé.
     - Une proposition de base décidée par l'IA passe dans son sujet, `origine` « ia » ; `par_defaut`
       s'applique aux propositions des sujets `base` que les décisions ne citent pas.
     - « rejeter » garde la correction au statut « rejetée », pour la traçabilité ; « modifier » change
@@ -429,14 +432,24 @@ def apply_review(base: dict, review: dict, surface_ids: set[str] | None = None) 
                        "origine": "ia", "points": [], "m2": 0.0, "corrections": decided})
 
     by_ai = {s["id"]: s for s in out_ai}
+    taken = {c["id"]: s["id"] for s in out_ai for c in s["corrections"]}   # proposition de base -> sujet IA
     remaining = []
     for s in base["subjects"]:
         rest = dict(s, points=[], corrections=[c for c in s["corrections"] if c["id"] not in used], m2=0.0)
+        # Sujet de base dont l'IA a repris toutes les propositions : ses points suivent (sinon un doublon « corriger »
+        # sans correction resterait), dans le sujet IA qui en a pris le plus.
+        heir = None
+        if s["corrections"] and not rest["corrections"]:
+            owners = [taken[c["id"]] for c in s["corrections"] if c["id"] in taken]
+            heir = max(set(owners), key=owners.count) if owners else None
         for key in s["points"]:
             ai = (verdicts.get(key) or {}).get("sujet")
-            (by_ai[ai] if ai in by_ai else rest)["points"].append(key)
+            (by_ai[ai] if ai in by_ai else by_ai[heir] if heir else rest)["points"].append(key)
         if rest["points"] or rest["corrections"]:
             remaining.append(rest)
+    # Sujet IA sans point ni correction (ses points ne sont plus des points d'attention : construction implicite,
+    # agrégats détaillés par les niveaux) : rien à montrer
+    out_ai = [s for s in out_ai if s["points"] or s["corrections"]]
     for s in out_ai + remaining:
         s["m2"] = round(sum(float(c.get("aire") or c.get("m2") or 0)
                             for c in s["corrections"] if c.get("statut") != REJECTED), 2)

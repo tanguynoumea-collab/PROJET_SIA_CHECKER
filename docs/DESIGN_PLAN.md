@@ -1645,3 +1645,13 @@ sera réanalysé : une correction qui vise une surface absente du nouveau .tgm l
 - Un projet créé apparaît dans les projets actifs dès sa création, même si l'analyse échoue.
 - Tests : contrôle du dossier, dossier déjà pris, ID en double, déplacement des données, refus du changement, création, identité reprise sans dialogue, fiche ouverte quand l'ID manque, dossier introuvable listé.
 - **Non vérifié à l'écran** : rendu du dialogue et de la liste des projets actifs ; à regarder dans l'application.
+
+---
+
+## Retour utilisateur — sujets et points (27.10.2026)
+
+- **Construction implicite** : les résidus R1 (SC) et R3 (SEC) compatibles avec la surface de construction (verdict INFO) ne sont plus des points d'attention (Treegram ne crée pas ces surfaces : le résidu est attendu). Ils restent contrôlés et visibles au bilan par niveau ; au-delà de la fourchette plausible, le résidu reste une erreur. L'Orée brut : 19 points au lieu de 113.
+- **Sujets sans numéro** : un sujet du moteur dont la revue IA a repris toutes les corrections lui cède ses points (S1 reprend les 9 points des abords : plus de doublon « corriger » sans correction) ; un sujet IA vide et un sujet sans correction dont aucun point n'est ouvert ne sont plus listés.
+- **Tableau MDP** : les propositions (affectation, forme, typologies) sont regroupées en fin de liste sous l'intertitre « Tableau MDP », étiquette « MDP » au lieu de « règle ».
+- **Carte du sujet** : elle liste ses points ouverts (verdict, lieu, titre, écart) ; un clic ouvre le point dans l'onglet Points et l'isole en 3D.
+

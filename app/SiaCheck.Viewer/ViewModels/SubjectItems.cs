@@ -293,7 +293,11 @@ public sealed partial class SubjectItem : ObservableObject
     public string Explanation => Subject.Explanation;
     public bool HasExplanation => !string.IsNullOrWhiteSpace(Explanation);
     public bool IsAi => Subject.Origin == "ia";
-    public string OriginLabel => IsAi ? "IA" : Subject.Origin == "manuel" ? "manuel" : "règle";
+    /// <summary>Proposition pour le tableau MDP (affectation, forme, typologies) : pas un problème de surfaces.</summary>
+    public bool IsMdp => Subject.Action == "proposer";
+    /// <summary>Groupe de la liste : les propositions MDP sous leur intertitre, à la fin ; les sujets de surfaces sans.</summary>
+    public string Group => IsMdp ? "Tableau MDP" : "";
+    public string OriginLabel => IsAi ? "IA" : IsMdp ? "MDP" : Subject.Origin == "manuel" ? "manuel" : "règle";
     /// <summary>« IA · vrai sujet », ou l'origine seule.</summary>
     public string OriginTag => IsAi && !string.IsNullOrEmpty(Subject.Certainty) ? $"IA · {Subject.Certainty}" : OriginLabel;
     public string Action => Subject.Action;
@@ -343,8 +347,8 @@ public sealed partial class SubjectItem : ObservableObject
     public string RejectAllLabel => Corrections.All(c => c.IsProposal)
         ? $"« Inconnu » pour les {Corrections.Count}" : $"Rejeter les {Corrections.Count(c => !c.IsOrphan)}";
 
-    /// <summary>Tri : « corriger » (surface en jeu décroissante), « proposer » (MDP), « à vérifier », « aucune ».</summary>
-    public (int, double, string) SortKey => (Action switch { "corriger" => 0, "proposer" => 1, "à vérifier" => 2, _ => 3 }, -Subject.M2, Id);
+    /// <summary>Tri : « corriger » (surface en jeu décroissante), « à vérifier », « aucune », puis le tableau MDP.</summary>
+    public (int, double, string) SortKey => (Action switch { "corriger" => 0, "à vérifier" => 1, "proposer" => 3, _ => 2 }, -Subject.M2, Id);
 
     private void Refresh()
     {

@@ -185,7 +185,10 @@ def test_subjects_without_ai(loree):
     assert b03["aire"] == pytest.approx(1812.6, abs=1) and b03["polygone"]
     e09 = [c for c in sj["abords"]["corrections"] if c.get("groupe") == "abords-E09-N00"]
     assert [round(c["aire"]) for c in e09] == [1526, 114, 99]                       # trois morceaux de SEP au RDC
-    assert sj["sc-implicite"]["action"] == "aucune" and len(sj["sc-implicite"]["points"]) > 50
+    # construction implicite (SC, SEC) : attendue, hors des points d'attention, donc plus de sujet
+    assert "sc-implicite" not in sj
+    assert not any(i["rule"] in ("R1", "R3") and i["verdict"] == "INFO" for i in doc["issues"])
+    assert ((res.residuals.rule == "R1") & (res.residuals.verdict == "INFO")).sum() > 50   # toujours contrôlée
     journal = sujets.journal({"subjects": list(sj.values())})
     for c in journal["corrections"]:
         c["statut"] = "acceptée"
@@ -210,12 +213,14 @@ def test_review_v2_reorients_subjects(loree):
     assert {p["sujet"] for p in out["revue"]["problemes"]} <= {"S2"}
     # Seuls les agrégats de la revue, que les niveaux détaillent, ne sont plus des points (rules.covered_aggregates).
     # Les points de toiture (A2, R3 des niveaux Toiture et des attiques) sont résolus par la SPT.
-    assert all("|*||" in k or k.endswith("||SEP") for k in out["revue"]["points_inconnus"])
+    # Construction implicite (R1 en SP) : plus des points d'attention, la revue les citait encore
+    assert all("|*||" in k or k.endswith("||SEP") or k.startswith("R1|") for k in out["revue"]["points_inconnus"])
     by = {s["id"]: s for s in out["subjects"]}
     levels = lambda sid: {c.get("groupe") or c["id"] for c in by[sid]["corrections"]}   # noqa: E731
     assert len(levels("S1")) == 9 and not by.get("S2", {}).get("corrections")
     assert len(by["S1"]["corrections"]) == 12                     # E09 N00 en trois morceaux, I14 N00 en deux
-    assert len(by["S6"]["points"]) == 71 and not by["S6"]["corrections"]
+    assert "S6" not in by                                          # SC implicite : sujet vide, plus montré
+    assert "abords" not in by and len(by["S1"]["points"]) == 18     # points des abords repris par S1
     j = sujets.journal(out)
     for c in j["corrections"]:
         c["statut"] = "acceptée"

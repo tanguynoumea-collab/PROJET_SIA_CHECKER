@@ -16,7 +16,7 @@ def subjects(result, cfg):
 def test_grouping_by_cause(subjects):
     assert sorted(subjects["toitures"]["points"]) == ["A2|ERR|Toiture||SEP", "R3|ERR|Toiture||SEP"]
     assert set(subjects["abords"]["points"]) == {"A1|ERR|N00||SEP", "R3|ERR|N00||SEP"}
-    assert subjects["sc-implicite"]["action"] == "aucune" and subjects["sc-implicite"]["points"]
+    assert "sc-implicite" not in subjects        # construction implicite : pas un point d'attention, pas de sujet
     agg = subjects.get("agregats", {"points": []})["points"]
     assert all("|*|" in k for k in agg)
     assert not any(k.startswith("A3") for k in agg)     # codes inconnus : à part
@@ -147,6 +147,18 @@ def test_review_default_keeps_all_and_rejects_one():
     assert "toitures" not in {s["id"] for s in out["subjects"]}          # vidé par la revue
     assert {s["id"] for s in out["subjects"]} >= {"abords", "sc-implicite"}   # non repris : restent tels quels
     assert out["revue"]["problemes"] == [] and out["revue"]["decisions"] == 3
+
+
+def test_review_takes_the_points_of_a_subject_it_emptied():
+    # S1 reprend toutes les propositions d'« abords » sans citer son point : le point suit, pas de doublon vide
+    pts = review(S1={"titre": "Abords", "base": ["abords"], "par_defaut": "garder", "decisions": []})
+    pts["points"].pop("A1|A|N00||SEP")
+    out = sujets.apply_review(base_subjects(), pts, SURFACES)
+    by = {s["id"]: s for s in out["subjects"]}
+    assert "abords" not in by and by["S1"]["points"] == ["A1|A|N00||SEP"]
+    # un sujet IA sans point ni correction n'est pas montré
+    out = sujets.apply_review(base_subjects(), review(S6={"titre": "SC", "action": "aucune"}), SURFACES)
+    assert "S6" not in {s["id"] for s in out["subjects"]}
 
 
 def test_review_modify_add_and_invalid_decisions():

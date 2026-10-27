@@ -1189,6 +1189,35 @@
                                 <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap">
                                     <Run Text="Points : " /><Run Text="{Binding SelectedSubject.PointsState, Mode=OneWay}" />
                                 </TextBlock>
+                                <!-- Les points du sujet : clic = le point dans l'onglet Points, isolé en 3D -->
+                                <ScrollViewer Margin="0,4,0,0" MaxHeight="168" VerticalScrollBarVisibility="Auto"
+                                              Visibility="{Binding HasSelectedSubjectPoints, Converter={StaticResource BoolToVisibility}}">
+                                    <ItemsControl ItemsSource="{Binding SelectedSubjectPoints}" Focusable="False">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="vm:IssueItem">
+                                                <Button Style="{StaticResource RowButton}" Padding="4,2" ToolTip="{Binding Tooltip}"
+                                                        Command="{Binding DataContext.OpenSubjectPointCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}" AutomationProperties.Name="{Binding Title}">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="22" />
+                                                            <ColumnDefinition Width="104" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <c:VerdictGlyph VerticalAlignment="Center" Verdict="{Binding Verdict}" />
+                                                        <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis" Text="{Binding Location}" />
+                                                        <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis" Text="{Binding Title}" />
+                                                        <TextBlock Grid.Column="3" Margin="8,0,0,0" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
+                                                                   Text="{Binding DiffM2, Converter={StaticResource Area}}" />
+                                                    </Grid>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
                                 <StackPanel Margin="0,6,0,0" Orientation="Horizontal">
                                     <StackPanel.Style>
                                         <Style TargetType="StackPanel">
@@ -1395,6 +1424,26 @@
                                         </DataTemplate.Triggers>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
+                                <ListBox.GroupStyle>
+                                    <GroupStyle>
+                                        <GroupStyle.HeaderTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Margin="4,16,0,4" Text="{Binding Name}"
+                                                           ToolTip="Champs à remplir dans le tableau MDP : pas des problèmes de surfaces, donc sans points">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource TextSection}">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Name}" Value="">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </GroupStyle.HeaderTemplate>
+                                    </GroupStyle>
+                                </ListBox.GroupStyle>
                             </ListBox>
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
                                         Visibility="{Binding SubjectsEmptyMessage, Converter={StaticResource VisibleWhen}}">

@@ -594,10 +594,15 @@
                         <!-- Marge droite : la barre de défilement ne recouvre pas les liens « Tout afficher » / « Tous » -->
                         <StackPanel Margin="0,0,10,0">
                             <DockPanel>
-                                <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" Margin="{StaticResource SectionGap}"
-                                        Command="{Binding ShowAllLayersCommand}">
-                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Tout afficher" />
-                                </Button>
+                                <!-- Tout afficher / tout masquer : deux icônes (œil, œil barré) -->
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="{StaticResource SectionGap}">
+                                    <ui:Button Appearance="Transparent" Padding="4" Icon="{ui:SymbolIcon Eye20}"
+                                               Command="{Binding ShowAllLayersCommand}" ToolTip="Afficher tous les calques"
+                                               AutomationProperties.Name="Afficher tous les calques" />
+                                    <ui:Button Margin="2,0,0,0" Appearance="Transparent" Padding="4" Icon="{ui:SymbolIcon EyeOff20}"
+                                               Command="{Binding HideAllLayersCommand}" ToolTip="Masquer tous les calques"
+                                               AutomationProperties.Name="Masquer tous les calques" />
+                                </StackPanel>
                                 <TextBlock Style="{StaticResource TextSection}" Text="Calques" />
                             </DockPanel>
                             <ItemsControl x:Name="LayersList" ItemsSource="{Binding LayersView}">

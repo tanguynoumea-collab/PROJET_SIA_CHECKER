@@ -142,6 +142,9 @@ ratios:
      ref: [0.20, 0.45], note: "Repère : projets de la base de données (21 à 42 %)."}
   - {id: SRV/PLEINE, family: enveloppe, label: "Surface vitrée / surface pleine", num: [SRV], den: [PLEINE], levels: above_ground,
      ref: [0.25, 0.80], note: "Surface pleine = façade brute − vitrages. Repère : projets de la base (26 à 74 %)."}
+  - {id: SP/ENV, family: enveloppe, label: "Coefficient de forme : plancher hors-sol / enveloppe", num: [SP], den: [SFN, SPT],
+     levels: above_ground, ref: [1.00, 1.30],
+     note: "Enveloppe = façades hors-sol (SFN) + toitures (SPT). Plus haut = plus compact. Repère : projets de la base (1,03 à 1,25)."}
   - {id: SFN/SP, family: enveloppe, label: "Façade brute / plancher hors sous-sol", num: [SFN], den: [SP], levels: above_ground,
      ref: [0.50, 1.10], note: "Compacité : m² de façade par m² de plancher. Repère : projets de la base (0,60 à 1,08)."}
 

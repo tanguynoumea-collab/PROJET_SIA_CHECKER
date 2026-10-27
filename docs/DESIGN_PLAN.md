@@ -1401,7 +1401,7 @@ Ils entrent dans la liste des points d'attention et les sujets comme les autres 
 
 ### Ratios (zone Ratios de l'espace de revue)
 
-Une famille « Enveloppe » : part vitrée (SRV / façade brute), vitrée / pleine (SRV / (façade brute − SRV)), façade / SP hors-sol. Par bâtiment et pour le projet, comme les autres ratios.
+Une famille « Enveloppe » : part vitrée (SRV / façade brute), vitrée / pleine (SRV / (façade brute − SRV)), façade / SP hors-sol. Depuis le 27.10.2026, aussi le **coefficient de forme** (SP/ENV) : SP hors-sol / (façades SFN + toitures SPT), repère 1,00–1,30 tiré de la base, comme le KPI clé du benchmark (L'Orée : 1,25). Par bâtiment et pour le projet, comme les autres ratios.
 
 ### Export MDP
 

@@ -626,6 +626,16 @@ public sealed partial class MainViewModel : ObservableObject
         UpdateLayers();
     }
 
+    /// <summary>Masque tous les calques : on part d'une vue vide pour n'en cocher que quelques-uns.</summary>
+    [RelayCommand]
+    private void HideAllLayers()
+    {
+        _suspendSceneUpdates = true;
+        foreach (var l in Layers) l.IsVisible = false;
+        _suspendSceneUpdates = false;
+        UpdateLayers();
+    }
+
     [RelayCommand]
     private void SelectAllBuildings()
     {

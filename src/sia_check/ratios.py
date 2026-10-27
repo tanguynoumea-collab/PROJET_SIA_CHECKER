@@ -88,8 +88,9 @@ def compute(totals: pd.DataFrame, surf: pd.DataFrame, cfg: Config) -> pd.DataFra
     lot_totals = level_totals(lot_surf) if not lot_surf.empty else pd.DataFrame(index=totals.index)
     lots_src = surf[(surf["code"] == "SNH") & (surf["kind"] == "leaf") & surf["lot"].notna()] \
         if "lot" in surf else surf.iloc[0:0]
-    # Enveloppe : façades et vitrages, ignorés par les règles de sommation, rejoignent les totaux des seuls ratios
-    env = surf[surf["code"].isin(["SFN", "SRV"]) & (surf["kind"] == "node")]
+    # Enveloppe : façades, vitrages et toitures, ignorés par les règles de sommation, rejoignent les totaux des seuls
+    # ratios (coefficient de forme : SP hors-sol / façades + toitures)
+    env = surf[surf["code"].isin(["SFN", "SRV", "SPT"]) & (surf["kind"] == "node")]
     if not env.empty:
         totals = totals.join(env.groupby(["building", "level", "code"])["area"].sum().unstack("code"), how="left")
     above = [(b, l) for b, l in totals.index if (level_rank(l, cfg) is None or level_rank(l, cfg) >= 0)]

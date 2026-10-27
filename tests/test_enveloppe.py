@@ -83,6 +83,15 @@ def test_envelope_ratios(cfg):
     assert r.loc[("*", "SFN/SP"), "value"] == pytest.approx(120 / 100)
 
 
+def test_shape_coefficient(cfg):
+    # SP hors-sol / (façades hors-sol + toitures) : les toitures SPT rejoignent les totaux des ratios
+    df = frame(level("A", "N00", 100, gross=120, net=90, res=30, srv=30)
+               + [{"id": "Aspt", "building": "A", "level": "N00", "category": "SPT", "area": 40.0, "kind": "node"}]
+               + level("A", "S01", 200, gross=50, net=50, res=0, srv=0))     # sous-sol : hors du coefficient
+    r = rules.run(df, cfg).ratios.set_index(["building", "id"])
+    assert r.loc[("*", "SP/ENV"), "value"] == pytest.approx(100 / (120 + 40))
+
+
 def test_mdp_glazing_is_srv(cfg):
     df = frame(level("A", "N00", 100, gross=120, net=90, res=30, srv=29.5, per=40, h=3) + level("A", "N01", 100, gross=120, net=90, res=30))
     recs = mdp.enveloppe_records(rules.run(df, cfg), cfg, 1)

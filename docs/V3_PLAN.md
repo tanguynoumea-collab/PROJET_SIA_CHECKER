@@ -238,3 +238,21 @@ Les MDP de la base ne sont identifiés que si quelqu'un remplit la fiche Identit
 
 La façade du benchmark additionnait toutes les lignes de la feuille SurfacesEnveloppe : façades hors-sol, murs enterrés des sous-sols **et toitures** (L'Orée : 37 417 m² au lieu de 21 491 m², part vitrée 19 % au lieu de 32,7 %). Elle ne garde plus que les façades hors-sol, comme les ratios de la fiabilisation : ni toitures, ni sous-sols (code S01 ou « Sous Sol »), ni lignes de total sans étage. Sans surface vitrée, la vitrée est prise égale aux ouvertures de la façade (brute − nette), comme à l'export MDP : les blocs de vitrages saisis à la main en double (Sauvabelines) ne faussent plus le ratio.
 
+## 12. Clôture de la V3 — version 3.0.0 (27.10.2026)
+
+### Livré
+
+- **Accueil en deux sections** : Fiabilisation (fiche projet à la création : dossier Treegram + identité HRS ; projets actifs avec ID, typologie, canton) et Benchmark (base des MDP triable, page de chaque MDP : identité à remplir en priorité, données manquantes, ouvrir, recharger).
+- **Dashboard HTML** (WebView2, portable sur le web) : sélection typologie / canton / intervention, onglets Ratios, Comparer, Programmer, Base, Typologies ; ratios combinés des projets similaires, sans ratios idéaux.
+- **KPI clés** de l'équipe DEV : SUP / SP hors-sol, vitrée / pleine, coefficient de forme (SP hors-sol / façades hors-sol + toitures).
+- **Enveloppe** : façades SFN et vitrages SRV lus, contrôlés (E1–E5), affichés en 3D et au bilan par niveau ; ratios d'enveloppe et coefficient de forme dans la fiabilisation comme dans le benchmark, hors sous-sols (S ou « - » dans le nom du niveau).
+- **Flux vers la base** : un projet passé en traité exporte son MDP dans la base ; modifié ensuite, il passe « Traité · modifié » et se republie d'un clic.
+- **Fiabilisation allégée** : construction implicite (SC, SEC) hors des points d'attention, sujets vidés fusionnés ou masqués, propositions du tableau MDP regroupées, points listés dans la carte d'un sujet.
+
+### Reste ouvert
+
+- **Phase 14, mise en ligne du dashboard** : reportée ; hébergement (piste Azure Static Web Apps) et mise à jour de la base à décider, accès limité à un groupe restreint. Rien n'est mis en ligne, `benchmark.json` ne va jamais dans le dépôt.
+- **Qualité de la base** : 6 MDP fiables sur 10 ; identités d'Avallons, Sauvabelines et Les Patios à compléter ; Gare Casino, Les Patios, Côté Gare et Quartier de l'Étang à repasser par SIA Check ; SVN et circulations du Clos des Hêtres à vérifier ; toitures absentes de 3 MDP (pas de coefficient de forme). Viser 8 à 10 projets fiables par typologie.
+- **Coefficient de forme** : plancher bas exclu de l'enveloppe, à confirmer avec l'équipe.
+- **Unités propres aux autres typologies** (chambres, lits, postes de travail…) et fourchette de fiabilité par typologie : à définir quand la base en contiendra.
+

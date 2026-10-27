@@ -36,8 +36,6 @@ public sealed class SceneController
     private const double SpThickness = 0.30;    // m : dalle SP, plus épaisse, sous les pièces
     private const double SpDrop = 0.04;         // m : dessus de la SP sous celui des pièces (joints visibles)
     private const double EdgeShade = 0.58;      // chants : 58 % de la luminosité du dessus
-    private const byte FacadeAlpha = 0x59;   // 35 % : façade SFN
-    private const byte GlazingAlpha = 0x80;  // 50 % : vitrages SRV
     private const double SpShade = 0.72;        // SP plus foncée que sa couleur de légende, comme dans Treegram
     private const double ExternalTint = 0.45;   // surfaces externes : part de la couleur conservée (reste = blanc)
     private const double FocusLift = 0.01;      // m : évite le scintillement avec le fantôme coplanaire
@@ -88,6 +86,8 @@ public sealed class SceneController
     public bool IsFocused => _focus is not null;
 
     // ------------------------------------------------------------------ construction
+
+    private const double GlazingOffset = 0.03;   // m : vitrages SRV devant la façade SFN, sans scintillement
 
     private sealed record SurfaceGeometry(string Id, string Building, string Level, string Code, Point3D[] Points, int[] Indices);
 
@@ -237,6 +237,7 @@ public sealed class SceneController
     private Batch MakeBatch(string code, IEnumerable<SurfaceGeometry> surfaces, double lift)
     {
         var sp = code == "SP";
+        if (code == "SRV") surfaces = OffsetOutward(surfaces.ToList(), GlazingOffset);
         // Façades et vitrages sont verticaux : pas d'épaisseur de dalle, qui les doublerait d'un chant horizontal
         var (top, edges, starts, ids) = Extrude(surfaces,
             dz: lift - (sp ? SpDrop : 0), thickness: sp ? SpThickness : _palette.IsEnvelope(code) ? 0 : SlabThickness, textured: false);
@@ -246,6 +247,34 @@ public sealed class SceneController
             starts, ids);
         _byModel[batch.Top] = batch;
         return batch;
+    }
+
+    /// <summary>
+    /// Vitrages opaques dans le plan de la façade : sans décalage, les deux se disputent le même plan
+    /// (scintillement). Chaque vitrage avance selon sa normale, du côté opposé au centre de ses voisins du niveau.
+    /// </summary>
+    private static List<SurfaceGeometry> OffsetOutward(List<SurfaceGeometry> surfaces, double offset)
+    {
+        if (surfaces.Count == 0) return surfaces;
+        var all = surfaces.SelectMany(s => s.Points).ToList();
+        var cx = all.Average(p => p.X);
+        var cy = all.Average(p => p.Y);
+        return surfaces.Select(s =>
+        {
+            // Normale du plus grand triangle, ramenée à l'horizontale : les vitrages sont verticaux
+            double nx = 0, ny = 0, best = 0;
+            for (var t = 0; t + 2 < s.Indices.Length; t += 3)
+            {
+                var n = Vector3D.CrossProduct(s.Points[s.Indices[t + 1]] - s.Points[s.Indices[t]],
+                                              s.Points[s.Indices[t + 2]] - s.Points[s.Indices[t]]);
+                if (n.LengthSquared > best) (best, nx, ny) = (n.LengthSquared, n.X, n.Y);
+            }
+            var len = Math.Sqrt(nx * nx + ny * ny);
+            if (len < 1e-9) return s;
+            nx /= len; ny /= len;
+            if (nx * (s.Points.Average(p => p.X) - cx) + ny * (s.Points.Average(p => p.Y) - cy) < 0) { nx = -nx; ny = -ny; }
+            return s with { Points = s.Points.Select(p => new Point3D(p.X + nx * offset, p.Y + ny * offset, p.Z)).ToArray() };
+        }).ToList();
     }
 
     /// <summary>
@@ -321,9 +350,7 @@ public sealed class SceneController
         // varier l'échelle des hachures et produit un moiré qui envahit la vue d'ensemble ; les hachures
         // restent dans la légende et le bilan, où l'échelle est fixe.
         if (_palette.IsHatched(code)) c = SiaPalette.Tint(c, ExternalTint);
-        if (_palette.IsEnvelope(code))      // translucides : l'enveloppe laisse voir les niveaux (DESIGN_PLAN §3.6)
-            c = Color.FromArgb(code == "SRV" ? GlazingAlpha : FacadeAlpha, c.R, c.G, c.B);
-        Brush brush = new SolidColorBrush(edge ? Color.FromArgb(c.A, (byte)(c.R * EdgeShade), (byte)(c.G * EdgeShade), (byte)(c.B * EdgeShade)) : c);
+        Brush brush = new SolidColorBrush(edge ? SiaPalette.Shade(c, EdgeShade) : c);
         brush.Freeze();
         return _materials[(code, edge)] = Frozen(new DiffuseMaterial(brush));
     }

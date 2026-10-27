@@ -1382,7 +1382,7 @@ Enveloppe                         ← nouveau groupe, entre Extérieur et USPI �
 
 ### Rendu 3D (contenu, pas chrome)
 
-- Façade : aplat gris chaud `#A8A29E` translucide (35 %), arêtes fines. Vitrages : bleu-vert pâle `#9ED8E6` translucide (50 %), dessinés devant la façade.
+- Façade : aplat gris chaud `#A8A29E` opaque, arêtes fines. Vitrages : bleu-vert pâle `#9ED8E6` opaque, dessinés devant la façade. (D'abord translucides, passés en opaque le 27.10.2026 : la transparence WPF dépend de l'ordre de dessin et réagissait mal en vue 3D.)
 - Aucune des deux ne reprend une couleur de la légende SIA 416 (qui n'en prévoit pas pour l'enveloppe) ; le bleu des vitrages est nettement plus pâle et transparent que le bleu SI, et ces surfaces sont verticales, là où toutes les SI sont horizontales.
 
 ### Contrôles — famille E (enveloppe)
@@ -1432,4 +1432,4 @@ Feuille SurfacesEnveloppe : « Surface vitrée » = SRV du niveau (au lieu des r
 - **E2 : tolérance propre de 5 %**, et non la tolérance générale (0,5 m² et 0,5 %) : vitrages et réservations diffèrent normalement de 1 à 2 % (cadres, portes pleines), ce qui donnait 30 informations sans intérêt sur L'Orée. Aucune au-delà de 5 %.
 - Ratios L'Orée : part vitrée 32,7 %, vitrée / pleine 48,6 %, façade / SP hors-sol 0,60.
 - **Écart au plan** : l'infobulle du calque SFN ne donne pas encore la part nette et les réservations (données du moteur, non transmises à la visionneuse).
-- **Non vérifié à l'écran** : le rendu 3D translucide et l'ordre des groupes de calques (session Windows verrouillée pendant l'essai). À regarder dans l'application.
+- Rendu 3D : la translucidité réagissait mal à l'écran (ordre de dessin WPF) ; façades et vitrages sont passés en opaque. La toiture SPT est affichée par défaut.

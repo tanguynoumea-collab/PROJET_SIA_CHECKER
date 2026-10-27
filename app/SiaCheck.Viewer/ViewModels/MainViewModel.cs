@@ -370,7 +370,7 @@ public sealed partial class MainViewModel : ObservableObject
                 : InteriorCodes.Contains(cat.Code) ? "Intérieur" : "Extérieur";
             var (title, definition) = palette.Describe(cat.Code);
             var layer = new LayerItem(cat.Code, group, palette.BrushOf(cat.Code), counted.Count,
-                                      counted.Sum(s => s.Area ?? 0), group is "Intérieur" or "Extérieur",
+                                      counted.Sum(s => s.Area ?? 0), group is "Intérieur" or "Extérieur" || cat.Code == "SPT",   // toitures visibles d'emblée
                                       withGeometry.Contains(cat.Code), title, definition);
             layer.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(LayerItem.IsVisible)) UpdateLayers(); };
             Layers.Add(layer);

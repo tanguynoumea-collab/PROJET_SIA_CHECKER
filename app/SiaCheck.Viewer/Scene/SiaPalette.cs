@@ -37,7 +37,7 @@ public sealed class SiaPalette
     public bool IsHatched(string code) =>
         _cats.TryGetValue(code, out var c) ? !IsEnvelope(code) && (c.Hatched || c.Status != "checked") : !Defaults.ContainsKey(code);
 
-    /// <summary>Façades et vitrages (SFN, SRV) : surfaces verticales, hors sommes, rendues translucides (Évolution 3.6).</summary>
+    /// <summary>Façades et vitrages (SFN, SRV) : surfaces verticales, hors sommes, rendues opaques sans épaisseur (Évolution 3.6).</summary>
     public bool IsEnvelope(string code) => _cats.TryGetValue(code, out var c) && c.Family == "enveloppe";
 
     public CategoryInfo? Info(string code) => _cats.GetValueOrDefault(code);

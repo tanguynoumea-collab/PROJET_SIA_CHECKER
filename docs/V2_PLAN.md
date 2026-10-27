@@ -1,7 +1,7 @@
 # V2_PLAN — Corrections et export MDP
 
 > Statut : ☑ Brouillon · ☑ Validé par l'utilisateur (22.10.2026)
-> Version : 0.2 — 22.10.2026 · phases 0 à 6 livrées
+> Version : 0.3 — 27.10.2026 · phases 0 à 8 livrées ; V2.1 (tag v2.1.0, 26.10.2026), V2.2 publiée (release v2.2.0, 27.10.2026)
 
 ## 1. Objectif
 
@@ -115,12 +115,13 @@ Pour l'Affectation, les typologies et la forme du bâtiment : une valeur propos�
 |---|---|---|---|
 | 0 | ☑ **Fondations moteur** | ID TGM, `Perimeter`, `GrossHeight`, `DeltaX/Y`, `Bedrooms` dans le modèle ; `sia-check --treegram` | ☑ exports 1778 régénérés : lignes, valeurs et ordre identiques, plus 26 SED et 47 SUT ; seul écart, les 7 `SEP-Toiture` saisis à la main |
 | 1 | ☑ **Export MDP brut** | SFN (enveloppe) dans le modèle ; `sia-check --mdp`, gabarit vierge livré | ☑ L'Orée : ouvert dans Excel sans réparation ; validations, tableau croisé et formules intacts ; Σ m³ = 237 428,90, comme le MDP 1778 |
-| 2 | ☑ **Corrections** | `corrections.py` : journal, 5 opérations, `--corrections`, nouveau contrôle, bilan avant/après | ☑ tests de chaque opération ; L'Orée : S2 exclut 2 549 m² de SEP de toiture, R3 et A2 des niveaux Toiture disparaissent ; S1 (découpe 1 800 m²) réduit R3 B03 N00 d'autant |
+| 2 | ☑ **Corrections** | `corrections.py` : journal, 5 opérations, `--corrections`, nouveau contrôle, bilan avant/après | ☑ tests de chaque opération ; L'Orée : S2 exclut 2 549 m² de SEP de toiture, R3 et A2 des niveaux Toiture disparaissent ; S1 (découpe 1 800 m²) réduit R3 B03 N00 d'autant. Depuis la V2.2, la SEP de toiture est retirée par sa SPT, sans correction |
 | 3 | ☑ **Sujets et recommandations de base** | `sujets.py`, `--sujets`, `subjects` dans le fichier visionneuse ; `exclure` partiel (avec `aire`) | ☑ L'Orée sans IA : toitures 7 280 m² (S2 : 7 279), abords B03 N00 1 812,65 m² (S1), SC implicite (S6) ; propositions appliquées : R3 projet 15 091 → 250 m² |
 | 4 | ☑ **IA → corrections** | verdicts v2 (bloc `sujets` : garder, modifier, rejeter, ajouter, `par_defaut`), propositions dans les preuves, `--revue`, prompt et skill `revue-ia`, analyseur et sauvegarde dans l'app | ☑ revue L'Orée v2 : 31 décisions appliquées, 0 écartée ; journal accepté entièrement applicable (erreurs 56 → 33) |
 | 5 | ☑ **UI Sujets** (Daedalus) | onglet Sujets, carte Sujet, décisions (journal), Analyser avec compteur, avant/après dans le bilan, tracé en 3D, menu Exporter | ☑ revue visuelle par captures (`docs/DESIGN_PLAN.md`, Évolution 2.0) ; 67 tests .NET, 133 Python |
 | 6 | ☑ **Module de tracé** (Daedalus) | volet Tracé (plan du niveau, modes Tracer / Modifier, accrochage, aire comptée en direct, aperçu R3), « Découper cette surface… », sujet « Corrections manuelles », recalcul de l'aire par le moteur | ☑ S1 B03 N00 : tracé pré-calculé rouvert, 1 812,20 m² comptés (moteur : 1 812,65, sous la tolérance) ; 75 tests .NET, 134 Python |
 | 7 | ☑ **Exports corrigés** | `propositions.py` (affectation, typologies, formes), opération `renseigner`, refus → « Inconnu », SA dans les exports bruts, `--corrections-xlsx`, « Inconnu » et « Excel de correction… » dans l'app | ☑ L'Orée, 62 corrections : MDP brutes SP 80, SEP 71, SA 9 (7 561 m²), 3 294 locaux tous affectés, 9 formes ; Excel de correction 3 294 + 169 lignes et journal ; les deux s'ouvrent dans Excel sans réparation ; 75 tests .NET, 140 Python |
+| 8 | ☑ **V2.2 : statut de projet et toitures SPT** | statut « en traitement » / « traité » (pastille, accueil, registre `projets.json` pour n8n) ; toitures SPT retirées de la SEP Treegram (`rules.net_of_roofs`), source unique du bilan, de la 3D et des exports ; cache 3D daté par la création des surfaces SIA ; réanalyse quand le moteur change | ☑ L'Orée : SEP − 7 280 m² de toitures, A2 disparus (135 → 113 points), MDP, export Treegram et Excel de correction concordants avec le bilan ; installeur testé ; 106 tests .NET, 164 Python |
 
 Les phases 0 et 1 apportent un gain immédiat : la fin du copier-coller, et un MDP qui contient enfin les SED et SUT.
 

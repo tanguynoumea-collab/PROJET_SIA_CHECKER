@@ -72,6 +72,7 @@ public sealed partial class TraceSession : ObservableObject
         _siblings = (siblings ?? []).SelectMany(s => OuterRings(Outline(s))).Select(r => r.Select(ToPoint).ToList()).ToList();
         Source = source;
         _target = target;
+        _openedTarget = target;
         Existing = existing;
         _r3Now = r3Now;
         _appliedArea = appliedArea;
@@ -114,6 +115,8 @@ public sealed partial class TraceSession : ObservableObject
 
     private readonly double _z;
     private readonly List<List<Point>> _siblings;
+    /// <summary>Type à l'ouverture : celui de la correction reprise, sinon de la surface. Le changer est une modification.</summary>
+    private readonly string _openedTarget;
 
     /// <summary>Surface visée par la correction : la surface d'origine d'un îlot, sinon la source elle-même.</summary>
     public string TargetSurfaceId => Source.IslandOf ?? Source.Id;
@@ -210,9 +213,13 @@ public sealed partial class TraceSession : ObservableObject
     public bool HasMessage => Message is not null;
     public bool MessageIsError => IsSelfIntersecting || IsCut && ClosedPolygons().Any() && CountedArea <= 0.005;
 
-    /// <summary>Emprise redessinée : un changement de type seul suffit à enregistrer ; en mode Scinder, une coupe faite.</summary>
+    /// <summary>
+    /// Emprise redessinée : un changement de type seul suffit à enregistrer ; en mode Scinder, une coupe faite. Le type se
+    /// compare à celui de l'ouverture (correction reprise), pas au type d'origine de la surface : une part passée de SA à
+    /// SC peut revenir à SA.
+    /// </summary>
     public bool CanSave => IsSplitMode ? HasSplit
-        : IsDirty || Existing?.NeedsRetrace == true || IsReshape && Target != Source.DisplayCode
+        : IsDirty || Existing?.NeedsRetrace == true || IsReshape && Target != _openedTarget
             ? !IsDrawingOpen && !IsSelfIntersecting && CountedArea > 0.005 : false;
 
     // ------------------------------------------------------------------ scinder

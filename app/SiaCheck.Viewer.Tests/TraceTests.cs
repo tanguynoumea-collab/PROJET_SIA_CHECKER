@@ -249,6 +249,26 @@ public class SurfaceEditTests
     }
 
     [Fact]
+    public void A_type_changed_back_to_the_original_can_be_saved()
+    {
+        // Part d'une scission créée en SA, passée en SC par une correction en attente : la session s'ouvre sur SC,
+        // la source garde son type d'origine (SA). Revenir à SA est un changement par rapport à la correction.
+        var sa = Plan.Square("part", "SA", 0, 0, 10, 4);
+        var once = new TraceSession(sa, [sa], [], "SA", null, 0, 0, Tol, TraceKind.Reshape) { Target = "SC" };
+        var existing = once.BuildCorrection("manuel-scission-1-2", null);
+        var s = new TraceSession(sa, [sa], [], "SC", existing, 0, 0, Tol, TraceKind.Reshape);
+        Assert.False(s.CanSave);                                          // ouverte telle qu'enregistrée
+        s.Target = "SA";
+        Assert.True(s.CanSave);
+        Assert.Null(s.BuildCorrection("manuel-scission-1-2", null).To);    // remodeler sans type : celui d'origine, SA
+        // une part découpée (scission) écrit toujours son type
+        existing.Op = "découper";
+        var part = new TraceSession(sa, [sa], [], "SC", existing, 0, 0, Tol, TraceKind.Reshape) { Target = "SA" };
+        Assert.True(part.CanSave);
+        Assert.Equal("SA", part.BuildCorrection("manuel-scission-1-2", null).To);
+    }
+
+    [Fact]
     public void Create_draws_a_new_surface_on_the_level()
     {
         var sp = Plan.Square("sp", "SP", 0, 0, 20, 10, kind: "node");

@@ -75,6 +75,7 @@ Un journal JSON de corrections est appliqué aux surfaces lues avant les contrô
 | `exclure` | retire les cibles des sommes et des exports ; avec `aire`, seulement cette part d'une surface (ex. toit d'attique) |
 | `découper` | fait passer `aire` m² d'une surface dans une nouvelle surface de catégorie `vers` (ex. SEP → SA), au même niveau |
 | `ajuster` | fixe l'aire des cibles |
+| `qualifier` | change les métadonnées des cibles : `sous_type`, `lot`, `nature` (`leaf` élémentaire, `node` total de niveau) ; aire et catégorie inchangées |
 | `affecter` | renseigne l'affectation (tableau MDP) |
 | `renseigner` | renseigne des champs du MDP sans surface (`champs`), pour les lots ou bâtiments de la sélection : typologie, pièces, forme |
 
@@ -121,7 +122,8 @@ Sur L'Orée, sans IA : `abords` propose 1 812,65 m² pour B03 N00. Depuis la V2.
 Ratios classiques du développement immobilier, calculés pour le projet et pour chaque bâtiment (`src/sia_check/ratios.py`, définitions et repères dans `config.yaml > ratios`) :
 
 - **SIA 416** : SN/SP, SC/SP, SU/SP, SUP/SP, SUP/SU, SD/SP, SI/SP, SEP/SP ;
-- **USPI 2014** : SNH/SP, SH/SNH, SBH/SH, SVN/SP, SVB/SP (hors sous-sol), SNH par lot.
+- **USPI 2014** : SNH/SP, SH/SNH, SBH/SH, SVN/SP, SVB/SP (hors sous-sol), SNH par lot ;
+- **Cages d'escalier** : SUP par cage et logements par cage, sur les étages de logements (SUP et lots). Une cage est une surface SD de sous-type escalier ; les étages desservis sont sommés, soit la moyenne des étages pondérée par leurs cages. Le bilan par niveau donne le détail étage par étage, et signale un étage de logements sans cage. Le dashboard calcule les mêmes KPI depuis les MDP (« Nom du local », appartement, étage, bâtiment).
 
 Chaque code prend sa valeur niveau par niveau (le détail fait foi, règles personnalisées comprises), puis les niveaux sont sommés. Les codes USPI ne somment que les lots. SC absente vaut SP − SN.
 

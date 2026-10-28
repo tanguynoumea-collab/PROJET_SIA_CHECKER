@@ -695,3 +695,96 @@ public class CutPartTests
         Assert.All(cuts, c => Assert.Equal(["sus"], c.TargetIds));
     }
 }
+
+public class SurfaceMetadataTests
+{
+    [Fact]
+    public void Modifier_changes_subtype_and_lot_without_touching_the_footprint()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        vm.SelectSurface("err-n00-seu");
+        vm.OpenReshapeForSurfaceCommand.Execute(null);
+        var t = vm.Trace!;
+        Assert.True(t.CanEditMetadata);
+        Assert.False(t.CanSave);
+        t.SubType = "Escalier";
+        t.Lot = "A.01";
+        Assert.True(t.IsMetadataOnly);
+        Assert.True(t.CanSave);
+        vm.SaveTraceCommand.Execute(null);
+
+        var q = vm.Subjects.SelectMany(s => s.Corrections).Single(c => c.Model.Op == "qualifier");
+        Assert.Equal(CorrectionDecision.Accepted, q.Decision);
+        Assert.Equal(["err-n00-seu"], q.TargetIds);
+        Assert.Equal("Escalier", TraceSession.MetadataOf(q.Model, "sous_type"));
+        Assert.Equal("A.01", TraceSession.MetadataOf(q.Model, "lot"));
+        Assert.Null(TraceSession.MetadataOf(q.Model, "nature"));          // inchangée : pas écrite
+        Assert.Null(q.Model.Area);                                         // l'aire lue reste celle de Treegram
+
+        vm.SelectSurface("err-n00-seu");                                   // la fiche montre la surface telle qu'elle sera
+        Assert.Equal(("Escalier", "A.01"), (vm.SelectedSurface!.Surface.RoomType, vm.SelectedSurface.Surface.Lot));
+        Assert.True(vm.SelectedSurface.HasPending);
+        Assert.True(vm.SelectedSurface.CanCut);
+
+        vm.OpenReshapeForSurfaceCommand.Execute(null);                     // reprise : même correction, remplacée
+        Assert.Equal("Escalier", vm.Trace!.SubType);
+        vm.Trace.Nature = TraceSession.Node;
+        vm.SaveTraceCommand.Execute(null);
+        q = vm.Subjects.SelectMany(s => s.Corrections).Single(c => c.Model.Op == "qualifier");
+        Assert.Equal("node", TraceSession.MetadataOf(q.Model, "nature"));
+
+        vm.SelectSurface("err-n00-seu");                                   // retour aux valeurs lues : modification abandonnée
+        vm.OpenReshapeForSurfaceCommand.Execute(null);
+        vm.Trace!.SubType = "";
+        vm.Trace.Lot = null;
+        vm.Trace.Nature = TraceSession.Leaf;
+        vm.SaveTraceCommand.Execute(null);
+        Assert.Equal(CorrectionDecision.Rejected, q.Decision);
+    }
+
+    [Fact]
+    public void Redrawn_footprint_carries_the_changed_metadata()
+    {
+        using var tmp = new TempDir();
+        var vm = SubjectFixture.Loaded(tmp);
+        vm.SelectSurface("err-n00-seu");
+        vm.OpenReshapeForSurfaceCommand.Execute(null);
+        var t = vm.Trace!;
+        t.BeginChange();
+        t.MoveEdge(0, 0, new Vector(0, 1));
+        t.SubType = "Terrasse";
+        Assert.False(t.IsMetadataOnly);
+        vm.SaveTraceCommand.Execute(null);
+        var c = vm.Subjects.SelectMany(s => s.Corrections).Single(x => x.Model.Op == "remodeler");
+        Assert.Equal("Terrasse", TraceSession.MetadataOf(c.Model, "sous_type"));
+        Assert.Contains("sous-type — → Terrasse", c.Model.Explanation);
+    }
+}
+
+public class StairsDisplayTests
+{
+    [Fact]
+    public void Balance_row_and_ratio_show_stairs_per_housing_floor()
+    {
+        var level = new LevelBalance
+        {
+            Building = "A", Level = "N01",
+            Values = new() { ["SP"] = 800, ["SUP_ETAGE"] = 600, ["LOGEMENTS"] = 9, ["CAGES"] = 2, ["SUP_CAGES"] = 600, ["LOG_CAGES"] = 9 },
+        };
+        var row = new BalanceRow(level, 800);
+        Assert.Equal("2 cages", row.StairsText);
+        Assert.Equal("300 m² · 4,5 log.", row.StairsRatioText);
+        Assert.False(row.HasNoStair);
+
+        var none = new BalanceRow(new LevelBalance { Building = "A", Level = "N00", Values = new() { ["LOGEMENTS"] = 7, ["CAGES"] = 0 } }, 800);
+        Assert.Equal("aucune cage", none.StairsText);
+        Assert.True(none.HasNoStair);
+        Assert.False(new BalanceRow(new LevelBalance { Building = "A", Level = "S01", Values = new() { ["SP"] = 500 } }, 800).IsHousing);
+
+        var ratio = new RatioRow(new Ratio { Building = Ratio.AllBuildings, Id = "log/cage", Label = "Logements par cage", Value = 3.0,
+                                             Unit = "nombre", NumM2 = 273, DenM2 = 91, Status = "info" }, null);
+        Assert.Equal("3,0", ratio.ProjectText);
+        Assert.Contains("(273 logements / 91 cages)", ratio.Tooltip);
+    }
+}

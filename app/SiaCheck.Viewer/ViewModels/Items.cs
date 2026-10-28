@@ -176,6 +176,31 @@ public sealed class BalanceRow(LevelBalance level, double scale)
         v.ToString("#,##0.00", new System.Globalization.NumberFormatInfo { NumberGroupSeparator = " ", NumberDecimalSeparator = "," });
     public bool HasFloor => Sp > 0;
 
+    // Cages d'escalier (V3.1) : étages de logements seulement (ratios.stairs) ; une ligne de bâtiment somme ses étages
+    public bool IsHousing => Source.Values.ContainsKey("LOGEMENTS");
+    public double Stairs => Source.Value("CAGES");
+    /// <summary>Étage de logements sans cage : sous-type à vérifier (escalier typé circulation…).</summary>
+    public bool HasNoStair => IsHousing && Stairs <= 0;
+    public string StairsText => !IsHousing ? "" : Stairs > 0 ? $"{Stairs:0} cage{(Stairs > 1 ? "s" : "")}" : "aucune cage";
+    public string StairsRatioText => Stairs > 0
+        ? $"{Format0(Source.Value("SUP_CAGES") / Stairs)} m² · {Source.Value("LOG_CAGES") / Stairs:0.0} log." : "";
+    public string StairsTooltip
+    {
+        get
+        {
+            if (!IsHousing) return "";
+            var lines = new List<string> { $"Cages d'escalier {Building}·{Level}" };
+            lines.Add($"SUP {Format0(Source.Value("SUP_ETAGE"))} m², {Source.Value("LOGEMENTS"):0} logement(s)");
+            lines.Add(Stairs > 0
+                ? $"{Stairs:0} cage(s) : {Format0(Source.Value("SUP_CAGES") / Stairs)} m² de SUP et {Source.Value("LOG_CAGES") / Stairs:0.0} logement(s) par cage"
+                : "Aucune cage d'escalier : vérifier le sous-type des escaliers du niveau (Modifier… sur la surface).");
+            lines.Add("Cage : surface SD de sous-type Escalier.");
+            return string.Join("\n", lines);
+        }
+    }
+    private static string Format0(double v) =>
+        v.ToString("#,##0", new System.Globalization.NumberFormatInfo { NumberGroupSeparator = " ", NumberDecimalSeparator = "," });
+
     // Enveloppe (Évolution 3.6) : façade brute et vitrages du niveau, verticaux, hors des sommes de la barre
     public double Facade => Source.Value("SFN");
     public double Glazing => Source.Value("SRV");
@@ -205,14 +230,15 @@ public sealed class BalanceRow(LevelBalance level, double scale)
 /// <summary>
 /// Fiche de la surface cliquée en 3D. <paramref name="pending"/> : correction acceptée, pas encore appliquée, que la 3D
 /// montre déjà (emprise redessinée, surface créée, part découpée) ; la fiche décrit alors la surface telle qu'elle sera,
-/// et ses boutons agissent sur cette correction.
+/// et ses boutons agissent sur cette correction. <paramref name="note"/> : métadonnées modifiées en attente (« qualifier »),
+/// déjà montrées par la fiche ; les boutons agissent sur la surface lue.
 /// </summary>
-public sealed class SurfaceInfo(Surface surface, IReadOnlyList<IssueItem> issues, CorrectionItem? pending = null)
+public sealed class SurfaceInfo(Surface surface, IReadOnlyList<IssueItem> issues, CorrectionItem? pending = null, string? note = null)
 {
     public Surface Surface { get; } = surface;
     public IReadOnlyList<IssueItem> Issues { get; } = issues;
     public CorrectionItem? Pending { get; } = pending;
-    public bool HasPending => Pending is not null;
+    public bool HasPending => Pending is not null || note is not null;
     /// <summary>Découper vise une surface lue, avec son maillage : pas une surface encore en attente.</summary>
     public bool CanCut => Pending is null;
     public bool HasNoIssue => Issues.Count == 0;
@@ -223,7 +249,7 @@ public sealed class SurfaceInfo(Surface surface, IReadOnlyList<IssueItem> issues
         "créer" => "Surface créée à la main.",
         "remodeler" => "Emprise redessinée à la main.",
         "découper" => $"Surface découpée de la {Pending.TargetCode} (scission ou découpe).",
-        _ => "",
+        _ => note ?? "",
     };
 }
 
@@ -242,6 +268,8 @@ public sealed class RatioRow(Ratio project, Ratio? building)
     public string Id => Project.Id;
     public string Label => Project.Label;
     public bool IsArea => Project.Unit == "m2";
+    /// <summary>Nombre moyen (logements par cage) : une décimale, numérateur et dénominateur comptés.</summary>
+    public bool IsCount => Project.Unit == "nombre";
     public string ProjectText => Text(Project.Value);
     public string BuildingText => Building is null ? "" : Text(Building.Value);
     public string ReferenceText => Project.HasReference ? $"{Text(Project.RefMin)}–{Text(Project.RefMax)}" : "indicatif";
@@ -256,7 +284,8 @@ public sealed class RatioRow(Ratio project, Ratio? building)
             foreach (var r in new[] { Project, Building })
                 if (r is not null)
                     lines.Add($"{(r.Building == Ratio.AllBuildings ? "Projet" : r.Building)} : {Text(r.Value)}  "
-                              + $"({Area(r.NumM2)} / {(r.Unit == "m2" ? Count(r.DenM2) : Area(r.DenM2))}) · {StatusTextOf(r.Status)}");
+                              + $"({(IsCount ? Count(r.NumM2, "logements") : Area(r.NumM2))} / "
+                              + $"{(r.Unit is "m2" or "nombre" ? Count(r.DenM2, DenUnit) : Area(r.DenM2))}) · {StatusTextOf(r.Status)}");
             lines.Add(Project.HasReference
                 ? $"Repère indicatif {ReferenceText}, non normatif : un écart est une question, pas une erreur."
                 : "Sans repère : valeur informative.");
@@ -270,7 +299,10 @@ public sealed class RatioRow(Ratio project, Ratio? building)
         "bas" => "sous le repère", "haut" => "au-dessus du repère", "ok" => "dans le repère", "info" => "informatif", _ => "non calculé",
     };
 
-    private string Text(double? v) => v is not double d ? "–" : IsArea ? d.ToString("#,##0.0", Format) + " m²" : d.ToString("0.000", Format);
+    private string Text(double? v) => v is not double d ? "–" : IsArea ? d.ToString("#,##0.0", Format) + " m²"
+        : IsCount ? d.ToString("0.0", Format) : d.ToString("0.000", Format);
+    /// <summary>Ce que compte le dénominateur d'un ratio en m² ou en nombre : des cages d'escalier, sinon des lots.</summary>
+    private string DenUnit => Project.Id.Contains("cage", StringComparison.OrdinalIgnoreCase) ? "cages" : "lots";
     private static string Area(double? v) => v is double d ? d.ToString("#,##0", Format) + " m²" : "–";
-    private static string Count(double? v) => v is double d ? d.ToString("#,##0", Format) + " lots" : "–";
+    private static string Count(double? v, string unit) => v is double d ? d.ToString("#,##0", Format) + " " + unit : "–";
 }

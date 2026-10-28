@@ -99,7 +99,7 @@ def test_sans_vitree_pas_de_pleine(tmp_path):
 
 def test_kpis_propres_au_logement(projet):
     logement = {k.id for k in b.KPIS if k.typologie == "logement"}
-    assert logement == {"SUP/LOG", "SP_HS/LOG"}
+    assert logement == {"SUP/LOG", "SP_HS/LOG", "SUP/CAGE", "LOG/CAGE"}
     data = b.construire([projet], [])
     assert {k["id"]: k["typologie"] for k in data["kpis"]}["SUP/LOG"] == "logement"
 
@@ -217,3 +217,18 @@ def test_listes_dans_le_json(tmp_path):
 
 def test_logements_dans_le_json(projet):
     assert b.projet_json(projet)["logements"] == [{"chambres": 1, "sup": 50.0}, {"chambres": 3, "sup": 90.0}]
+
+
+def test_cages_par_etage_de_logements():
+    """Cages : SD de nom « escalier » (n° d'appartement ignoré) ; étages avec SUP et logements seulement."""
+    rows = [  # (bâtiment, étage, catégorie, nom du local, appartement, m²)
+        ("A", "N01", "SUP", "Chambre", "A11", 60), ("A", "N01", "SUP", "Chambre", "A12", 60), ("A", "N01", "SUP", "Séjour", "A13", 80),
+        ("A", "N01", "SD", "Cage d'escalier", "30-20C", 18), ("A", "N01", "SUP", "Escaliers", "A13", 5),
+        ("A", "N02", "SUP", "Chambre", "A21", 100), ("A", "N02", "SD", "Escalier", None, 18), ("A", "N02", "SD", "Escalier", None, 18),
+        ("A", "S01", "SD", "Escalier", None, 18), ("A", "S01", "SUS", "Cave", "A11", 6),
+    ]
+    raw = pd.DataFrame(rows, columns=["Partie d'Ouvrage", "Etage", "Categorie SIA416", "Nom du local", "Appartement_Unite", "m2"])
+    t = {}
+    etages = b._cages(b._nettes(raw, {}), t)
+    assert [(e["etage"], e["cages"], e["logements"], e["sup"]) for e in etages] == [("N01", 1, 3, 205), ("N02", 2, 1, 100)]
+    assert (t["CAGES"], t["SUP_CAGES"], t["LOG_CAGES"]) == (3, 305, 4)

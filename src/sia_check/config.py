@@ -76,7 +76,8 @@ def _custom_rules(raw: list[dict] | None, cats: dict[str, dict]) -> list[CustomR
     return rules
 
 
-RATIO_TOKENS = {"SC", "LOTS", "PLEINE"}   # SC calculée (SP − SN) ; LOTS = nombre de lots USPI ; PLEINE = SFN − SRV
+RATIO_TOKENS = {"SC", "LOTS", "PLEINE", "CAGES", "SUP_CAGES", "LOG_CAGES"}   # SC = SP − SN ; LOTS = lots USPI ; PLEINE = SFN − SRV ;
+# CAGES, SUP_CAGES, LOG_CAGES : cages d'escalier des étages de logements (ratios.stairs)
 
 
 def _ratios(raw: list[dict] | None, cats: dict[str, dict]) -> list[dict]:

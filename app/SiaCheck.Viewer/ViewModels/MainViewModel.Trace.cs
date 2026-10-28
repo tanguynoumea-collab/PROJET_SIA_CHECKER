@@ -18,6 +18,8 @@ public sealed partial class MainViewModel
 {
     public const string ManualSubject = "manuel";
     private CorrectionItem? _tracedItem;
+    /// <summary>Métadonnées modifiées de la surface en cours (« qualifier » en attente) : reprises, puis remplacées.</summary>
+    private CorrectionItem? _qualifierItem;
 
     /// <summary>Catégories proposées pour une surface modifiée ou créée : la chaîne SIA 416, intérieur puis extérieur.</summary>
     /// <summary>NC : non comptabilisée (gardée, hors sommes et exports : toiture non accessible…).</summary>
@@ -36,6 +38,10 @@ public sealed partial class MainViewModel
     /// <summary>Catégories cibles : abords d'abord pour une découpe de SEP, la chaîne SIA sinon.</summary>
     public IReadOnlyList<string> TraceTargets { get; private set; } = [];
     [ObservableProperty] private string _traceTarget = "SA";
+
+    /// <summary>Sous-types et lots proposés dans « Modifier… » : ceux du projet, et les lots du bâtiment (saisie libre aussi).</summary>
+    public IReadOnlyList<string> TraceSubTypes { get; private set; } = [];
+    public IReadOnlyList<string> TraceLots { get; private set; } = [];
 
     /// <summary>Nouvelle surface : bâtiment et niveau, choisis dans l'en-tête du volet.</summary>
     public IReadOnlyList<string> TraceBuildings { get; private set; } = [];
@@ -99,9 +105,36 @@ public sealed partial class MainViewModel
         }
         if (SelectedSurface?.Surface is not { } s) return;
         if (s.IslandOf is null && PendingFor(s.Id, "remodeler") is { } existing) { ReopenCorrection(existing); return; }
-        SetTraceTargets(SurfaceTypes.Contains(s.DisplayCode) ? SurfaceTypes : [s.DisplayCode, .. SurfaceTypes], s.DisplayCode);
-        OpenTrace(s, s.DisplayCode, null, TraceKind.Reshape);
+        var original = Original(s);
+        SetTraceTargets(SurfaceTypes.Contains(original.DisplayCode) ? SurfaceTypes : [original.DisplayCode, .. SurfaceTypes], original.DisplayCode);
+        OpenTrace(original, original.DisplayCode, null, TraceKind.Reshape);
+        if (Trace is { } t && PendingFor(original.IslandOf ?? original.Id, "qualifier") is { } q)
+        {   // métadonnées déjà modifiées, pas encore appliquées : on repart d'elles, la correction sera remplacée
+            _qualifierItem = q;
+            t.OpenMetadata(TraceSession.MetadataOf(q.Model, "sous_type") ?? original.RoomType,
+                           TraceSession.MetadataOf(q.Model, "lot") ?? original.Lot,
+                           TraceSession.MetadataOf(q.Model, "nature") ?? original.Kind);
+        }
     }
+
+    /// <summary>Fiche d'une surface dont les métadonnées sont modifiées, pas encore appliquées : telles qu'elles seront.</summary>
+    private (Surface Surface, string? Note) WithPendingMetadata(Surface s)
+    {
+        if (PendingFor(s.IslandOf ?? s.Id, "qualifier") is not { } q) return (s, null);
+        string? Value(string key, string? read) => TraceSession.MetadataOf(q.Model, key) is { } v ? v == "" ? null : v : read;
+        return (new Surface
+        {
+            Id = s.Id, IslandOf = s.IslandOf, FromCorrection = s.FromCorrection, Building = s.Building, Level = s.Level,
+            Category = s.Category, Code = s.Code, Status = s.Status, Area = s.Area, Mesh = s.Mesh,
+            Kind = Value("nature", s.Kind) ?? s.Kind, RoomType = Value("sous_type", s.RoomType), Lot = Value("lot", s.Lot),
+        }, "Métadonnées modifiées à la main : elles s'appliqueront à la prochaine analyse.");
+    }
+
+    /// <summary>La surface telle que lue : la fiche montre les métadonnées en attente, la correction compare à l'origine.</summary>
+    private Surface Original(Surface s) =>
+        s.Id == "" || Document is null ? s
+        : Document.IslandById.TryGetValue(s.Id, out var island) ? Current(island)
+        : _surfaceById.TryGetValue(s.Id, out var read) ? Current(read) : s;
 
     /// <summary>« Nouvelle surface » : niveau de la surface sélectionnée, sinon du filtre, sinon le premier.</summary>
     [RelayCommand]
@@ -156,11 +189,13 @@ public sealed partial class MainViewModel
         var place = c.CreatedOn ?? (target is { Building: { } b, Level: { } l } ? (b, l) : null);
         var code = c.Model.To ?? target?.DisplayCode ?? "";
         var part = c.Model.Op == "découper";
+        // Emprise redessinée : ses métadonnées modifiées (sous-type, lot, nature), sinon celles de la surface lue
+        string? Meta(string key, string? read) => TraceSession.MetadataOf(c.Model, key) is { } v ? v == "" ? null : v : read;
         var surface = new Surface
         {
             Id = target is not null && c.Model.Op == "remodeler" ? target.Id : c.Id,
-            Building = place?.Item1, Level = place?.Item2, Category = code, Code = code, Kind = "leaf", Status = "checked",
-            Area = c.Model.Area, RoomType = target?.RoomType, Lot = target?.Lot,
+            Building = place?.Item1, Level = place?.Item2, Category = code, Code = code, Kind = Meta("nature", "leaf") ?? "leaf",
+            Status = "checked", Area = c.Model.Area, RoomType = Meta("sous_type", target?.RoomType), Lot = Meta("lot", target?.Lot),
             // Part découpée : une surface à part entière, avec son emprise (le tracé) et sa surface d'origine.
             IslandOf = part ? target?.Id : null, FromCorrection = part ? c.Id : null,
             Mesh = part && c.Model.Trace is { } t ? TraceSession.ToMesh(t) : null,
@@ -237,6 +272,13 @@ public sealed partial class MainViewModel
         var r3 = lv?.R3?.Diff ?? 0;
         var applied = item?.State == CorrectionState.Applied ? item.Model.Area ?? 0 : 0;
         _tracedItem = item;
+        _qualifierItem = null;
+        TraceSubTypes = Document.Surfaces.Select(x => x.RoomType).OfType<string>().Where(t => t.Trim() != "")
+            .Distinct().Order(StringComparer.CurrentCulture).ToList();
+        TraceLots = Document.Surfaces.Where(x => x.Building == source.Building).Select(x => x.Lot).OfType<string>()
+            .Where(l => l.Trim() != "").Distinct().Order(StringComparer.Ordinal).ToList();
+        OnPropertyChanged(nameof(TraceSubTypes));
+        OnPropertyChanged(nameof(TraceLots));
         Trace = new TraceSession(source, level, below, target, item?.Model, r3, applied, Document.Tolerance, kind, initial, siblings);
         IsAiReportOpen = false;
         TraceFitRequested?.Invoke();
@@ -281,6 +323,13 @@ public sealed partial class MainViewModel
             _shell.Notify($"Surface scindée en deux ({t.SplitAreaAText} et {t.SplitAreaBText}).");
             return;
         }
+        if (t.IsMetadataOnly)
+        {
+            SaveMetadata(t);
+            return;
+        }
+        if (_qualifierItem is { } former && t.CanEditMetadata)
+            former.Decision = CorrectionDecision.Rejected;   // la modification d'emprise reprend ses métadonnées
         if (_tracedItem is { } item)
         {
             var c = t.BuildCorrection(item.Id, item.Model.Subject);
@@ -310,6 +359,38 @@ public sealed partial class MainViewModel
         _shell.Notify(t.IsCut
             ? $"Découpe créée ({created.Area:#,##0.00} m² → {TraceTarget}) : acceptez-la, puis Analyser."
             : $"{message} ({created.Area:#,##0.00} m²) : elle s'appliquera à la prochaine analyse (Analyser).");
+    }
+
+    /// <summary>
+    /// Métadonnées seules (nature, sous-type, lot) : correction « qualifier » acceptée d'emblée ; une modification
+    /// en attente sur la même surface est remplacée, ou rejetée si l'on revient aux valeurs lues.
+    /// </summary>
+    private void SaveMetadata(TraceSession t)
+    {
+        var source = t.Source;
+        if (_qualifierItem is { } item)
+        {
+            if (!t.DiffersFromSource) item.Decision = CorrectionDecision.Rejected;
+            else
+            {
+                var replaced = t.BuildQualifier(item.Id, item.Model.Subject);
+                replaced.Status = Correction.Accepted;
+                item.ReplaceModel(replaced);
+                _journal!.Decide(replaced);
+            }
+            CloseTrace();
+            OnCorrectionsChanged();
+            RefreshSubjects();
+            SelectedSurface = null;
+            _shell.Notify(t.DiffersFromSource
+                ? $"Métadonnées modifiées ({t.MetadataSummary}) : elles s'appliqueront à la prochaine analyse (Analyser)."
+                : "Métadonnées revenues à leurs valeurs d'origine : la modification est abandonnée.");
+            return;
+        }
+        var c = t.BuildQualifier(NewManualId("metadonnees", source.Building, source.Level), SubjectOf(t.TargetSurfaceId));
+        c.Status = Correction.Accepted;   // geste direct de l'utilisateur : décidé d'emblée
+        AddManualCorrection(c);
+        _shell.Notify($"Métadonnées modifiées ({t.MetadataSummary}) : elles s'appliqueront à la prochaine analyse (Analyser).");
     }
 
     /// <summary>
@@ -404,6 +485,7 @@ public sealed partial class MainViewModel
     {
         Trace = null;
         _tracedItem = null;
+        _qualifierItem = null;
     }
 
     [RelayCommand] private void TraceUndo() => Trace?.Undo();

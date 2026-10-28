@@ -11,6 +11,9 @@ sous-sols contient de la SUS) et fausseraient SH/SNH ou SNH/SP.
 Jetons spéciaux :
     SC    surface de construction ; Treegram ne la fournit pas, elle vaut alors SP − SN
     LOTS  nombre de lots USPI distincts (surfaces SNH élémentaires portant un lot)
+    CAGES, SUP_CAGES, LOG_CAGES
+          cages d'escalier, SUP (+ SUT) et logements des étages de logements desservis (`stairs`), sommés sur la
+          portée : SUP / cage et logements / cage sont des moyennes pondérées des étages
 
 Les repères (`ref`) sont indicatifs : un ratio hors repère n'est pas une erreur du contrôle,
 c'est une question posée à la revue IA et à l'utilisateur.
@@ -19,6 +22,8 @@ c'est une question posée à la revue IA et à l'utilisateur.
 from __future__ import annotations
 
 import math
+import re
+import unicodedata
 
 import pandas as pd
 
@@ -27,6 +32,50 @@ from .config import Config
 RATIO_COLUMNS = ["building", "id", "family", "label", "value", "unit", "ref_min", "ref_max", "status",
                  "num_m2", "den_m2", "note"]
 ALL = "*"
+
+
+STAIR_TOKENS = ("CAGES", "SUP_CAGES", "LOG_CAGES")
+STAIR_COLUMNS = ["SUP_ETAGE", "LOGEMENTS", *STAIR_TOKENS]
+
+
+def is_stair(room_type) -> bool:
+    """Sous-type d'une cage d'escalier : « Escalier », « Cage d'escalier », « Cages d'escaliers »…"""
+    if not isinstance(room_type, str):
+        return False
+    k = unicodedata.normalize("NFKD", room_type).encode("ascii", "ignore").decode().lower()
+    return re.search(r"escalier", k) is not None
+
+
+def stairs(surf: pd.DataFrame, totals: pd.DataFrame) -> pd.DataFrame:
+    """Cages d'escalier des étages de logements, par (bâtiment, niveau).
+
+    Cage : surface élémentaire SD (dégagement commun) dont le sous-type est un escalier ; l'escalier intérieur d'un
+    duplex (SUP) ou un escalier extérieur (SEU) n'en est pas une. Logements de l'étage : lots distincts des surfaces SUP / SUT élémentaires du niveau. Un étage de
+    logements a de la SUP (+ SUT, totaux du moteur) et au moins un logement ; les autres (sous-sols techniques…) ne
+    sont pas concernés. SUP_ETAGE et LOGEMENTS décrivent tous les étages de logements ; CAGES, SUP_CAGES et
+    LOG_CAGES seulement ceux qui ont une cage (sinon pas de division possible).
+    """
+    out = pd.DataFrame(index=totals.index, columns=STAIR_COLUMNS, dtype=float)
+    if totals.empty or not {"room_type", "lot", "kind"} <= set(surf.columns):
+        return out
+    leaves = surf[surf["kind"] == "leaf"]
+    if "ignored" in leaves:
+        leaves = leaves[~leaves["ignored"].astype(bool)]
+    cages = leaves[leaves["room_type"].map(is_stair) & (leaves["code"] == "SD")].groupby(["building", "level"]).size()
+    homes = leaves[leaves["lot"].notna() & leaves["code"].isin(["SUP", "SUT"])]         .groupby(["building", "level"])["lot"].nunique()
+    sup = sum(totals[c].fillna(0) for c in ("SUP", "SUT") if c in totals)
+    sup = sup if isinstance(sup, pd.Series) else pd.Series(0.0, index=totals.index)
+    homes = homes.reindex(totals.index).fillna(0)
+    cages = cages.reindex(totals.index).fillna(0)
+    housing = (sup > 0) & (homes > 0)
+    served = housing & (cages > 0)
+    out["SUP_ETAGE"] = sup.where(housing)
+    out["LOGEMENTS"] = homes.where(housing)
+    out["CAGES"] = cages.where(housing)
+    out["SUP_CAGES"] = sup.where(served)
+    out["LOG_CAGES"] = homes.where(served)
+    out.loc[housing & ~served, "CAGES"] = 0.0
+    return out
 
 
 def _status(value: float | None, ref: list | None) -> str:
@@ -44,6 +93,10 @@ def _level_value(code: str, row: pd.Series, cfg: Config) -> tuple[float, bool]:
     """Valeur effective d'un code SIA sur un niveau ; SC absente = SP − SN."""
     from .rules import _effective   # import local : rules importe ce module
 
+    if code in STAIR_TOKENS:   # étages de logements desservis seulement (stairs) : CAGES n'y vaut jamais 0
+        v = row.get(code)
+        ok = v is not None and not pd.isna(v) and (code != "CAGES" or not pd.isna(row.get("SUP_CAGES")))
+        return (float(v), True) if ok else (0.0, False)
     if code == "PLEINE":     # façade pleine = façade brute − vitrages (V3_PLAN §10)
         sfn, srv = row.get("SFN"), row.get("SRV")
         if sfn is None or pd.isna(sfn):
@@ -93,6 +146,7 @@ def compute(totals: pd.DataFrame, surf: pd.DataFrame, cfg: Config) -> pd.DataFra
     env = surf[surf["code"].isin(["SFN", "SRV", "SPT"]) & (surf["kind"] == "node")]
     if not env.empty:
         totals = totals.join(env.groupby(["building", "level", "code"])["area"].sum().unstack("code"), how="left")
+    totals = totals.join(stairs(surf, totals), how="left")
     above = [(b, l) for b, l in totals.index if (level_rank(l, cfg) is None or level_rank(l, cfg) >= 0)]
     scopes = [ALL] + sorted(totals.index.get_level_values("building").unique())
 

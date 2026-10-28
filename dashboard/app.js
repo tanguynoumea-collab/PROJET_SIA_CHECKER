@@ -375,6 +375,26 @@ function dessinerComparer() {
     for (const kpi of kpis.filter((k) => k.famille === famille)) bloc.append(ligneKpi(kpi, ref, groupe));
     regles.append(bloc);
   }
+  dessinerCages(ref);
+}
+
+/** Détail des cages d'escalier du projet étudié, bâtiment par bâtiment et étage par étage (benchmark._cages). */
+function dessinerCages(ref) {
+  const etages = ref.etages || [];
+  const section = document.getElementById("cages");
+  section.hidden = !etages.length || !selectionLogement();
+  if (section.hidden) return;
+  const parCage = (v, e) => (e.cages ? v / e.cages : null);
+  const entete = el("tr", {}, ...["Bâtiment", "Étage", "SUP", "Logements", "Cages", "SUP / cage", "Logements / cage"]
+    .map((t, i) => el("th", { text: t, class: i > 1 ? "n" : "" })));
+  const lignes = etages.map((e) => el("tr", {},
+    el("td", { class: "mono", text: e.batiment || "—" }), el("td", { class: "mono", text: e.etage }),
+    el("td", { class: "n", text: `${F0.format(e.sup)} m²` }), el("td", { class: "n", text: F0.format(e.logements) }),
+    el("td", { class: e.cages ? "n" : "n absent", text: e.cages ? F0.format(e.cages) : "aucune",
+      title: e.cages ? "" : "Étage de logements sans cage d'escalier : sous-type à vérifier dans le modèle" }),
+    el("td", { class: "n", text: e.cages ? `${F0.format(parCage(e.sup, e))} m²` : "—" }),
+    el("td", { class: "n", text: e.cages ? F1.format(parCage(e.logements, e)) : "—" })));
+  document.getElementById("table-cages").replaceChildren(el("thead", {}, entete), el("tbody", {}, ...lignes));
 }
 
 function ligneKpi(kpi, ref, groupe) {

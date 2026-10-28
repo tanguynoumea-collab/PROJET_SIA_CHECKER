@@ -136,6 +136,12 @@ ratios:
      ref: [0.70, 0.95], note: "Rendement commercial du projet (VS)."}
   - {id: SNH/lot, family: uspi, label: "Surface nette habitable moyenne par lot", num: [SNH], den: [LOTS], unit: m2,
      note: "Informatif : dépend du programme (typologies)."}
+  # Cages d'escalier (V3.1) : étages de logements seulement (SUP et lots), une cage = une surface SD de sous-type
+  # escalier ; somme des étages desservis, soit la moyenne des étages pondérée par leurs cages
+  - {id: SUP/cage, family: programme, label: "SUP par cage d'escalier et par étage de logements", num: [SUP_CAGES],
+     den: [CAGES], unit: m2, note: "SUP (+ SUT) de l'étage / nombre de cages d'escalier de l'étage, sur les étages de logements."}
+  - {id: log/cage, family: programme, label: "Logements par cage d'escalier et par étage", num: [LOG_CAGES], den: [CAGES],
+     unit: nombre, note: "Lots de l'étage / cages de l'étage : combien de logements une cage dessert à chaque étage."}
   # Enveloppe (V3_PLAN §10) : surface vitrée = SRV, surface pleine = façade brute − SRV (jeton PLEINE)
   # Repères de vraisemblance tirés des projets de la base (27.10.2026), élargis : pas des cibles
   - {id: SRV/SFN, family: enveloppe, label: "Part vitrée (vitrages / façade brute)", num: [SRV], den: [SFN], levels: above_ground,

@@ -21,6 +21,10 @@ Totaux (`Projet.totaux`, m² sauf mention) :
     TOITURE              toitures hors-sol (lignes « toiture » de SurfacesEnveloppe) : avec FACADE, l'enveloppe du
                          coefficient de forme ; absente, le coefficient n'est pas calculé (il serait surestimé)
     LOG, ETAGES_HS       nombre de logements, d'étages hors-sol
+    CAGES, SUP_CAGES, LOG_CAGES
+                         cages d'escalier, SUP et logements des étages de logements desservis (`_cages`), comme les
+                         ratios de la fiabilisation (ratios.stairs) : le détail par bâtiment et par étage va dans
+                         `Projet.etages`
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import mdp
+from .ratios import is_stair
 
 VERSION = 1
 NETTES = ("SUP", "SUS", "SD", "SI")
@@ -87,6 +92,12 @@ KPIS = [
     Kpi("VB/SP", "Enveloppe", "Hauteur brute moyenne : VB / SP", ("VB",), ("SP",), unite="m"),
     Kpi("SUP/LOG", "Programme", "SUP par logement", ("SUP",), ("LOG",), unite="m²", typologie="logement"),
     Kpi("SP_HS/LOG", "Programme", "SP hors-sol par logement", ("SP_HS",), ("LOG",), unite="m²", typologie="logement"),
+    # Cages d'escalier (V3.1) : étages de logements desservis, sommés (moyenne des étages pondérée par leurs cages)
+    Kpi("SUP/CAGE", "Programme", "SUP par cage d'escalier et par étage", ("SUP_CAGES",), ("CAGES",), unite="m²",
+        note="SUP de l'étage / cages d'escalier de l'étage, sur les étages de logements.", typologie="logement"),
+    Kpi("LOG/CAGE", "Programme", "Logements par cage d'escalier et par étage", ("LOG_CAGES",), ("CAGES",), unite="",
+        note="Logements de l'étage / cages de l'étage : combien de logements une cage dessert à chaque étage.",
+        typologie="logement"),
 ]
 KPI_BY_ID = {k.id: k for k in KPIS}
 
@@ -120,6 +131,7 @@ class Projet:
     totaux: dict[str, float]
     logements: list[dict]
     controles: list[Controle]
+    etages: list[dict] = dataclasses.field(default_factory=list)   # cages d'escalier par bâtiment et étage (_cages)
 
     @property
     def score(self) -> float:
@@ -314,6 +326,38 @@ def _nettes(df: pd.DataFrame, t: dict) -> pd.DataFrame:
     return df
 
 
+def _cages(df: pd.DataFrame, t: dict) -> list[dict]:
+    """Cages d'escalier des étages de logements, par bâtiment et par étage (nettes normalisées par `_nettes`).
+
+    Cage : local SD dont le nom (sous-type Treegram) est un escalier (les anciens MDP lui donnent souvent un n° dans
+    la colonne des appartements : elle n'entre pas en compte) ; logements : appartements
+    distincts de la SUP de l'étage. Un étage sans SUP ou sans logement (sous-sol technique…) n'est pas concerné.
+    Totaux : CAGES, SUP_CAGES et LOG_CAGES sur les étages qui ont une cage.
+    """
+    c_nom, c_lot, c_et = _col(df, "nom du local"), _col(df, "appartement_unite"), _col(df, "etage")
+    if df.empty or not (c_nom and c_lot and c_et):
+        return []
+    c_bat = _col(df, "partie d'ouvrage")
+    lot = df[c_lot].map(lambda v: None if _empty(v) else str(v).strip())
+    d = df.assign(_b=df[c_bat].fillna("").astype(str).str.strip() if c_bat else "", _e=df[c_et].astype(str).str.strip(),
+                  _lot=lot, _cage=df[c_nom].map(is_stair) & (df._c == "SD"))
+    out = []
+    for (b, e), g in d.groupby(["_b", "_e"], sort=True):
+        sup = g[g._c == "SUP"]
+        logements = sup._lot.dropna().nunique()
+        if sup._m2.sum() <= 0 or not logements:
+            continue
+        cages = int(g._cage.sum())
+        out.append({"batiment": b, "etage": e, "sup": round(float(sup._m2.sum()), 2), "logements": int(logements),
+                    "cages": cages})
+    served = [x for x in out if x["cages"]]
+    if served:
+        t["CAGES"] = float(sum(x["cages"] for x in served))
+        t["SUP_CAGES"] = sum(x["sup"] for x in served)
+        t["LOG_CAGES"] = float(sum(x["logements"] for x in served))
+    return out
+
+
 def _uspi(df: pd.DataFrame, t: dict) -> None:
     c_cat, c_m2 = _col(df, "categorie"), _col(df, "m2")
     if df.empty or not (c_cat and c_m2):
@@ -424,6 +468,7 @@ def lire(path: Path) -> Projet:
         t: dict[str, float] = {}
         _brutes(_sheet(x, "SurfacesBrutesVolumeSIA416"), t)
         nettes = _nettes(_sheet(x, "SurfacesNettesSIA416"), t)
+        etages = _cages(nettes, t)
         _uspi(_sheet(x, "SurfacesUSPI"), t)
         _enveloppe(_sheet(x, "SurfacesEnveloppe"), t)
         logements = _logements(_sheet(x, "ListeLogements"), nettes)
@@ -435,7 +480,7 @@ def lire(path: Path) -> Projet:
     # et le projet est « non identifié » (V3_PLAN §9).
     nom = infos.get("nom") or re.sub(r"^MDP-[\d.]+[-_ ]*", "", path.stem).replace("_", " ").strip()
     return Projet(_id(infos.get("id"), path.name), str(nom), path.name, infos,
-                  {k: v for k, v in t.items() if v is not None}, logements, _controles(t, infos, logements))
+                  {k: v for k, v in t.items() if v is not None}, logements, _controles(t, infos, logements), etages)
 
 
 def lire_dossier(dossier: Path) -> tuple[list[Projet], list[str]]:
@@ -542,6 +587,7 @@ def projet_json(p: Projet) -> dict:
         # logements (chambres, SUP) : la page recalcule l'onglet Typologies sur la sélection de l'utilisateur
         "logements": [{"chambres": lg["chambres"], "sup": round(lg["sup"], 2)} for lg in p.logements
                       if lg["chambres"] is not None and lg["sup"]],
+        "etages": p.etages,     # cages d'escalier par bâtiment et étage (onglet Comparer)
         "kpis": {kpi.id: (None if (r := p.ratio(kpi)) is None else
                           {"num": round(r[0], 2), "den": round(r[1], 2), "valeur": r[0] / r[1]}) for kpi in KPIS},
     }

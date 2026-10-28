@@ -29,6 +29,11 @@ Opérations (`op`) :
     créer      nouvelle surface `vers` sur le niveau `niveau` ({building, level}), d'aire `aire`, de géométrie
                `polygone` à l'altitude `z` (facultatifs) ; pas de `cible`. Élémentaire si `vers` en a déjà au
                niveau (son total suit), sinon total de niveau
+    qualifier  métadonnées des cibles : `sous_type` (room_type), `lot`, `nature` (« leaf » : surface élémentaire,
+               « node » : total de niveau) ; au moins l'une des trois, une valeur vide efface. Aire et catégorie
+               inchangées. Une surface qui change de nature quitte le détail de sa catégorie (ou y entre) : le total
+               de niveau Treegram de la catégorie est décalé d'autant, comme pour un reclassement.
+               `remodeler` accepte les mêmes champs (emprise et métadonnées modifiées ensemble)
     affecter   colonne `affectation` (tableau MDP) fixée à `affectation`
     renseigner champs du tableau MDP sans surface (`champs` : {colonne: valeur}), pour les lots ou les
                bâtiments visés par `selection` (`bedrooms`, `building`) : typologies, forme (propositions.py)
@@ -64,7 +69,10 @@ import pandas as pd
 from . import rules
 from .config import Config
 
-OPS = ("reclasser", "exclure", "découper", "ajuster", "remodeler", "créer", "affecter", "renseigner")
+OPS = ("reclasser", "exclure", "découper", "ajuster", "remodeler", "créer", "qualifier", "affecter", "renseigner")
+# Métadonnées d'une surface modifiables par `qualifier` (et `remodeler`) : champ du journal -> colonne
+METADATA = {"sous_type": "room_type", "lot": "lot", "nature": "kind"}
+NATURES = ("leaf", "node")
 REJECTED = "rejetée"
 UNKNOWN = "Inconnu"
 ACCEPTED = "acceptée"
@@ -150,6 +158,10 @@ def _problem(c: dict) -> str | None:
         a = c.get("aire")
         if not isinstance(a, (int, float)) or isinstance(a, bool) or a < 0:
             return f"« aire » positive attendue pour {op}"
+    if op == "qualifier" and not METADATA.keys() & c.keys():
+        return f"« {' », « '.join(METADATA)} » : au moins un champ attendu pour qualifier"
+    if c.get("nature") is not None and op in ("qualifier", "remodeler") and c["nature"] not in NATURES:
+        return f"« nature » : {' ou '.join(NATURES)} attendu"
     if op == "renseigner" and not isinstance(c.get("champs"), dict):
         return "« champs » attendu pour renseigner ({colonne: valeur})"
     if op == "affecter" and not c.get("affectation"):
@@ -236,6 +248,28 @@ def _cut(df: pd.DataFrame, i, c: dict) -> None:
         df.at[i, CUTS_COLUMN] = [*(df.at[i, CUTS_COLUMN] or []), c["polygone"]]
 
 
+def _qualify(df: pd.DataFrame, i, c: dict) -> None:
+    """Métadonnées d'une surface (`qualifier`, `remodeler`) ; un changement de nature décale le total de niveau."""
+    for key, col in METADATA.items():
+        if key not in c:
+            continue
+        v = c[key]
+        v = None if v is None or (isinstance(v, str) and not v.strip()) else str(v).strip()
+        if col == "kind":
+            r = df.loc[i]
+            if v is None or v == r.kind:
+                continue
+            # élémentaire -> total : l'aire quitte le détail de sa catégorie ; total -> élémentaire : elle y entre
+            # (les autres totaux de la catégorie au niveau, pas la surface elle-même)
+            m = (df.kind == "node") & (df.building == r.building) & (df.level == r.level)                 & (df.category == r.category) & ~df.excluded & (df.index != i)
+            delta = -float(r.area or 0) if v == "node" else float(r.area or 0)
+            df.loc[m, "area"] = df.loc[m, "area"].fillna(0) + delta
+        if col not in df:
+            df[col] = None
+        df[col] = df[col].astype(object)
+        df.at[i, col] = v
+
+
 def _create(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd.DataFrame, int, float]:
     """`créer` : nouvelle surface du niveau ; elle rejoint le détail de sa catégorie s'il existe."""
     b, lvl, code, aire = c["niveau"]["building"], c["niveau"]["level"], c["vers"], float(c["aire"])
@@ -314,6 +348,10 @@ def _apply_one(df: pd.DataFrame, c: dict, cfg: Config | None = None) -> tuple[pd
         df.loc[i, "area"] = aire
         df.loc[i, "category"] = to
         df.at[i, GEOMETRY_COLUMN] = _geometry(c)
+        _qualify(df, i, c)
+    elif op == "qualifier":
+        for i in idx:
+            _qualify(df, i, c)
     elif op == "ajuster":
         for i in idx:
             r = df.loc[i]

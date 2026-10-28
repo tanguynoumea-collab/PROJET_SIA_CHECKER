@@ -110,6 +110,9 @@ public sealed partial class TraceSession : ObservableObject
             _polygons = OuterRings(_source).Select(path => path.Select(ToPoint).ToList()).Where(p => p.Count >= 3).ToList();
         _z = kind == TraceKind.Create ? LevelZ(level) : TopZ(source);
         _mode = _polygons.Count > 0 ? TraceMode.Edit : TraceMode.Draw;
+        // Métadonnées à l'ouverture : celles de la correction reprise, sinon de la surface
+        OpenMetadata(MetadataOf(existing, "sous_type") ?? source.RoomType, MetadataOf(existing, "lot") ?? source.Lot,
+                     MetadataOf(existing, "nature") ?? (source.IsLevelTotal ? Node : Leaf));
         Recompute();
     }
 
@@ -201,6 +204,92 @@ public sealed partial class TraceSession : ObservableObject
     public string OutsideLabel => $"hors de la {Source.DisplayCode}";
     public bool HasClassified => _classified.Count > 0;
 
+    // ------------------------------------------------------------------ métadonnées (V3.1)
+
+    public const string Leaf = "leaf";
+    public const string Node = "node";
+    /// <summary>Nature d'une surface : élémentaire (pièce) ou total de niveau Treegram.</summary>
+    public static readonly IReadOnlyList<ChoiceItem> Natures = [new("Surface élémentaire", Leaf), new("Total de niveau", Node)];
+    private (string? SubType, string? Lot, string Nature) _openedMetadata;
+
+    /// <summary>Sous-type (type de pièce Treegram : Escalier, CirculationH…), lot et nature, modifiables avec l'emprise.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(CanSave), nameof(MetadataChanged), nameof(IsMetadataOnly))] private string? _subType;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(CanSave), nameof(MetadataChanged), nameof(IsMetadataOnly))] private string? _lot;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(CanSave), nameof(MetadataChanged), nameof(IsMetadataOnly))] private string _nature = Leaf;
+
+    /// <summary>
+    /// Métadonnées modifiables : emprise d'une surface lue (correction « remodeler » ou « qualifier »). Pas sur une part
+    /// découpée en attente (sa correction est une découpe).
+    /// </summary>
+    public bool CanEditMetadata => IsReshape && Source.FromCorrection is null && Existing?.Op is null or "remodeler";
+
+    public bool MetadataChanged => CanEditMetadata &&
+        (Clean(SubType) != _openedMetadata.SubType || Clean(Lot) != _openedMetadata.Lot || Nature != _openedMetadata.Nature);
+
+    /// <summary>Seules les métadonnées changent : correction « qualifier », l'aire et l'emprise lues restent telles quelles.</summary>
+    public bool IsMetadataOnly => MetadataChanged && Existing is null && !IsDirty && !IsSplitMode && Target == _openedTarget;
+
+    /// <summary>Une différence avec la surface lue (pas seulement avec l'ouverture) ; sinon la modification revient à l'origine.</summary>
+    public bool DiffersFromSource => Clean(SubType) != Clean(Source.RoomType) || Clean(Lot) != Clean(Source.Lot) || Nature != SourceNature;
+
+    private string SourceNature => Source.IsLevelTotal ? Node : Leaf;
+
+    /// <summary>Valeurs à l'ouverture (une modification de métadonnées en attente les reprend).</summary>
+    public void OpenMetadata(string? subType, string? lot, string nature)
+    {
+        _openedMetadata = (Clean(subType), Clean(lot), nature == Node ? Node : Leaf);
+        SubType = _openedMetadata.SubType;
+        Lot = _openedMetadata.Lot;
+        Nature = _openedMetadata.Nature;
+    }
+
+    private static string? Clean(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+
+    /// <summary>Champ de métadonnées d'une correction (`sous_type`, `lot`, `nature`) ; "" = effacé ; absent : null.</summary>
+    public static string? MetadataOf(Correction? c, string key) =>
+        c?.Extra?.TryGetValue(key, out var v) == true ? v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "" : null;
+
+    /// <summary>Écrit dans la correction les métadonnées qui diffèrent de la surface lue ; les autres sont retirées.</summary>
+    private void WriteMetadata(Correction c)
+    {
+        c.Extra ??= [];
+        var values = new (string Key, string? Now, string? Was)[]
+        {
+            ("sous_type", Clean(SubType), Clean(Source.RoomType)), ("lot", Clean(Lot), Clean(Source.Lot)), ("nature", Nature, SourceNature),
+        };
+        foreach (var (key, now, was) in values)
+            if (now == was) c.Extra.Remove(key);
+            else c.Extra[key] = JsonSerializer.SerializeToElement(now ?? "");
+    }
+
+    /// <summary>Ce qui change, en mots : « sous-type CirculationH → Escalier, lot — → A.01 ».</summary>
+    public string MetadataSummary
+    {
+        get
+        {
+            static string Show(string? v) => v ?? "—";
+            static string NatureLabel(string v) => Natures.First(n => n.Value == v).Label.ToLowerInvariant();
+            var parts = new List<string>();
+            if (Clean(SubType) != Clean(Source.RoomType)) parts.Add($"sous-type {Show(Clean(Source.RoomType))} → {Show(Clean(SubType))}");
+            if (Clean(Lot) != Clean(Source.Lot)) parts.Add($"lot {Show(Clean(Source.Lot))} → {Show(Clean(Lot))}");
+            if (Nature != SourceNature) parts.Add($"{NatureLabel(SourceNature)} → {NatureLabel(Nature)}");
+            return string.Join(", ", parts);
+        }
+    }
+
+    /// <summary>Correction « qualifier » : métadonnées seules, sur la surface d'origine (un îlot qualifie toute sa surface).</summary>
+    public Correction BuildQualifier(string id, string? subject)
+    {
+        var c = new Correction
+        {
+            Id = id, Op = "qualifier", Subject = subject, Status = Correction.Proposed, Origin = "manuel", M2 = Source.Area,
+            Target = JsonSerializer.SerializeToElement(new { ids = new[] { TargetSurfaceId } }),
+        };
+        WriteMetadata(c);
+        c.Explanation = $"{Source.Building} {Source.Level} : {Source.DisplayCode} {TargetSurfaceId}, {MetadataSummary}.";
+        return c;
+    }
+
     public string? Message =>
         IsSelfIntersecting ? "Le contour se recoupe : déplacez un sommet."
         : IsDrawingOpen && !IsCut && _polygons.Count > 0 ? "Contour ouvert : complétez-le en mode Tracer, puis fermez-le (clic sur le premier point ou Entrée)."
@@ -219,7 +308,8 @@ public sealed partial class TraceSession : ObservableObject
     /// SC peut revenir à SA.
     /// </summary>
     public bool CanSave => IsSplitMode ? HasSplit
-        : IsDirty || Existing?.NeedsRetrace == true || IsReshape && Target != _openedTarget
+        : IsMetadataOnly ? true
+        : IsDirty || Existing?.NeedsRetrace == true || IsReshape && Target != _openedTarget || MetadataChanged
             ? !IsDrawingOpen && !IsSelfIntersecting && CountedArea > 0.005 : false;
 
     // ------------------------------------------------------------------ scinder
@@ -679,6 +769,7 @@ public sealed partial class TraceSession : ObservableObject
             c.Extra["z"] = JsonSerializer.SerializeToElement(Math.Round(_z, 3));
             c.To = c.Op == "remodeler" && Target == Source.DisplayCode ? null : Target;   // une découpe garde toujours sa catégorie
         }
+        if (c.Op == "remodeler" && CanEditMetadata) WriteMetadata(c);
         if (Source.FromCorrection is not null)
             c.Explanation = $"{Source.Building} {Source.Level} : surface découpée de {CountedText}, {Target}.";
         if (IsIsland && Existing is null)
@@ -692,7 +783,8 @@ public sealed partial class TraceSession : ObservableObject
             {
                 TraceKind.Create => $"{Source.Building} {Source.Level} : nouvelle {Target} de {CountedText}, tracée sur le plan.",
                 TraceKind.Reshape => $"{Source.Building} {Source.Level} : emprise de la {Source.DisplayCode} redessinée, {OriginalAreaText} → {CountedText}" +
-                                     (Target != Source.DisplayCode ? $", classée {Target}." : "."),
+                                     (Target != Source.DisplayCode ? $", classée {Target}" : "") +
+                                     (CanEditMetadata && DiffersFromSource ? $" ; {MetadataSummary}." : "."),
                 _ => $"{Source.Building} {Source.Level} : {CountedText} de {Source.DisplayCode} tracés → {(Target == "" ? "exclus" : Target)}.",
             };
         return c;

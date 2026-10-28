@@ -810,14 +810,16 @@ public sealed partial class MainViewModel : ObservableObject
         {   // îlot d'une surface en plusieurs morceaux : sa propre fiche, les points de la surface d'origine
             var parentLinked = Issues.Where(i => i.SurfaceIds.Contains(island.IslandOf!)).OrderBy(i => i.SortKey).ToList();
             foreach (var i in parentLinked) i.IsLinked = true;
-            SelectedSurface = new SurfaceInfo(Current(island), parentLinked);   // amputé des parts découpées en attente
+            var (shownIsland, islandNote) = WithPendingMetadata(Current(island));   // amputé des parts découpées en attente
+            SelectedSurface = new SurfaceInfo(shownIsland, parentLinked, note: islandNote);
             LinkedIssuesChanged?.Invoke(parentLinked.FirstOrDefault(Matches));
             return;
         }
         if (id is null || !_surfaceById.TryGetValue(id, out var s)) { SelectedSurface = null; return; }
         var linked = Issues.Where(i => i.SurfaceIds.Contains(id)).OrderBy(i => i.SortKey).ToList();
         foreach (var i in linked) i.IsLinked = true;
-        SelectedSurface = new SurfaceInfo(Current(s), linked);
+        var (shown, note) = WithPendingMetadata(Current(s));
+        SelectedSurface = new SurfaceInfo(shown, linked, note: note);
         LinkedIssuesChanged?.Invoke(linked.FirstOrDefault(Matches));
     }
 

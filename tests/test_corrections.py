@@ -361,3 +361,39 @@ def test_roof_spt_leaves_sep(cfg, c, sep):
         assert a.log.iloc[0].application == corrections.APPLIED
         df = a.kept
     assert sep_of(df, cfg) == pytest.approx(sep)
+
+
+def test_qualifier_changes_subtype_and_lot_only():
+    a = corrections.apply(surfaces(), journal(
+        {"id": "q1", "op": "qualifier", "cible": {"ids": ["sup-2"]}, "sous_type": "Escalier", "lot": "A.01"},
+        {"id": "q2", "op": "qualifier", "cible": {"ids": ["sup-1"]}, "lot": ""}))
+    s = a.surfaces.set_index("id")
+    assert (s.at["sup-2", "room_type"], s.at["sup-2", "lot"]) == ("Escalier", "A.01")
+    assert s.at["sup-2", "area"] == 20.0 and s.at["sup-2", "category"] == "SUP"
+    assert s.at["sup-1", "lot"] is None
+    assert list(a.log.application) == ["appliquée", "appliquée"]
+
+
+def test_qualifier_nature_moves_level_total():
+    a = corrections.apply(surfaces(), journal({"id": "q1", "op": "qualifier", "cible": {"ids": ["sup-2"]}, "nature": "node"}))
+    s = a.surfaces.set_index("id")
+    assert s.at["sup-2", "kind"] == "node"
+    assert s.at["A_N01_SUP#total", "area"] == 40.0     # le total Treegram ne compte plus la surface sortie du détail
+    assert s.at["sup-2", "area"] == 20.0
+
+
+@pytest.mark.parametrize("c", [
+    {"id": "q", "op": "qualifier", "cible": {"ids": ["sup-2"]}},
+    {"id": "q", "op": "qualifier", "cible": {"ids": ["sup-2"]}, "nature": "pièce"},
+])
+def test_qualifier_refused_without_valid_field(c):
+    a = corrections.apply(surfaces(), journal(c))
+    assert a.log.application.iloc[0] == "refusée"
+
+
+def test_remodeler_carries_metadata(cfg):
+    poly = {"type": "MultiPolygon", "coordinates": [[[[0, 0], [4, 0], [4, 5], [0, 5], [0, 0]]]]}
+    a = corrections.apply(surfaces(), journal({"id": "r1", "op": "remodeler", "cible": {"ids": ["sd-1"]}, "aire": 20.0,
+                                              "polygone": poly, "sous_type": "Escalier", "lot": None}), cfg=cfg)
+    s = a.surfaces.set_index("id")
+    assert (s.at["sd-1", "area"], s.at["sd-1", "room_type"]) == (20.0, "Escalier")

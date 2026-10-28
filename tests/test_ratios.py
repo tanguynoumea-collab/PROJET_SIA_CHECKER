@@ -52,3 +52,27 @@ def test_status():
 def test_no_ratios_configured(synth, cfg):
     cfg.ratios = []
     assert rules.run(synth, cfg).ratios.empty
+
+
+def test_stairs_per_housing_floor(cfg):
+    """Cages d'escalier : SD de sous-type escalier ; étages de logements (SUP et lots) seulement."""
+    rows = [  # (bâtiment, niveau, catégorie, aire, sous-type, lot)
+        ("A", "N01", "SP", 300.0, None, None), ("A", "N01", "SUP", 100.0, "PieceDeVie", "A.11"),
+        ("A", "N01", "SUP", 100.0, "PieceDeVie", "A.12"), ("A", "N01", "SUP", 50.0, "Chambre", "A.13"),
+        ("A", "N01", "SD", 20.0, "Escalier", None), ("A", "N01", "SD", 18.0, "Cage d'escaliers", None),
+        ("A", "N01", "SUP", 6.0, "Escalier", "A.13"),                       # escalier de duplex : pas une cage
+        ("A", "N02", "SP", 300.0, None, None), ("A", "N02", "SUP", 200.0, "PieceDeVie", "A.21"),
+        ("A", "N02", "SD", 20.0, "CirculationH", None),                     # étage de logements sans cage
+        ("A", "S01", "SP", 300.0, None, None), ("A", "S01", "SD", 20.0, "Escalier", None),   # sous-sol sans SUP
+    ]
+    df = pd.DataFrame([{"id": f"s{k}", "building": b, "level": l, "category": c, "area": a,
+                        "kind": "node" if c == "SP" else "leaf", "room_type": t, "lot": lot}
+                       for k, (b, l, c, a, t, lot) in enumerate(rows)])
+    res = rules.run(df, cfg)
+    st = ratios.stairs(res.surfaces, res.totals)
+    assert st.loc[("A", "N01"), ["CAGES", "LOGEMENTS", "SUP_CAGES", "LOG_CAGES"]].tolist() == [2, 3, 256, 3]
+    assert st.loc[("A", "N02"), "CAGES"] == 0 and pd.isna(st.loc[("A", "N02"), "SUP_CAGES"])
+    assert st.loc[("A", "S01")].isna().all()
+    r = res.ratios.set_index(["building", "id"])
+    assert r.at[("*", "SUP/cage"), "value"] == pytest.approx(128.0)
+    assert r.at[("*", "log/cage"), "value"] == pytest.approx(1.5)

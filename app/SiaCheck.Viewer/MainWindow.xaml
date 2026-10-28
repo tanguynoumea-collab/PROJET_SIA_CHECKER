@@ -798,7 +798,7 @@
                                 <ui:Button Margin="0,0,4,4" Appearance="Secondary" Icon="{ui:SymbolIcon Edit20}" Content="Modifier…"
                                            Command="{Binding DataContext.OpenReshapeForSurfaceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                            MinHeight="{StaticResource TargetSize}"
-                                           ToolTip="Changer le type de la surface ou redessiner son emprise sur le plan du niveau (sommets, arêtes)" />
+                                           ToolTip="Changer le type, la nature, le sous-type ou le lot de la surface, ou redessiner son emprise sur le plan du niveau (sommets, arêtes)" />
                                 <ui:Button Margin="0,0,4,4" Appearance="Secondary" Icon="{ui:SymbolIcon Cut20}" Content="Découper…"
                                            Command="{Binding DataContext.OpenTraceForSurfaceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                            Visibility="{Binding CanCut, Converter={StaticResource BoolToVisibility}}"
@@ -881,6 +881,7 @@
                                                         <ColumnDefinition Width="20" />
                                                         <ColumnDefinition Width="72" />
                                                         <ColumnDefinition Width="128" />
+                                                        <ColumnDefinition Width="Auto" SharedSizeGroup="BalanceStairs" />
                                                         <ColumnDefinition Width="Auto" SharedSizeGroup="BalanceChange" /><!-- même largeur sur toutes les lignes : barres alignées -->
                                                         <ColumnDefinition Width="56" />
                                                     </Grid.ColumnDefinitions>
@@ -906,8 +907,16 @@
                                                         <TextBlock Grid.Column="1" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
                                                                    Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding GlazingShareText}" />
                                                     </Grid>
-                                                    <!-- Avant / après : ancien résidu barré, nouveau avec son verdict -->
+                                                    <!-- Cages d'escalier de l'étage de logements (V3.1) : nombre, SUP et logements par cage -->
                                                     <StackPanel Grid.Column="5" Margin="12,0,0,0" Orientation="Horizontal" VerticalAlignment="Center"
+                                                                Background="Transparent" ToolTip="{Binding StairsTooltip}" ToolTipService.ShowDuration="30000"
+                                                                Visibility="{Binding IsHousing, Converter={StaticResource BoolToVisibility}}">
+                                                        <TextBlock x:Name="StairsCount" Style="{StaticResource TextCaption}" MinWidth="64" Text="{Binding StairsText}" />
+                                                        <TextBlock Style="{StaticResource TextNumber}" MinWidth="110" Foreground="{DynamicResource BrushTextSecondary}"
+                                                                   Text="{Binding StairsRatioText}" />
+                                                    </StackPanel>
+                                                    <!-- Avant / après : ancien résidu barré, nouveau avec son verdict -->
+                                                    <StackPanel Grid.Column="6" Margin="12,0,0,0" Orientation="Horizontal" VerticalAlignment="Center"
                                                                 ToolTip="{Binding ChangeTooltip}"
                                                                 Visibility="{Binding HasChange, Converter={StaticResource BoolToVisibility}}">
                                                         <TextBlock Style="{StaticResource TextNumber}" Foreground="{DynamicResource BrushTextSecondary}"
@@ -916,10 +925,15 @@
                                                         <c:VerdictGlyph Verdict="{Binding ChangeVerdict}" />
                                                         <TextBlock Style="{StaticResource TextNumber}" Margin="4,0,0,0" Text="{Binding ChangeAfter}" />
                                                     </StackPanel>
-                                                    <TextBlock Grid.Column="6" Margin="8,0,0,0" Style="{StaticResource TextMono}" VerticalAlignment="Center"
+                                                    <TextBlock Grid.Column="7" Margin="8,0,0,0" Style="{StaticResource TextMono}" VerticalAlignment="Center"
                                                                Foreground="{DynamicResource BrushVerdictWarning}" Text="{Binding Alerts}" />
                                                 </Grid>
                                             </Button>
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding HasNoStair}" Value="True">
+                                                    <Setter TargetName="StairsCount" Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
@@ -1091,6 +1105,30 @@
                                         </Grid>
                                         <TextBlock Margin="0,6,0,0" Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushVerdictError}" TextWrapping="Wrap"
                                                    Text="{Binding Trace.SplitMessage}" />
+                                    </StackPanel>
+                                    <!-- Métadonnées de la surface (V3.1) : nature, sous-type, lot ; le type SIA se choisit dans l'en-tête -->
+                                    <StackPanel Margin="0,0,0,16" Visibility="{Binding Trace.CanEditMetadata, Converter={StaticResource BoolToVisibility}}">
+                                        <TextBlock Style="{StaticResource TextSection}" Margin="0,0,0,4" Text="Métadonnées" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="72" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                            <TextBlock Style="{StaticResource TextCaption}" VerticalAlignment="Center" Text="Nature" />
+                                            <ComboBox Grid.Column="1" Margin="0,2" ItemsSource="{x:Static vm:TraceSession.Natures}" DisplayMemberPath="Label"
+                                                      SelectedValuePath="Value" SelectedValue="{Binding Trace.Nature}" AutomationProperties.Name="Nature de la surface"
+                                                      ToolTip="Surface élémentaire (une pièce) ou total de niveau Treegram. Un total de niveau ne compte que si sa catégorie n'a pas de surfaces élémentaires au niveau." />
+                                            <TextBlock Grid.Row="1" Style="{StaticResource TextCaption}" VerticalAlignment="Center" Text="Sous-type" />
+                                            <ComboBox Grid.Row="1" Grid.Column="1" Margin="0,2" IsEditable="True" ItemsSource="{Binding TraceSubTypes}"
+                                                      Text="{Binding Trace.SubType, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Sous-type de la surface"
+                                                      ToolTip="Type de pièce Treegram (Escalier, CirculationH, PieceDeVie…) : les cages d'escalier sont les SD de sous-type Escalier" />
+                                            <TextBlock Grid.Row="2" Style="{StaticResource TextCaption}" VerticalAlignment="Center" Text="Lot" />
+                                            <ComboBox Grid.Row="2" Grid.Column="1" Margin="0,2" IsEditable="True" ItemsSource="{Binding TraceLots}"
+                                                      FontFamily="{StaticResource FontMono}"
+                                                      Text="{Binding Trace.Lot, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Lot de la surface"
+                                                      ToolTip="Logement (appartement) de la surface ; vide pour une partie commune" />
+                                        </Grid>
+                                        <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                                                   Visibility="{Binding Trace.IsMetadataOnly, Converter={StaticResource BoolToVisibility}}"
+                                                   Text="Métadonnées seules : l'emprise et l'aire lues restent inchangées." />
                                     </StackPanel>
                                     <TextBlock Style="{StaticResource TextSection}" Margin="0,0,0,4" Text="Aire du tracé" />
                                     <TextBlock Style="{StaticResource TextNumber}" FontSize="{StaticResource FontSizeTitle}" FontFamily="{StaticResource FontUISemibold}"

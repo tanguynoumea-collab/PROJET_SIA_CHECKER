@@ -119,6 +119,7 @@ public sealed partial class CorrectionItem : ObservableObject
         "ajuster" => "aire fixée",
         "remodeler" => Model.To is { } to && to != TargetCode ? $"{TargetCode} emprise → {to}".Trim() : $"{TargetCode} emprise".Trim(),
         "créer" => $"nouvelle {Model.To}",
+        "qualifier" => $"{TargetCode} métadonnées".Trim(),
         "affecter" => $"→ {Model.Assignment}",
         "renseigner" => Fields(),
         _ => Model.Op,

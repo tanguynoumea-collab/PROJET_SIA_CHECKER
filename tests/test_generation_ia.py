@@ -97,3 +97,20 @@ def test_accepted_decision_changes_the_next_generation(tmp_path):
     assert cli.main(["--questions-ia", str(g.folder)]) == 0
     asked = json.loads((g.folder / ia.QUESTIONS).read_text(encoding="utf-8"))["questions"]
     assert asked and sej["gid"] not in {x["id"] for x in asked}        # tranché : plus jamais redemandé
+
+
+def test_app_contract_maquette_surface_links_and_manual_decision(tmp_path):
+    """Phase 25 : maquette de contexte, lien espace -> surface, décision manuelle qui remplace la proposition."""
+    cfg = config.load(ROOT / "config.yaml").generation
+    ifc = build(tmp_path / "synth.ifc")
+    g = engine.generate(ifc, cfg, tmp_path / "out", "Synth")
+    maq = json.loads((g.folder / engine.MAQUETTE).read_text(encoding="utf-8"))
+    assert {e["class"] for e in maq["elements"]} == {"IfcWall", "IfcSlab"} and maq["origin"]
+    sej = next(s for s in g.data["spaces"] if s["long_name"] == "Séjour")
+    assert sej["surface"] == "A_N00_ShellByTgm-01_SpaceByTgm-2_SUP"
+    assert cli.main(["--decider", str(g.folder), "--ids", sej["gid"], "--code", "SUS"]) == 0
+    assert cli.main(["--decider", str(g.folder), "--ids", sej["gid"], "--code", "SUS", "--type", "Gaine"]) == 2
+    (d,) = journal.load(g.folder)
+    assert (d["origine"], d["statut"], d["code"], d["type"]) == ("manuel", "acceptée", "SUS", "SUS")
+    again = engine.generate(ifc, cfg, tmp_path / "out", "Synth")
+    assert next(s for s in again.data["spaces"] if s["gid"] == sej["gid"])["source"] == "manuel"

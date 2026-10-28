@@ -118,6 +118,20 @@ public sealed partial class AnalysisService(string enginePath)
                                                  CancellationToken ct) =>
         RunAsync(["-q", projectDir, "--benchmark-projet", json, "--project-name", projectName, .. inputs.Args()], null, ct);
 
+    /// <summary>Maquette architecte IFC -> projet généré &lt;outDir&gt;/&lt;project&gt; (V4), progression « ÉTAPE n/N ».</summary>
+    public Task<EngineRun> GenerateAsync(string ifc, string outDir, string project, IProgress<AnalysisProgress>? progress,
+                                         CancellationToken ct) =>
+        RunAsync(["--generer", ifc, "--out", outDir, "--project", project], progress, ct);
+
+    /// <summary>Décision manuelle sur des espaces d'un projet généré (journal, appliquée à la prochaine génération).</summary>
+    public Task<EngineRun> DecideAsync(string generatedDir, IEnumerable<string> ids, string code, string? type, CancellationToken ct) =>
+        RunAsync(["--decider", generatedDir, "--ids", string.Join(",", ids), "--code", code, .. type is null ? [] : new[] { "--type", type }],
+                 null, ct);
+
+    /// <summary>Accepte ou rejette des propositions de l'analyse IA.</summary>
+    public Task<EngineRun> SettleIaAsync(string generatedDir, IEnumerable<string> ids, bool accept, CancellationToken ct) =>
+        RunAsync([accept ? "--accepter-ia" : "--rejeter-ia", generatedDir, "--ids", string.Join(",", ids)], null, ct);
+
     /// <summary>Projet généré (V4) : questions et prompt de l'analyse IA (generation/prompt-ia.json).</summary>
     public Task<EngineRun> QuestionsIaAsync(string generatedDir, CancellationToken ct) =>
         RunAsync(["--questions-ia", generatedDir], null, ct);

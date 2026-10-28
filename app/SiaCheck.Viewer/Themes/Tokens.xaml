@@ -46,10 +46,11 @@
     <sys:Double x:Key="WindowMinWidth">1400</sys:Double>
     <sys:Double x:Key="WindowMinHeight">860</sys:Double>
     <!-- Accueil : Fiabilisation | Benchmark (Évolution 3.0) -->
-    <sys:Double x:Key="HomeMaxWidth">1360</sys:Double>
+    <sys:Double x:Key="HomeMaxWidth">1800</sys:Double>
     <Thickness x:Key="HomeMargin">24,48,24,24</Thickness>
     <Thickness x:Key="HomeColumnLeft">0,0,32,0</Thickness>
     <Thickness x:Key="HomeColumnRight">32,0,0,0</Thickness>
+    <Thickness x:Key="HomeColumnMiddle">32,0,32,0</Thickness>
     <!-- Empreinte de fiabilité d'un MDP : un segment par contrôle -->
     <sys:Double x:Key="FingerprintWidth">6</sys:Double>
     <sys:Double x:Key="FingerprintHeight">12</sys:Double>

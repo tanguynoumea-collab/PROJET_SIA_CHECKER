@@ -139,6 +139,13 @@ public partial class App : Application
             if (Environment.GetCommandLineArgs().Contains("--trace")) window.ViewModel.OpenTraceForCorrectionCommand.Execute(null);
         }
         if (Environment.GetCommandLineArgs().Contains("--points")) window.ViewModel.ShowPointsTabCommand.Execute(null);
+        // --spaces : onglet Espaces d'un projet généré, premier espace sélectionné (revue visuelle, Évolution 4.0)
+        if (Environment.GetCommandLineArgs().Contains("--spaces"))
+        {
+            window.ViewModel.ShowSpacesTabCommand.Execute(null);
+            window.ViewModel.SelectedSpace = window.ViewModel.SpacesView.Cast<ViewModels.SpaceItem>().FirstOrDefault();
+            if (Environment.GetCommandLineArgs().Contains("--context")) window.ViewModel.ShowIfcContext = true;
+        }
         if (Environment.GetCommandLineArgs().Contains("--report")) window.ViewModel.ShowAiReportCommand.Execute(null);
         if (Environment.GetCommandLineArgs().Contains("--ai-panel")) window.ViewModel.OpenAiPanelCommand.Execute(null);
         if (capture is not null) await CaptureAsync(window, capture);

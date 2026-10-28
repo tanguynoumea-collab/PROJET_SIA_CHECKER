@@ -37,6 +37,7 @@ public sealed partial class MainViewModel : ObservableObject
         _showRatios = settings.ShowRatios;
         _registry = new ProjectRegistry(paths.ProjectsFile);
         FillRecents();
+        FillGenerated();
         InitBenchmark();
         LayersView = new ListCollectionView(Layers);
         LayersView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(LayerItem.Group)));
@@ -91,6 +92,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _analysisCorrections = "";
     public bool IsBusy => IsAnalysing;
     public string[] AnalysisSteps { get; } = ["Lecture du .tgm", "Contrôles SIA 416", "Géométrie (cache VWR)"];
+    /// <summary>Superposition commune à l'analyse et à la génération (V4) : titre et étapes du travail en cours.</summary>
+    [ObservableProperty] private string _overlayTitle = "";
+    [ObservableProperty] private int _overlayStepCount = 3;
+    [ObservableProperty] private string _overlayStepsText = "lecture du .tgm, contrôles SIA 416, géométrie";
 
     /// <summary>
     /// Nouveau projet (Évolution 3.8) : l'explorateur pour choisir le dossier Treegram, comme avant, puis la fiche
@@ -282,6 +287,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (ProjectDir is null || _engine is null || IsAnalysing) return;
         if (IsTraceOpen) { _shell.Notify("Enregistrez ou annulez le tracé avant d'analyser."); return; }
         AnalysisError = null;
+        (OverlayTitle, OverlayStepCount, OverlayStepsText) = ($"Analyse de {ProjectDir}", 3, "lecture des surfaces, contrôles SIA 416, géométrie");
         IsAnalysing = true;
         AnalysisStep = 0;
         AnalysisLabel = "Démarrage du moteur";
@@ -447,6 +453,7 @@ public sealed partial class MainViewModel : ObservableObject
         Scene = null;
         IsDashboard = false;
         FillRecents();
+        FillGenerated();
         if (IsBenchmarkStale) _ = RefreshBenchmarkAsync();
     }
 
@@ -522,6 +529,7 @@ public sealed partial class MainViewModel : ObservableObject
         LoadAiReview(doc);
         Document = doc;
         LoadSubjects(doc);
+        LoadGeneration();
         _suspendSceneUpdates = false;
         OnBuildingsChanged();
         UpdateLayers();

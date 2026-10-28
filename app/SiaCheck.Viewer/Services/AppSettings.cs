@@ -47,6 +47,10 @@ public sealed class AppSettings
     public List<RecentProject> Recents { get; set; } = [];
     /// <summary>Dossier des tableaux MDP de la base du benchmark ; vide tant qu'il n'a pas été choisi.</summary>
     public string BenchmarkFolder { get; set; } = "";
+    /// <summary>Dossier des projets générés depuis l'IFC (V4) ; vide : Documents\SIA Check - projets generes.</summary>
+    public string GenerationFolder { get; set; } = "";
+    /// <summary>Calque « Maquette IFC » d'un projet généré, retenu d'une ouverture à l'autre.</summary>
+    public bool ShowIfcContext { get; set; }
     /// <summary>ID et nom HRS de chaque projet (clé : dossier normalisé), demandés à l'export MDP.</summary>
     public Dictionary<string, MdpProject> MdpProjects { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

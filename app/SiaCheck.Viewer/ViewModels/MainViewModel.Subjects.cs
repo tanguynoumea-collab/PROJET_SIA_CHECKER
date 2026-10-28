@@ -34,7 +34,8 @@ public sealed partial class MainViewModel
 
     /// <summary>Onglet du panneau droit : Sujets (défaut quand il y en a) ou Points.</summary>
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowPoints))] private bool _showSubjects;
-    public bool ShowPoints => !ShowSubjects;
+    public bool ShowPoints => !ShowSubjects && !ShowSpaces;
+    partial void OnShowSubjectsChanged(bool value) { if (value) ShowSpaces = false; }
     public bool HasSubjects => Subjects.Count > 0;
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasSelectedSubject))] private SubjectItem? _selectedSubject;
@@ -314,6 +315,7 @@ public sealed partial class MainViewModel
             };
             if (p is not null) items.Add(p);
         }
+        items.AddRange(GenerationPreview());   // décisions de classement acceptées, pas encore régénérées (V4)
         Scene.SetPreview(items, replaced);
     }
 
@@ -411,7 +413,7 @@ public sealed partial class MainViewModel
     private void ShowSubjectsTab() { if (HasSubjects) ShowSubjects = true; }
 
     [RelayCommand]
-    private void ShowPointsTab() => ShowSubjects = false;
+    private void ShowPointsTab() { ShowSubjects = false; ShowSpaces = false; }
 
     /// <summary>Étiquette de sujet d'un point (onglet Points) : ouvre ce sujet dans l'onglet Sujets.</summary>
     [RelayCommand]

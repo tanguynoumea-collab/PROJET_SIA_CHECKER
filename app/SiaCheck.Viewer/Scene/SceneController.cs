@@ -72,6 +72,9 @@ public sealed class SceneController
     /// <summary>Coupe d'isolement : altitude du plus haut point isolé ; les niveaux qui commencent au-dessus sont masqués.</summary>
     private double? _cutZ;
     private double _explode;
+    /// <summary>Maquette IFC d'un projet généré (V4) : murs, dalles, toits, poteaux par niveau, en gris translucide.</summary>
+    private readonly Dictionary<(string B, string L), GeometryModel3D> _context = [];
+    private bool _showContext;
 
     public SceneController(ViewerDocument doc, SiaPalette palette, Color ghost)
     {
@@ -428,8 +431,49 @@ public sealed class SceneController
                     // En fantôme, les chants alourdiraient le voile : on ne garde que les dessus.
                     if (_focus is null) n.Group.Children.Add(b.Edges);
                 }
+            if (_showContext && FilterShows(n) && _context.TryGetValue((n.Building, n.Level), out var ctx)) n.Group.Children.Add(ctx);
             if (n.Group.Children.Count > 0) Root.Children.Add(n.Group);
         }
+    }
+
+    // ------------------------------------------------------------------ maquette IFC (contexte)
+
+    public bool HasContext => _context.Count > 0;
+
+    /// <summary>
+    /// Maquette de contexte d'un projet généré : un maillage par niveau, posé dans le groupe du niveau (il suit filtres,
+    /// éclatement et coupe d'isolement). Les niveaux sans surface générée n'ont pas de groupe : leur maquette est ignorée.
+    /// </summary>
+    public void SetContext(ContextModel? model, Color color)
+    {
+        _context.Clear();
+        if (model is not null)
+        {
+            var material = Frozen(new DiffuseMaterial(new SolidColorBrush(color)));
+            foreach (var grp in model.Elements.GroupBy(e => (e.Building, e.Level)).Where(g => _levels.ContainsKey(g.Key)))
+            {
+                var mesh = new MeshGeometry3D();
+                var pos = new Point3DCollection();
+                var idx = new Int32Collection();
+                foreach (var e in grp)
+                {
+                    var start = pos.Count;
+                    for (var k = 0; k + 2 < e.Vertices.Length; k += 3) pos.Add(new Point3D(e.Vertices[k], e.Vertices[k + 1], e.Vertices[k + 2]));
+                    foreach (var i in e.Indices) idx.Add(start + i);
+                }
+                mesh.Positions = pos;
+                mesh.TriangleIndices = idx;
+                mesh.Freeze();
+                _context[grp.Key] = new GeometryModel3D(mesh, material) { BackMaterial = material };
+            }
+        }
+        Refresh();
+    }
+
+    public void ShowContext(bool show)
+    {
+        _showContext = show;
+        Refresh();
     }
 
     // ------------------------------------------------------------------ isolement

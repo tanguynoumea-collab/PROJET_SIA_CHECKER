@@ -92,6 +92,10 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
                     help="projet généré : lit generation/reponse-ia.txt et ajoute ses propositions au journal")
     ap.add_argument("--accepter-ia", type=Path, metavar="DOSSIER", help="projet généré : accepte les propositions")
     ap.add_argument("--rejeter-ia", type=Path, metavar="DOSSIER", help="projet généré : rejette les propositions")
+    ap.add_argument("--decider", type=Path, metavar="DOSSIER",
+                    help="projet généré : décision manuelle (--ids, --code, --type) pour ces espaces")
+    ap.add_argument("--code", help="avec --decider : code SIA décidé (SUP, SUS, SUT, SD, SI, SEU, SED, SEI)")
+    ap.add_argument("--type", dest="room_type", help="avec --decider : sous-type Treegram (facultatif)")
     ap.add_argument("--ids", help="avec --accepter-ia / --rejeter-ia : identifiants séparés par des virgules")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
@@ -183,6 +187,8 @@ def main(argv: list[str] | None = None) -> int:
         return _questions_ia(args.questions_ia)
     if args.reponse_ia:
         return _reponse_ia(args.reponse_ia)
+    if args.decider:
+        return _decider(args.decider, args.ids, args.code, args.room_type)
     if args.accepter_ia or args.rejeter_ia:
         return _trancher_ia(args.accepter_ia or args.rejeter_ia, "acceptée" if args.accepter_ia else "rejetée", args.ids)
     if args.comparer_mdp:
@@ -426,6 +432,32 @@ def _reponse_ia(folder: Path) -> int:
     open_ = sum(1 for d in decisions if d["statut"] == "proposée")
     log.info("analyse IA : %d propositions, %d classements confirmés, %d questions sans réponse", open_,
              len(decisions) - open_, len(missing))
+    return 0
+
+
+def _decider(folder: Path, ids: str | None, code: str | None, typ: str | None) -> int:
+    from .generation import ia, journal
+    if not ids or code not in ia.TYPES or (typ and typ not in ia.TYPES[code]):
+        log.error("--decider attend --ids, un --code parmi %s et un --type de ce code", ", ".join(ia.TYPES))
+        return 2
+    try:
+        rapport = json.loads((folder / "generation" / "rapport.json").read_text(encoding="utf-8"))
+        spaces = {s["gid"]: s for s in rapport["spaces"]}
+        wanted = [i.strip() for i in ids.split(",") if i.strip()]
+        unknown = [i for i in wanted if i not in spaces]
+        if unknown:
+            log.error("espaces inconnus du rapport de génération : %s", ", ".join(unknown))
+            return 2
+        new = [{"id": g, "nom": " / ".join(v for v in (spaces[g]["name"], spaces[g]["long_name"]) if v),
+                "origine": "manuel", "statut": "acceptée", "avant": {"code": spaces[g]["code"], "type": spaces[g]["type"]},
+                "code": code, "type": typ or (ia.TYPES[code][0] if ia.TYPES[code] else None), "certitude": "sûr",
+                "raison": "choix de l'utilisateur", "date": journal.now()} for g in wanted]
+        old = [d for d in journal.load(folder) if d["id"] not in set(wanted)]   # le choix manuel remplace tout
+        journal.save(folder, old + new)
+    except (OSError, ValueError, KeyError) as ex:
+        log.error("%s", ex)
+        return 2
+    log.info("%d décision(s) manuelle(s) enregistrée(s) ; régénérer le projet pour les appliquer", len(new))
     return 0
 
 

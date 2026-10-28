@@ -18,13 +18,15 @@ $work = Join-Path $env:TEMP 'siacheck-build'
 if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
 
 # 1. Moteur : onedir (démarrage rapide, pas de décompression à chaque analyse).
-#    ifcopenshell est exclu : la visionneuse lit les projets .tgm ; la CLI complète reste disponible via pip.
-#    shapely est embarqué pour les preuves de la revue IA (sia-check --preuves, importé à la demande).
-& $py -m pip install -q pyinstaller shapely
+#    ifcopenshell est embarqué (V4) : la génération depuis l'IFC (sia-check --generer) lit et triangule la maquette ;
+#    --collect-all prend son module binaire et ses schémas. Les modules de génération sont importés à la demande.
+#    shapely est embarqué pour les preuves de la revue IA et la géométrie de la génération.
+& $py -m pip install -q pyinstaller shapely ifcopenshell
 & $py -m PyInstaller --noconfirm --clean --name sia-check --console `
     --distpath (Join-Path $work 'dist') --workpath (Join-Path $work 'build') --specpath $work `
-    --exclude-module ifcopenshell --exclude-module numpy.tests --exclude-module pytest `
+    --exclude-module numpy.tests --exclude-module pytest `
     --hidden-import sia_check.preuves --collect-submodules shapely `
+    --collect-all ifcopenshell --collect-submodules sia_check.generation `
     --add-data "$(Join-Path $root 'src\sia_check\templates');sia_check\templates" `
     --paths (Join-Path $root 'src') (Join-Path $root 'src\sia_check\__main__.py')
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller a échoué' }

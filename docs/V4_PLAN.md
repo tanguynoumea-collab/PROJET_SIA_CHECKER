@@ -371,3 +371,24 @@ Coût estimé avec Claude Opus 5.5 : de 0,05 à 0,30 $ par projet.
 39 questions, 39 propositions (19 sûres, 18 probables, 2 incertaines) pour 0,28 $ (23 606 jetons en entrée, 9 153 en sortie). L'IA a relevé qu'Afiro n'a aucun logement : la SUP écrite par l'architecte, au sens de la SIA 416, est de la SUT chez Treegram, dont les sous-types SUP sont ceux du logement. Les 19 propositions sûres ont été acceptées.
 
 **Décision du 28.10.2026, devenue une règle du moteur** (`classify.without_flats`, `config.yaml > generation.classify.sut_without_flats`) : dans un bâtiment sans aucune pièce de logement, la SUP devient SUT (type Commerce), et les sanitaires deviennent SUS. Afiro : 71 pièces reclassées, plus de SUP. Il ne reste que 20 questions à poser à l'IA. Les bâtiments avec logements ne changent pas.
+
+## 17. Phase 25 livrée (28.10.2026) : section Génération de l'app
+
+Plan de design : `docs/DESIGN_PLAN.md`, Évolution 4.0 (validée le 28.10.2026).
+
+- **Accueil en trois colonnes** : Génération, Fiabilisation, Benchmark, dans l'ordre du travail. « Générer depuis un IFC… » demande la maquette, puis le nom du projet et son dossier, et montre les étapes du moteur. La liste des projets générés est lue dans `Documents\SIA Check - projets generes` (réglable), avec l'état de la décision (« 20 à trancher », « tout tranché ») et ↻ Régénérer.
+- **Un projet généré s'ouvre dans l'espace de revue existant**, qui gagne :
+  - **l'onglet Espaces** (Ctrl+3). On y voit les espaces les plus douteux d'abord, avec un filtre (*À trancher*, *Proposés par l'IA*, *Décidés*, *Tous*) et le changement en pastilles SIA `(SUS)→(SUT)`. Le détail montre ce que disent les règles, l'IA et les voisins. On peut accepter ou rejeter une proposition (A / R), ou enregistrer son propre choix de code et de type. L'analyse IA se lance de là, avec l'estimation du coût et l'accord avant l'appel. Un clic sur une ligne isole l'espace en 3D.
+  - **un bouton Régénérer** : les décisions acceptées sont appliquées, puis le projet est analysé. Un bandeau compte les décisions en attente, et leurs surfaces prennent déjà leur couleur cible en 3D.
+  - **un calque « Maquette IFC »** (groupe Contexte) : murs, dalles, toits et poteaux en gris translucide.
+- **Moteur** :
+  - `--generer` écrit les lignes « ÉTAPE n/N » et `generation/maquette.json` ;
+  - `rapport.json` relie chaque espace à sa surface (`surface`) ;
+  - `--decider --ids --code [--type]` enregistre une décision manuelle, qui remplace toute proposition sur l'espace.
+- **Empaquetage** (`app\build.ps1`) : `ifcopenshell` est désormais embarqué dans le moteur, avec les modules de génération. Le moteur figé lit une maquette IFC (vérifié sur CGA L04) et pèse 220 Mo.
+
+Reste pour la phase 26 (clôture V4.0) :
+- un essai complet dans l'app installée ;
+- le changelog et la version ;
+- la mise à jour du README ;
+- la publication, si l'utilisateur la demande.

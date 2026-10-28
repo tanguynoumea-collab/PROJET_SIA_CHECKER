@@ -1,0 +1,147 @@
+<UserControl x:Class="SiaCheck.Viewer.Controls.SpacesPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:vm="clr-namespace:SiaCheck.Viewer.ViewModels"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:MainViewModel}">
+    <!-- Onglet « Espaces » d'un projet généré (docs/DESIGN_PLAN.md, Évolution 4.0) -->
+
+    <DockPanel>
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <ui:Button DockPanel.Dock="Right" Margin="8,0,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon Sparkle20}" Content="Analyse IA…"
+                       Command="{Binding AnalyseGenerationIaCommand}" IsEnabled="{Binding CanAnalyseIa}" MinHeight="{StaticResource TargetSize}"
+                       ToolTipService.ShowOnDisabled="True" ToolTip="{Binding AnalyseIaTooltip}" />
+            <ComboBox ItemsSource="{Binding SpaceFilters}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                      SelectedValue="{Binding SpaceFilter}" MinHeight="{StaticResource TargetSize}"
+                      AutomationProperties.Name="Filtre des espaces" />
+        </DockPanel>
+
+        <!-- Décisions acceptées pas encore appliquées : elles le seront à la prochaine génération -->
+        <Border DockPanel.Dock="Bottom" Margin="0,8,0,0" Style="{StaticResource Banner}" Padding="8,4"
+                Visibility="{Binding ToApplyText, Converter={StaticResource VisibleWhen}}">
+            <DockPanel>
+                <ui:Button DockPanel.Dock="Right" Appearance="Secondary" Icon="{ui:SymbolIcon ArrowClockwise20}" Content="Régénérer"
+                           Command="{Binding RegenerateCommand}" MinHeight="{StaticResource TargetSize}" />
+                <TextBlock Style="{StaticResource TextCaption}" VerticalAlignment="Center" TextWrapping="Wrap" Text="{Binding ToApplyText}" />
+            </DockPanel>
+        </Border>
+
+        <!-- Détail de l'espace sélectionné : règles, IA, voisins, puis la décision -->
+        <Border DockPanel.Dock="Bottom" Margin="0,8,0,0" Style="{StaticResource Card}" Padding="{StaticResource SpaceM}"
+                Visibility="{Binding HasSelectedSpace, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel DataContext="{Binding SelectedSpace}">
+                <TextBlock Style="{StaticResource TextSubtitle}" TextWrapping="Wrap" Text="{Binding FullLabel}" />
+                <TextBlock Margin="0,2,0,8" Style="{StaticResource TextCaption}">
+                    <Run FontFamily="{StaticResource FontMono}" Text="{Binding Level, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding AreaText, Mode=OneWay}" /><Run Text="  " /><Run FontFamily="{StaticResource FontMono}" Text="{Binding Lot, Mode=OneWay}" />
+                </TextBlock>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="64" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource TextCaption}" Text="Règles" />
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding RulesText}" />
+                        <TextBlock Style="{StaticResource TextCaption}" TextWrapping="Wrap" Text="{Binding RulesReason}" />
+                        <TextBlock Style="{StaticResource TextCaption}" TextWrapping="Wrap" Foreground="{DynamicResource BrushVerdictWarning}"
+                                   Text="{Binding Conflicts}" Visibility="{Binding HasConflicts, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                    <TextBlock Grid.Row="1" Margin="0,6,0,0" Style="{StaticResource TextCaption}" Text="IA"
+                               Visibility="{Binding HasIa, Converter={StaticResource BoolToVisibility}}" />
+                    <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,6,0,0" Visibility="{Binding HasIa, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding IaText}" />
+                        <TextBlock Style="{StaticResource TextCaption}" TextWrapping="Wrap" Text="{Binding IaReason}" />
+                    </StackPanel>
+                    <TextBlock Grid.Row="2" Margin="0,6,0,0" Style="{StaticResource TextCaption}" Text="Voisins"
+                               Visibility="{Binding HasNeighbours, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                               Text="{Binding Neighbours}" Visibility="{Binding HasNeighbours, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+
+                <!-- La décision : la proposition de l'IA, ou mon choix -->
+                <StackPanel Margin="0,12,0,0" DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="2*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox ItemsSource="{x:Static vm:MainViewModel.SpaceCodes}" SelectedItem="{Binding EditCode}"
+                                  MinHeight="{StaticResource TargetSize}" AutomationProperties.Name="Code SIA" />
+                        <ComboBox Grid.Column="2" ItemsSource="{Binding EditTypes}" SelectedItem="{Binding EditType}"
+                                  MinHeight="{StaticResource TargetSize}" AutomationProperties.Name="Sous-type Treegram" />
+                    </Grid>
+                    <WrapPanel Margin="0,8,0,0">
+                        <ui:Button Margin="0,0,8,4" Appearance="Secondary" Icon="{ui:SymbolIcon Checkmark20}" Content="Accepter la proposition"
+                                   Command="{Binding AcceptProposalCommand}" MinHeight="{StaticResource TargetSize}" ToolTip="Accepter la proposition de l'IA (A)"
+                                   Visibility="{Binding SelectedSpace.IsOpenProposal, Converter={StaticResource BoolToVisibility}}" />
+                        <ui:Button Margin="0,0,8,4" Appearance="Secondary" Icon="{ui:SymbolIcon Dismiss20}" Content="Rejeter"
+                                   Command="{Binding RejectProposalCommand}" MinHeight="{StaticResource TargetSize}" ToolTip="Garder le classement des règles (R)"
+                                   Visibility="{Binding SelectedSpace.IsOpenProposal, Converter={StaticResource BoolToVisibility}}" />
+                        <ui:Button Margin="0,0,0,4" Appearance="Secondary" Icon="{ui:SymbolIcon Save20}" Content="Enregistrer ce choix"
+                                   Command="{Binding SaveSpaceChoiceCommand}" MinHeight="{StaticResource TargetSize}"
+                                   ToolTip="Décision manuelle : ce code et ce type, appliqués à la prochaine génération" />
+                    </WrapPanel>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Grid>
+            <ListBox x:Name="List" ItemsSource="{Binding SpacesView}" SelectedItem="{Binding SelectedSpace}"
+                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                     ItemContainerStyle="{StaticResource IssueItem}" Background="Transparent" BorderThickness="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch"
+                     AutomationProperties.Name="Espaces de la maquette">
+                <ListBox.InputBindings>
+                    <KeyBinding Key="A" Command="{Binding AcceptProposalCommand}" />
+                    <KeyBinding Key="R" Command="{Binding RejectProposalCommand}" />
+                </ListBox.InputBindings>
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="vm:SpaceItem">
+                        <Grid MinHeight="32">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="40" />
+                                <ColumnDefinition Width="40" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="64" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource TextCaption}" FontFamily="{StaticResource FontMono}" VerticalAlignment="Center"
+                                       Text="{Binding ConfidenceText}" ToolTip="Confiance des règles" />
+                            <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding Level}" />
+                            <TextBlock Grid.Column="2" Style="{StaticResource TextBody}" VerticalAlignment="Center" Text="{Binding Label}"
+                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding FullLabel}" />
+                            <!-- Élément signature : le changement en pastilles (SUS)→(SUT) -->
+                            <StackPanel Grid.Column="3" Margin="8,0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Rectangle Width="{StaticResource SwatchSize}" Height="{StaticResource SwatchSize}" RadiusX="2" RadiusY="2"
+                                           Fill="{Binding FromBrush}" VerticalAlignment="Center" />
+                                <TextBlock Margin="4,0,0,0" Style="{StaticResource TextMono}" Text="{Binding Space.Code}" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" Visibility="{Binding HasChange, Converter={StaticResource BoolToVisibility}}">
+                                    <TextBlock Margin="6,0" Style="{StaticResource TextCaption}" Text="→" VerticalAlignment="Center" />
+                                    <Rectangle Width="{StaticResource SwatchSize}" Height="{StaticResource SwatchSize}" RadiusX="2" RadiusY="2"
+                                               Fill="{Binding ToBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Margin="4,0,0,0" Style="{StaticResource TextMono}" Text="{Binding TargetCode}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock Grid.Column="4" Style="{StaticResource TextCaption}" FontFamily="{StaticResource FontMono}"
+                                       Margin="0,0,12,0" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding Origin}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <!-- Rien à montrer pour ce filtre -->
+            <StackPanel Margin="0,24,0,0" HorizontalAlignment="Center" VerticalAlignment="Top"
+                        Visibility="{Binding HasNoSpaceToShow, Converter={StaticResource BoolToVisibility}}">
+                <ui:SymbolIcon Symbol="Checkmark20" HorizontalAlignment="Center" Foreground="{DynamicResource BrushStatusSeen}" />
+                <TextBlock Margin="0,6,0,0" Style="{StaticResource TextBody}" TextWrapping="Wrap" TextAlignment="Center" Text="{Binding SpacesEmptyText}" />
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+</UserControl>

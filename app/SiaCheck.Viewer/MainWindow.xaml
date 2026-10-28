@@ -24,6 +24,7 @@
         <KeyBinding Key="Escape" Command="{Binding ClearFocusCommand}" />
         <KeyBinding Key="D1" Modifiers="Control" Command="{Binding ShowSubjectsTabCommand}" />
         <KeyBinding Key="D2" Modifiers="Control" Command="{Binding ShowPointsTabCommand}" />
+        <KeyBinding Key="D3" Modifiers="Control" Command="{Binding ShowSpacesTabCommand}" />
     </Window.InputBindings>
 
     <!-- Fond explicite : le gabarit FluentWindow applique sinon le fond du thème WPF UI, pas le token Background -->
@@ -46,14 +47,72 @@
                    HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="-100,0,0,-125"
                    IsHitTestVisible="False" Focusable="False" RenderOptions.BitmapScalingMode="HighQuality" />
             <Grid MaxWidth="{StaticResource HomeMaxWidth}" Margin="{StaticResource HomeMargin}">
+                <!-- Génération plus étroite (liste courte : nom, état, date), Fiabilisation plus large (lignes chargées) -->
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="0.8*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="1.25*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Fiabilisation : contrôler et corriger un projet Treegram -->
+                <!-- Génération (Évolution 4.0) : surfaces SIA d'une maquette architecte IFC -->
                 <DockPanel Grid.Column="0" Margin="{StaticResource HomeColumnLeft}">
+                    <StackPanel DockPanel.Dock="Top">
+                        <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Génération" />
+                        <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"
+                                   Text="Générer les surfaces SIA d'une maquette IFC." />
+                        <ui:Button Margin="0,24,0,0" Appearance="Primary" Icon="{ui:SymbolIcon CubeAdd20}"
+                                   Content="Générer depuis un IFC…" Command="{Binding GenerateFromIfcCommand}"
+                                   MinHeight="{StaticResource TargetSize}" />
+                        <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
+                                   Text="La maquette doit contenir ses IfcSpace. Le projet généré s'ouvre ensuite dans la Fiabilisation." />
+                        <DockPanel Margin="0,32,0,8" Visibility="{Binding GeneratedProjects.Count, Converter={StaticResource VisibleWhen}}">
+                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource TextCaption}" Text="{Binding GeneratedProjects.Count}" />
+                            <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Projets générés" />
+                        </DockPanel>
+                    </StackPanel>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+                        <ItemsControl ItemsSource="{Binding GeneratedProjects}" KeyboardNavigation.TabNavigation="Continue">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel>
+                                        <ui:Button DockPanel.Dock="Right" Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon ArrowClockwise20}"
+                                                   VerticalAlignment="Center" MinHeight="{StaticResource TargetSize}"
+                                                   Command="{Binding DataContext.RegenerateItemCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   CommandParameter="{Binding}" ToolTip="{Binding Source}"
+                                                   AutomationProperties.Name="Régénérer depuis la maquette" />
+                                        <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}"
+                                                Command="{Binding DataContext.OpenGeneratedCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" MinWidth="80" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Style="{StaticResource TextSubtitle}" Text="{Binding Name}" ToolTip="{Binding Path}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <StackPanel Grid.Column="1" Margin="8,0" Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <ui:SymbolIcon Symbol="Checkmark16" FontSize="12" Margin="0,0,4,0" Foreground="{DynamicResource BrushStatusSeen}"
+                                                                   Visibility="{Binding IsSettled, Converter={StaticResource BoolToVisibility}}" />
+                                                    <TextBlock Style="{StaticResource TextCaption}" Text="{Binding StateText}" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
+                                                           Text="{Binding Date, StringFormat=dd.MM.yyyy}" />
+                                            </Grid>
+                                        </Button>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+
+                <Border Grid.Column="1" Width="1" Background="{DynamicResource BrushDivider}" />
+
+                <!-- Fiabilisation : contrôler et corriger un projet Treegram -->
+                <DockPanel Grid.Column="2" Margin="{StaticResource HomeColumnMiddle}">
                     <StackPanel DockPanel.Dock="Top">
                         <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Fiabilisation" />
                         <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"
@@ -151,10 +210,10 @@
                     </ScrollViewer>
                 </DockPanel>
 
-                <Border Grid.Column="1" Width="1" Background="{DynamicResource BrushDivider}" />
+                <Border Grid.Column="3" Width="1" Background="{DynamicResource BrushDivider}" />
 
                 <!-- Benchmark : comparer un projet à ceux qui lui ressemblent -->
-                <DockPanel Grid.Column="2" Margin="{StaticResource HomeColumnRight}" Grid.IsSharedSizeScope="True">
+                <DockPanel Grid.Column="4" Margin="{StaticResource HomeColumnRight}" Grid.IsSharedSizeScope="True">
                     <StackPanel DockPanel.Dock="Top">
                         <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Benchmark" />
                         <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"
@@ -454,6 +513,10 @@
             <Border Grid.Row="0" Background="{DynamicResource BrushSurface}" Padding="16,8">
                 <DockPanel LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <ui:Button Margin="0,0,8,0" Appearance="Secondary" Icon="{ui:SymbolIcon ArrowClockwise20}" Content="Régénérer"
+                                   Command="{Binding RegenerateCommand}" MinHeight="{StaticResource TargetSize}"
+                                   Visibility="{Binding IsGenerated, Converter={StaticResource BoolToVisibility}}"
+                                   ToolTip="Régénérer les surfaces depuis la maquette IFC, décisions acceptées appliquées, puis analyser" />
                         <ui:Button Appearance="Primary" Icon="{ui:SymbolIcon Play20}" Content="{Binding AnalyseLabel}"
                                    Command="{Binding AnalyseCommand}" ToolTip="{Binding AnalyseTooltip}" MinHeight="{StaticResource TargetSize}"
                                    AutomationProperties.Name="Analyser" />
@@ -664,6 +727,19 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+                            <!-- Projet généré : la maquette IFC en contexte (murs, dalles, toits, poteaux), masquée par défaut -->
+                            <StackPanel Visibility="{Binding IsGenerated, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Style="{StaticResource TextCaption}" Margin="0,8,0,2" Text="Contexte" />
+                                <CheckBox IsChecked="{Binding ShowIfcContext}" IsEnabled="{Binding HasIfcContext}" MinHeight="28"
+                                          ToolTipService.ShowOnDisabled="True" AutomationProperties.Name="Maquette IFC"
+                                          ToolTip="{Binding IfcContextTooltip}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Rectangle Width="{StaticResource SwatchSize}" Height="{StaticResource SwatchSize}" RadiusX="2" RadiusY="2"
+                                                   Fill="{DynamicResource BrushTextSecondary}" Opacity="0.5" VerticalAlignment="Center" />
+                                        <TextBlock Margin="8,0,0,0" Style="{StaticResource TextBody}" Text="Maquette IFC" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </CheckBox>
+                            </StackPanel>
 
                             <DockPanel>
                                 <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" Margin="{StaticResource SectionGap}"
@@ -1203,8 +1279,18 @@
                                 <Run Text="Points d'attention" /><Run Text="  " /><Run Text="{Binding Issues.Count, Mode=OneWay}" />
                             </TextBlock>
                         </RadioButton>
+                        <RadioButton Style="{StaticResource Chip}" Margin="4,0,0,0" GroupName="RightTab" IsChecked="{Binding ShowSpaces, Mode=OneWay}"
+                                     Command="{Binding ShowSpacesTabCommand}"
+                                     ToolTip="Espaces de la maquette, décisions de classement et analyse IA (Ctrl+3)" AutomationProperties.Name="Onglet Espaces"
+                                     Visibility="{Binding IsGenerated, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Style="{StaticResource TextSection}" Margin="0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}">
+                                <Run Text="Espaces" /><Run Text="  " /><Run Text="{Binding Spaces.Count, Mode=OneWay}" />
+                            </TextBlock>
+                        </RadioButton>
                     </StackPanel>
                     <Grid>
+                    <!-- ===== Onglet Espaces (Évolution 4.0) -->
+                    <c:SpacesPanel Visibility="{Binding ShowSpaces, Converter={StaticResource BoolToVisibility}}" />
                     <!-- ===== Onglet Sujets -->
                     <DockPanel Visibility="{Binding ShowSubjects, Converter={StaticResource BoolToVisibility}}">
                         <StackPanel DockPanel.Dock="Top">
@@ -1717,15 +1803,13 @@
             <Border Style="{StaticResource Card}" Background="{DynamicResource BrushSurface}" Width="440"
                     HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{StaticResource SpaceXL}">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource TextSubtitle}">
-                        <Run Text="Analyse de " /><Run Text="{Binding ProjectDir, Mode=OneWay}" />
-                    </TextBlock>
+                    <TextBlock Style="{StaticResource TextSubtitle}" TextWrapping="Wrap" Text="{Binding OverlayTitle}" />
                     <TextBlock Margin="0,12,0,4" Style="{StaticResource TextBody}" Text="{Binding AnalysisLabel}" />
-                    <ProgressBar Minimum="0" Maximum="3" Value="{Binding AnalysisStep}" Height="4" />
+                    <ProgressBar Minimum="0" Maximum="{Binding OverlayStepCount}" Value="{Binding AnalysisStep}" Height="4" />
                     <TextBlock Margin="0,6,0,0" Style="{StaticResource TextCaption}" Text="{Binding AnalysisCorrections}"
                                Visibility="{Binding AnalysisCorrections, Converter={StaticResource VisibleWhen}}" />
                     <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}">
-                        <Run Text="Étape " /><Run Text="{Binding AnalysisStep, Mode=OneWay}" /><Run Text=" sur 3 : lecture du .tgm, contrôles SIA 416, géométrie" />
+                        <Run Text="Étape " /><Run Text="{Binding AnalysisStep, Mode=OneWay}" /><Run Text=" sur " /><Run Text="{Binding OverlayStepCount, Mode=OneWay}" /><Run Text=" : " /><Run Text="{Binding OverlayStepsText, Mode=OneWay}" />
                     </TextBlock>
                     <ui:Button Margin="0,16,0,0" HorizontalAlignment="Right" Appearance="Secondary" Content="Annuler"
                                Command="{Binding CancelAnalysisCommand}" />

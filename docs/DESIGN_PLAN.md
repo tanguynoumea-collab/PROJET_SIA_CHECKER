@@ -1655,3 +1655,200 @@ sera réanalysé : une correction qui vise une surface absente du nouveau .tgm l
 - **Tableau MDP** : les propositions (affectation, forme, typologies) sont regroupées en fin de liste sous l'intertitre « Tableau MDP », étiquette « MDP » au lieu de « règle ».
 - **Carte du sujet** : elle liste ses points ouverts (verdict, lieu, titre, écart) ; un clic ouvre le point dans l'onglet Points et l'isole en 3D.
 
+
+---
+
+## Évolution 4.0 — Génération depuis l'IFC (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (28.10.2026) ☑ Implémenté
+> Version : 4.0 — 28.10.2026 · Phase 25 de `docs/V4_PLAN.md` (§3.4)
+> Aucune nouvelle couleur. Tout reprend §2 : graphite, accent pervenche, légende SIA, et la règle « le remplissage dit la catégorie, le trait dit le verdict ».
+
+### Ancrage
+
+- **Troisième métier, en amont des deux autres.** Le coordinateur BIM n'a pas toujours de projet Treegram, mais il a la maquette architecte. Le moteur en tire les surfaces SIA. L'humain et l'IA tranchent ce que les règles n'ont pas su décider. Le projet entre ensuite dans la Fiabilisation, puis dans la base.
+- **Job de la section** : *transformer une maquette en projet de surfaces fiable, en ne regardant que les espaces où le moteur hésite.*
+- **Le lien** : Génération → Fiabilisation → Benchmark. L'accueil le montre de gauche à droite.
+
+### Emplacement — décisions
+
+1. **Accueil : une troisième colonne, à gauche.** Le flux se lit dans l'ordre du travail : Génération, Fiabilisation, Benchmark. Les trois colonnes sont égales, et `HomeMaxWidth` passe de 1 360 à 1 800.
+2. **Pas de deuxième visionneuse.** Un projet généré s'ouvre **dans l'espace de revue existant**. Il y retrouve la même 3D, les mêmes calques, le même bilan par niveau, les mêmes sujets et points : c'est tout l'intérêt du format au modèle Treegram. La génération y ajoute trois choses :
+   - **un troisième onglet du panneau droit, « Espaces »**, à côté de « Sujets » et « Points d'attention ». Il n'apparaît que pour un projet généré.
+   - **un calque « Maquette IFC »**, dans un groupe « Contexte » des calques, masqué par défaut. Il montre murs, dalles, poteaux et toits en gris translucide. Le moteur l'écrit dans `generation/maquette.json`.
+   - **un bouton « Régénérer »** dans la barre de commande. Il est secondaire, placé à gauche d'« Analyser », qui reste la seule action accentuée.
+
+### Wireframe — accueil (delta)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  GÉNÉRATION                          │  FIABILISATION                      │  BENCHMARK                       │
+│  Générer les surfaces SIA d'une      │  Contrôler et corriger les surfaces │  Comparer un projet à ceux qui   │
+│  maquette architecte IFC.            │  d'un projet Treegram.              │  lui ressemblent.                │
+│  [▸ Générer depuis un IFC…] (accent) │  [▸ Nouveau projet…] (accent)       │  [▸ Ouvrir le benchmark] (accent)│
+│  La maquette doit contenir ses       │  …                                  │  …                               │
+│  IfcSpace.                           │                                     │                                  │
+│  PROJETS GÉNÉRÉS                 5   │  PROJETS ACTIFS                 4   │  BASE DE DONNÉES                 │
+│  Afiro      ◐ 20 à trancher  28.10 ↻ │  …                                  │  …                               │
+│  La-Batie-B ◐ 38 à trancher  28.10 ↻ │                                     │                                  │
+│  Myonaz-1   ✓ tout tranché   28.10 ↻ │                                     │                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Ligne d'un projet généré** : le nom, puis l'**état de la décision**. C'est soit « 20 à trancher » en TextSecondary, soit « tout tranché » avec la coche StatusSeen. Viennent ensuite la date de génération et ↻ Régénérer. Un clic ouvre le projet dans l'espace de revue, sur l'onglet Espaces.
+- **D'où vient la liste** : elle est lue dans le dossier des projets générés (`AppSettings.GenerationFolder`, par défaut `Documents\SIA Check - projets generes`). Tout sous-dossier qui contient `generation/rapport.json` y figure. Aucun registre de plus.
+- **« Générer depuis un IFC… »** :
+  1. choix du fichier .ifc ;
+  2. une petite boîte avec le nom du projet (prérempli depuis le fichier) et le dossier de sortie (prérempli), puis « Générer » ;
+  3. la superposition d'analyse existante montre les étapes du moteur (lecture, plans, classement, surfaces) ;
+  4. à la fin, le projet s'ouvre.
+
+### Wireframe — onglet « Espaces » (panneau droit)
+
+```
+┌ SUJETS 3 │ POINTS 1 │ ESPACES 135 ───────────────────────────┐
+│ [À trancher 20 ▾]                        [✦ Analyse IA…]      │
+│ ┌───────────────────────────────────────────────────────────┐ │
+│ │ 0,50  S01  STOCKAGE BASE           (SUS)→(SUT)   ✦ IA      │ │
+│ │ 0,70  S02  SUS_ELE_CFA             (SUS)→(SI)    ✦ IA      │ │
+│ │ 0,75  N00  BUREAU DE DIRECTION      SUT          règle     │ │
+│ │ …                                                          │ │
+│ └───────────────────────────────────────────────────────────┘ │
+│ ┌ DÉTAIL ───────────────────────────────────────────────────┐ │
+│ │ STOCKAGE BASE · S1.020.09 · S01 · 97,0 m²                  │ │
+│ │ Règles   SUS · dictionnaire · confiance 0,50               │ │
+│ │ IA       SUT Commerce · incertain                          │ │
+│ │          « Stock de 97 m² entouré d'ateliers… »            │ │
+│ │ Voisins  ATELIER MSP (SUT) · STOCK MATIÈRE (SUT) · …       │ │
+│ │ Code [SUT ▾]   Type [Commerce ▾]                           │ │
+│ │ [Accepter la proposition] [Rejeter]   [Enregistrer ce choix]│ │
+│ └───────────────────────────────────────────────────────────┘ │
+│ ⓘ 3 décisions s'appliqueront à la prochaine génération [Régénérer] │
+└────────────────────────────────────────────────────────────────┘
+```
+
+- **Filtre** (liste déroulante) :
+  - *À trancher*, par défaut : propositions IA ouvertes, et espaces sous 0,8 de confiance sans décision ;
+  - *Proposés par l'IA* ;
+  - *Décidés* : décisions acceptées et manuelles ;
+  - *Tous*.
+- **Ligne** : de gauche à droite,
+  - la confiance ;
+  - le niveau, en mono ;
+  - le nom de l'espace ;
+  - le code : quand une proposition ou une décision le change, **le changement en pastilles SIA** `(SUS)→(SUT)`, sinon le seul code ;
+  - l'origine, en mono : `règle`, `✦ IA` ou `manuel`.
+  
+  La liste est triée par confiance croissante.
+- **Clic sur une ligne** : la surface est isolée et cadrée en 3D, comme un point d'attention (même geste, même caméra). Inversement, un double-clic sur une surface en 3D sélectionne sa ligne.
+- **Détail** : les trois lectures de l'espace (règles, IA, voisins), puis la décision.
+  - « Accepter la proposition » et « Rejeter » n'apparaissent que s'il y a une proposition IA ouverte.
+  - « Enregistrer ce choix » écrit une décision « manuel », avec le code et le type choisis dans les listes. Les sous-types proposés sont limités à ceux du code.
+  - Raccourcis : A pour accepter, R pour rejeter.
+- **Bandeau du bas** : dès qu'une décision n'est pas encore appliquée, il affiche « 3 décisions s'appliqueront à la prochaine génération » et un bouton **Régénérer**.
+- **« ✦ Analyse IA… »** : ouvre la boîte de la revue IA existante, avec le nombre de questions. La mécanique est la même : estimation, accord, flux, coût réel. Le bouton est désactivé s'il n'y a rien à demander, avec l'infobulle « Les règles n'hésitent sur aucun espace ».
+
+### Élément signature — le changement en pastilles
+
+`(SUS)→(SUT)` : deux pastilles pleines aux couleurs SIA, reliées par une flèche. On voit d'un coup d'œil *ce que la décision change dans le bilan* (l'orange passe au gris SUT, le jaune au bleu), avant de lire la moindre raison.
+
+Dans la 3D, un espace dont la décision attend la régénération prend un **contour en pointillés** de la couleur cible : la maquette montre elle aussi ce qui va changer.
+
+C'est la traduction directe du métier : une décision de classement, c'est une surface qui change de couleur dans la sommation.
+
+### Carte de navigation (delta)
+
+| Depuis | Action | Vers |
+|---|---|---|
+| Accueil, Génération | Générer depuis un IFC… | Choix du fichier → boîte nom / dossier → superposition (étapes du moteur) → espace de revue, onglet Espaces |
+| Accueil, Génération | Clic sur un projet généré | Espace de revue, onglet Espaces |
+| Accueil, Génération | ↻ | Régénération (superposition) puis espace de revue |
+| Espace de revue (projet généré) | Régénérer | `--generer` (décisions acceptées appliquées), puis analyse ; la sélection et l'onglet sont conservés |
+| Onglet Espaces | ✦ Analyse IA… | Boîte de la revue IA → `--reponse-ia` → liste rafraîchie sur *Proposés par l'IA* |
+| Onglet Espaces | Accepter / Rejeter / Enregistrer | Journal `generation/decisions.json` (moteur), puis bandeau « à la prochaine génération » |
+
+### Mapping fonctionnalités → emplacements
+
+| Fonctionnalité (V4_PLAN §3.4) | Emplacement |
+|---|---|
+| Troisième section de l'accueil | colonne Génération, à gauche |
+| Générer depuis un IFC | bouton accentué de la colonne + boîte nom / dossier |
+| Projets générés récents | liste de la colonne, lue dans le dossier des projets générés |
+| Vue 3D IFC + surfaces | espace de revue existant + calque « Maquette IFC » (contexte, translucide, masqué par défaut) |
+| Liste des surfaces, origine, confiance, plus douteux d'abord | onglet Espaces |
+| Ajustement manuel | détail de l'onglet Espaces, « Enregistrer ce choix » |
+| Analyse IA (estimation, accord, appel) | « ✦ Analyse IA… » de l'onglet Espaces |
+| Accepter / rejeter les propositions IA | détail de l'onglet Espaces |
+| Appliquer les décisions | « Régénérer » (barre de commande et bandeau) |
+| Envoyer à la Fiabilisation | implicite : le projet généré *est* déjà ouvert dans la Fiabilisation (sujets, points, export MDP) |
+
+### États non-nominaux
+
+| Zone | État | Rendu |
+|---|---|---|
+| Colonne Génération | Aucun projet généré | Invitation et bouton seuls, pas de liste vide |
+| Génération | Audit bloquant (pas d'IfcSpace, aucun niveau…) | Superposition en erreur : la liste des points bloquants du moteur, mot pour mot, et « Choisir une autre maquette » |
+| Génération | Bâtiment sans espace dans la maquette | Avertissement en bandeau ; la génération continue |
+| Régénérer | Maquette introuvable (déplacée) | « Maquette introuvable : …\La Bâtie B.ifc. » + « Choisir la maquette… » ; le nouveau chemin est retenu |
+| Onglet Espaces | Rien à trancher | « Les règles et vos décisions couvrent tous les espaces. » avec la coche StatusSeen ; un clic bascule le filtre sur *Tous* |
+| Analyse IA | Pas de clé API | Bouton actif ; la boîte de la revue IA demande la clé, comme aujourd'hui |
+| Analyse IA | Réponse inexploitable | Message du moteur dans la boîte ; la réponse brute reste dans `generation/reponse-ia.txt` |
+| Calque Maquette IFC | `maquette.json` absent (projet généré avant la phase 25) | Calque grisé, infobulle « Régénérer pour afficher la maquette » |
+
+### Contrat moteur → app
+
+- `sia-check --generer` écrit aussi `generation/maquette.json` : murs, dalles, poteaux et toits, en maillages en repère local, avec la même origine que le `.siagen.json`. Il émet aussi les lignes « ÉTAPE n/N » de progression.
+- `rapport.json` donne pour chaque espace le nom de sa surface générée (`surface`). L'onglet Espaces relie ainsi un espace à la 3D sans deviner.
+- Décisions :
+  - `--decider DOSSIER --ids … --code … --type …` pour une décision manuelle ;
+  - `--accepter-ia` / `--rejeter-ia --ids …` pour les propositions.
+  
+  L'app ne lit que les JSON. Elle n'écrit jamais elle-même le journal.
+
+### Passe B — auto-critique
+
+- **Générique ?** Premier jet : un écran « Génération » à part, avec sa propre 3D, sa liste et sa barre d'outils. Rejeté : c'était un deuxième viewer à maintenir, alors que le projet généré devait de toute façon finir dans la Fiabilisation. L'onglet Espaces dans l'espace de revue garde *un seul lieu* pour un projet, de la maquette au MDP.
+- **Trois boutons accentués sur l'accueil.** C'est l'extension directe de l'arbitrage 3.0 : une action primaire par colonne, un public par colonne. Au-delà de trois colonnes, il faudrait revoir l'accueil ; on n'y est pas.
+- **Charge du panneau droit** : trois onglets, c'est le maximum. Le troisième n'apparaît que pour un projet généré ; un projet Treegram ne change pas.
+- **Fitts / clavier** :
+  - lignes d'au moins 32 px ;
+  - Ctrl+3 pour l'onglet Espaces (Ctrl+1 et Ctrl+2 existent déjà) ;
+  - A et R dans le détail ;
+  - Entrée pour isoler en 3D, comme pour les points.
+- **Point faible assumé** : à 1 456 px, chaque colonne de l'accueil fait environ 450 px, et la colonne Fiabilisation tronque davantage (les infobulles sont déjà en place). Sous 1 400 px, la colonne Génération passe sous les deux autres.
+- **Accessoire retiré (Chanel)** : l'IFC complet en 3D (portes, fenêtres, mobilier). Seuls murs, dalles, poteaux et toits servent à juger un espace ; le reste encombre et pèse.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Écran Génération séparé, avec sa propre 3D | Deuxième visionneuse à maintenir ; le projet généré doit finir dans la Fiabilisation | 28.10.2026 |
+| Régénérer automatiquement à chaque décision | Une génération prend de 30 s à 4 min ; on décide par lot, puis on régénère | 28.10.2026 |
+| « Analyse IA » dans la barre de commande | Se confond avec la « Revue IA » de la Fiabilisation, qui ne porte pas sur les mêmes questions | 28.10.2026 |
+| Accepter toutes les propositions IA d'un clic | Trop facile de valider sans lire ; on propose plutôt un filtre « sûres » et une acceptation par ligne. À rediscuter après usage | 28.10.2026 |
+
+### Écarts au plan, décidés à l'implémentation
+
+| Plan | Réalisé | Raison |
+|---|---|---|
+| Contour en pointillés de la couleur cible, sur la surface d'une décision en attente | La surface prend **déjà sa couleur cible**, par l'aperçu existant des corrections (`ScenePreview`, « reclasser ») | Cohérence avant nouveauté : c'est le geste de l'app pour « ce qui changera à la prochaine analyse ». Pas de deuxième langage en 3D. |
+| « Analyse IA… » ouvre la boîte de la revue IA | Une confirmation (questions, jetons, coût estimé), puis la superposition de progression commune, et une notification avec le coût réel | La boîte de la revue IA porte un rapport et des verdicts par point, sans objet ici. La mécanique (estimation, accord, flux, coût) est la même. |
+| Proportions des colonnes de l'accueil égales | Génération 0,8 · Fiabilisation 1,25 · Benchmark 1 | La colonne Fiabilisation coupait « 8 points » à 1 456 px ; la liste Génération est courte (nom, état, date). |
+| Titre « … d'une maquette architecte IFC. » | « … d'une maquette IFC. » | Le titre passait sur deux lignes : le bouton de la colonne n'était plus aligné sur les deux autres. |
+| Liste : nom de l'espace | Nom long d'abord (« TECHNIQUE CUISINE », « Réduit »), nom complet dans le détail et l'infobulle | Le nom court d'Afiro est un numéro (« S2.090.2 ») : la colonne n'en montrait que le numéro. |
+
+### Revue visuelle (Phase 2, 28.10.2026)
+
+Captures de référence ajoutées : `docs/ui-baseline/home-v4.png` (accueil en trois colonnes, thème clair), `spaces-afiro.png` (onglet Espaces, proposition IA sélectionnée, thème sombre), `spaces-context-batie.png` (calque Maquette IFC allumé, espace isolé).
+
+| Constat | Classe | Suite |
+|---|---|---|
+| Liste « Projets générés » vide : le dossier Documents de Windows est redirigé vers OneDrive, les projets sont dans le profil | Bloquant | Corrigé : le dossier du profil est retenu s'il existe |
+| Ligne sélectionnée de la liste des espaces : texte gris sur aplat accent, illisible | Bloquant | Corrigé : style `IssueItem` des autres listes (liseré accent) |
+| « 8 points » tronqué dans la colonne Fiabilisation | Bloquant | Corrigé : proportions des colonnes |
+| Titre Génération sur deux lignes, boutons désalignés | Mineur | Corrigé : titre raccourci |
+| Origine (« ✦ IA ») mangée par la barre de défilement | Mineur | Corrigé : colonne élargie, marge à droite |
+| Calque Maquette IFC grisé sur Afiro | Accepté | La maquette Solibri n'a que les pièces ; l'infobulle le dit |
+| Le filigrane passe derrière la liste Génération | Accepté | Comme pour la Fiabilisation en V3 : contraste du texte inchangé |
+
+Non-régression : les écrans de la Fiabilisation (barre de commande, calques, bilan, sujets) sont inchangés pour un projet Treegram. Le bouton Régénérer, le groupe Contexte et l'onglet Espaces n'apparaissent que pour un projet généré.

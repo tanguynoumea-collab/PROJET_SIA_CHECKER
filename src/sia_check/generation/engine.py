@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -26,6 +27,10 @@ from .. import __version__, siagen
 from . import assemble, audit, classify, exteriors, ingest, interiors, journal, plans, uspi
 
 FORMAT, VERSION = "sia-check-generation", 1
+MAQUETTE = Path("generation") / "maquette.json"
+MAQUETTE_CLASSES = ("IfcWall", "IfcCurtainWall", "IfcSlab", "IfcRoof", "IfcColumn")   # le contexte utile, sans mobilier
+STEPS = 4
+log = logging.getLogger("sia_check")
 SURE = 0.8   # en dessous : décision à confirmer (IA ou manuel)
 TOUCH_M = 0.35   # espaces à moins de cette distance : voisins (un mur les sépare)
 NEIGHBOURS = 8
@@ -80,8 +85,8 @@ def _r(x, nd=3):
 
 
 def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, levels: list[interiors.Level],
-           project: str, codes: dict[str, str] | None = None) -> dict:
-    codes = codes or {}
+           project: str, codes: dict[str, str] | None = None, surfaces: dict[str, str] | None = None) -> dict:
+    codes, surfaces = codes or {}, surfaces or {}
     placed = {p.item.gid: p for plan in pl for p in plan.spaces}
     counted = {r.placed.item.gid: r.area for lv in levels for r in lv.rooms + lv.exteriors}
     near = _neighbours(pl, decisions)
@@ -96,7 +101,7 @@ def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, l
             "confidence": round(d.confidence, 2), "reason": d.reason, "conflicts": d.conflicts,
             "area": _r(counted.get(s.gid)), "area_plan": _r(placed[s.gid].area if s.gid in placed else None),
             "area_declared": _r(audit.declared_area(s)),
-            "neighbours": near.get(s.gid, []), "props": _props(s),
+            "neighbours": near.get(s.gid, []), "props": _props(s), "surface": surfaces.get(s.gid),
         })
     lv_out = []
     for lv in levels:
@@ -131,17 +136,33 @@ def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, l
     }
 
 
+def maquette(model: ingest.Model, codes: dict[str, str], origin) -> dict:
+    """Murs, dalles, toits, poteaux de la maquette, en repère local (calque « Maquette IFC » de la visionneuse)."""
+    out = []
+    for it in model.elements:
+        if it.mesh is None or not any(it.ifc_class.startswith(c) for c in MAQUETTE_CLASSES):
+            continue
+        out.append({"class": it.ifc_class, "name": it.name, "level": codes.get(it.storey),
+                    "building": assemble.clean(it.building) if it.building else None,
+                    "v": siagen._b64(siagen._shift(it.mesh.vertices, origin), "f"), "i": siagen._b64(it.mesh.indices, "I")})
+    return {"format": "sia-check-maquette", "version": 1, "origin": list(origin) if origin else None, "elements": out}
+
+
 def generate(ifc: Path, cfg_generation: dict, out_dir: Path, project: str | None = None) -> Generated:
     ifc = Path(ifc)
+    log.info("ÉTAPE 1/%d lecture de la maquette", STEPS)
     model = ingest.load(ifc, cfg_generation)
+    log.info("ÉTAPE 2/%d plans et audit", STEPS)
     pl = plans.build(model)
     issues = audit.run(model, pl, cfg_generation)
     if audit.blocking(issues):
         raise GenerationBlocked(issues)
+    log.info("ÉTAPE 3/%d classement des espaces", STEPS)
     decisions = classify.classify(model, pl, cfg_generation)
     project = project or assemble.clean(ifc.stem)
     folder = Path(out_dir) / project
     journal.apply(journal.load(folder), decisions, cfg_generation)   # décisions acceptées (IA, manuel)
+    log.info("ÉTAPE 4/%d surfaces SIA et USPI", STEPS)
     levels = interiors.build(pl, decisions, cfg_generation)
     levels += exteriors.roof_levels(levels)
     storeys = [lv.plan.storey for lv in levels]
@@ -152,8 +173,12 @@ def generate(ifc: Path, cfg_generation: dict, out_dir: Path, project: str | None
         lv.lots = uspi.build(lv, decisions, cfg_generation)
     els = assemble.elements(levels, codes)
     # maillages en repère local : en float32, les coordonnées nationales les arrondiraient au quart de mètre
-    path = siagen.write(els, folder / f"{project}{siagen.SUFFIX}", project, source=str(ifc), origin=siagen.local_origin(els))
-    data = report(model, pl, issues, decisions, levels, project, codes)
+    origin = siagen.local_origin(els)
+    path = siagen.write(els, folder / f"{project}{siagen.SUFFIX}", project, source=str(ifc), origin=origin)
+    surfaces = {e.props["IfcGlobalId"]: e.name for e in els if e.kind == "leaf" and e.props.get("IfcGlobalId")}
+    data = report(model, pl, issues, decisions, levels, project, codes, surfaces)
+    (folder / MAQUETTE).parent.mkdir(parents=True, exist_ok=True)
+    (folder / MAQUETTE).write_text(json.dumps(maquette(model, codes, origin), separators=(",", ":")), encoding="utf-8")
     rep = folder / "generation" / "rapport.json"
     rep.parent.mkdir(parents=True, exist_ok=True)
     rep.write_text(json.dumps(data, ensure_ascii=False, indent=1, allow_nan=False), encoding="utf-8")

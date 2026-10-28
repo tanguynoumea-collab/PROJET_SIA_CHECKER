@@ -28,6 +28,7 @@ ENVELOPE_CLASSES = ("IfcWall", "IfcCurtainWall", "IfcColumn")
 INSIDE = 0.8        # part d'un extérieur dans la surface de plancher au-delà de laquelle il en est retiré
 OUTSIDE_M2 = 0.5    # part d'une pièce hors de la surface de plancher dessinée au-delà de laquelle elle y est ajoutée
 WALL_REACH = 0.5    # murs pris autour de ces pièces (m)
+OUTSIDE_EXCLUDED = {"SI"}   # installations hors du contour dessiné : gardées en SI, hors SP
 
 
 @dataclass
@@ -43,10 +44,19 @@ class Level:
     rooms: list[Room] = field(default_factory=list)
     sp: BaseGeometry | None = None
     sp_method: str = ""
+    # phase 22 (exteriors.py) : surfaces extérieures, contour SEP, toitures SPT, façade et vitrages
+    exteriors: list[Room] = field(default_factory=list)
+    sep: BaseGeometry | None = None
+    spt: BaseGeometry | None = None
+    envelope: dict = field(default_factory=dict)
 
     @property
     def sp_area(self) -> float:
         return self.sp.area if self.sp is not None else 0.0
+
+    @property
+    def empty(self) -> bool:
+        return not self.rooms and not self.exteriors and self.sp is None and self.sep is None and self.spt is None
 
 
 def _fill_holes(g: BaseGeometry, min_hole: float) -> BaseGeometry:
@@ -70,9 +80,10 @@ def surface_de_plancher(plan: Plan, decisions: dict[str, Decision], close: float
     walls = [p.shape for p in plan.of(*ENVELOPE_CLASSES) if p.shape is not None]
     if planchers:
         g, why = shapely.union_all(planchers), f"{len(planchers)} espace(s) « surface de plancher »"
-        # pièces que la surface dessinée oublie (La Bâtie, rez : poussettes, buanderie) : ajoutées avec leurs murs,
-        # comme dans le MDP
-        outside = [x for x in pieces if x.difference(g).area > OUTSIDE_M2]
+        # locaux que la surface dessinée oublie (La Bâtie, rez : poussettes, buanderie) : ajoutés avec leurs murs,
+        # comme dans le MDP ; pas les installations hors du bâtiment (Myonaz 2 : bassin de rétention, SI hors SP)
+        outside = [p.shape for p in plan.spaces if p.shape is not None and decisions[p.item.gid].nature == PIECE
+                   and decisions[p.item.gid].code not in OUTSIDE_EXCLUDED and p.shape.difference(g).area > OUTSIDE_M2]
         if outside:
             near = shapely.union_all(outside).buffer(WALL_REACH)
             extra = _contour(outside, [w.intersection(near) for w in walls if w.intersects(near)], close, min_hole)
@@ -98,15 +109,17 @@ def build(plans: list[Plan], decisions: dict[str, Decision], cfg_generation: dic
     close, min_hole = float(sp_cfg.get("close_m", 0.3)), float(sp_cfg.get("min_hole_m2", 4.0))
     declared = sp_cfg.get("area_source", "plan") == "declared"
     out = []
-    for plan in plans:
+    for plan in plans:   # un niveau par plan, même vide : les toitures (phase 22) se posent sur les niveaux sans pièce
         lv = Level(plan)
         for p in plan.spaces:
             d = decisions[p.item.gid]
             if d.nature != PIECE or p.shape is None:
                 continue
-            area = (declared_area(p.item) if declared else None) or p.area
-            lv.rooms.append(Room(p, d, area))
+            lv.rooms.append(Room(p, d, area_of(p, declared)))
         lv.sp, lv.sp_method = surface_de_plancher(plan, decisions, close, min_hole)
-        if lv.rooms or lv.sp is not None:
-            out.append(lv)
+        out.append(lv)
     return out
+
+
+def area_of(p: Placed, declared: bool) -> float:
+    return (declared_area(p.item) if declared else None) or p.area

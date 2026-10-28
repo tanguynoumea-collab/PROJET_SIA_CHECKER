@@ -142,14 +142,52 @@ class Classifier:
             return cat_nature, cat[1]
         return PIECE, ""
 
+    def _exterior(self, item: Item, d: Decision) -> Decision:
+        """Extérieur : contour SEP (« plancher externe ») ou surface élémentaire SEU / SED / SEI avec son type."""
+        c = self.c
+        text = " ".join(norm(x) for x in (item.long_name, item.props.get(self.cat_prop) if self.cat_prop else None))
+        if c.get("exterior_floor") and re.search(c["exterior_floor"], text):
+            d.code, d.type, d.source, d.confidence = "SEP", None, "categorie", CONFIDENCE["categorie"]
+            d.reason = d.reason or f"contour d'extérieur « {_label(item)} »"
+            return d
+        room = None
+        for t in (item.long_name, item.name):
+            for r in c.get("exterior_rooms") or []:
+                where = r.get("where")
+                if norm(t) and (not where or (where == "lot") == d.in_lot) and re.search(r["match"], norm(t)):
+                    room = (r, f"nom « {t} »")
+                    break
+            if room:
+                break
+        found = []
+        if (p := self._from_property(item)) and p[0] in ("SEU", "SED", "SEI"):
+            found.append(("propriete", p[0], p[1]))
+        cat = norm(item.props.get(self.cat_prop)) if self.cat_prop else ""
+        for k, code in (c.get("exterior_categories") or {}).items():
+            if cat and re.search(k, cat):
+                found.append(("categorie", code, f"catégorie « {item.props.get(self.cat_prop)} »"))
+                break
+        if room:
+            found.append(("dictionnaire", room[0]["code"], room[1]))
+        if not found:
+            dflt = c.get("exterior_default") or {"code": "SEU", "type": "Terrasse"}
+            d.code, d.type, d.source, d.confidence = dflt["code"], dflt.get("type"), None, 0.5
+            d.reason = f"extérieur sans précision « {_label(item)} » : {dflt['code']} par défaut"
+            return d
+        source, code, why = found[0]
+        d.code, d.source, d.reason = code, source, why
+        d.conflicts = [f"{s} : {k} ({w})" for s, k, w in found[1:] if k != code]
+        d.confidence = CONFIDENCE[source] - (CONFLICT_PENALTY if d.conflicts else 0.0)
+        d.type = room[0].get("type") if room and room[0]["code"] == code else (c.get("exterior_default_types") or {}).get(code)
+        return d
+
     def decide(self, item: Item, container: bool) -> Decision:
         nature, why = self.nature(item, container)
         lot = self.in_lot(item)
         d = Decision(item.gid, nature, in_lot=lot, reason=why)
+        if nature == EXTERIEUR:
+            return self._exterior(item, d)
         if nature != PIECE:
-            p = self._from_property(item)
-            if p and nature == EXTERIEUR:
-                d.code, d.source, d.confidence = p[0], "propriete", CONFIDENCE["propriete"]
             return d
         found = []   # (source, code, raison)
         if (p := self._from_property(item)):
@@ -168,7 +206,7 @@ class Classifier:
         d.code, d.source, d.reason = code, source, why
         if (other := (self.c.get("code_natures") or {}).get(code)):
             d.nature, d.confidence = other, CONFIDENCE[source]
-            return d
+            return self._exterior(item, d) if other == EXTERIEUR else d
         d.conflicts = [f"{s} : {c} ({w})" for s, c, w in found[1:] if c != code]
         d.confidence = CONFIDENCE[source] - (CONFLICT_PENALTY if d.conflicts else 0.0)
         d.type = room[0].get("type") if room and room[0]["code"] == code else self.defaults.get(code)

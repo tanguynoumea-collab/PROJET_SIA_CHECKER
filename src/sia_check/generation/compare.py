@@ -26,7 +26,11 @@ from .. import benchmark, reader, siagen
 from ..config import Config
 from .classify import norm
 
-CODES = ["SP", "SUP", "SUS", "SD", "SI", "SUT"]
+NET = ["SUP", "SUS", "SD", "SI", "SUT", "SEU", "SED"]       # SurfacesNettesSIA416 : un local par ligne
+GROSS = ["SP", "SEP", "SFN", "SRV"]                         # SurfacesBrutes / SurfacesEnveloppe : un total par étage
+CODES = ["SP", "SUP", "SUS", "SD", "SI", "SUT", "SEU", "SED", "SEP", "SFN", "SRV"]
+TABLES = [["SP", "SUP", "SUS", "SD", "SI", "SUT"], ["SEU", "SED", "SEP", "SFN", "SRV"]]
+ENVELOPE = {"facade": "SFN", "vitr": "SRV"}               # « Surface de facade… », « Surface vitrée »
 AREA_ABS, AREA_REL = 0.5, 0.03
 
 
@@ -57,6 +61,17 @@ def read_mdp(path: Path, building: str | None = None) -> tuple[pd.DataFrame, pd.
             "name": df[c_n] if c_n else none, "unit": df[c_u] if c_u else none,
         }))
     nettes, brutes = out
+    env = _sheet(path, "SurfacesEnveloppe")
+    if not env.empty:
+        col = lambda *n: benchmark._col(env, *n)   # noqa: E731
+        c_p, c_b, c_l, c_m = col("partie de l'enveloppe"), col("partie d'ouvrage"), col("etage"), col("surface")
+        if c_p and c_m:
+            kind = env[c_p].map(lambda v: next((code for k, code in ENVELOPE.items() if k in norm(v)), None))
+            brutes = pd.concat([brutes, pd.DataFrame({
+                "building": env[c_b].astype(str).str.strip() if c_b else None,
+                "level": env[c_l].astype(str).str.strip().str.upper() if c_l else None,
+                "code": kind, "m2": pd.to_numeric(env[c_m], errors="coerce").fillna(0.0),
+                "name": None, "unit": None})], ignore_index=True)
     # même bâtiment écrit avec ou sans accent selon la feuille (MDP La Bâtie : « Batiment B », « Bâtiment B »)
     names = {}
     for b in pd.concat([nettes.building, brutes.building]).dropna():
@@ -113,17 +128,22 @@ def compare(folder: Path, mdp_path: Path, cfg: Config, building: str | None = No
     if building is None and len(buildings) > 1:
         raise ValueError(f"le MDP compte {len(buildings)} bâtiments ({', '.join(buildings)}) : choisir --batiment-mdp")
     df, _ = _generated(folder, cfg)
-    leaves = df[(df.kind == "leaf") & df.category.isin(CODES)].reset_index(drop=True)
-    nodes = df[(df.kind == "node") & (df.category == "SP")]
-    nettes = nettes[nettes.code.isin(CODES)].reset_index(drop=True)
-    levels = sorted(set(nettes.level) | set(brutes[brutes.code == "SP"].level) | set(leaves.level) | set(nodes.level))
+    etages = cfg.mdp.get("etages") or {}
+    df["level"] = df.level.map(lambda lv: etages.get(lv, lv))     # Toiture -> TOI, comme dans le MDP exporté
+    leaves = df[(df.kind == "leaf") & df.category.isin(NET)].reset_index(drop=True)
+    nodes = df[df.kind == "node"]
+    nettes = nettes[nettes.code.isin(NET)].reset_index(drop=True)
+    brutes = brutes[brutes.code.isin(GROSS)]
+    levels = sorted(set(nettes.level) | set(brutes.level) | set(leaves.level) | set(nodes[nodes.category == "SP"].level))
     table = []
     for lv in levels:
         row = {"level": lv}
         for code in CODES:
-            if code == "SP":
-                ref = brutes[(brutes.level == lv) & (brutes.code == "SP")].m2.sum()
-                got = nodes[nodes.level == lv].area.sum()
+            if code in GROSS:
+                ref = brutes[(brutes.level == lv) & (brutes.code == code)].m2.sum()
+                got = nodes[(nodes.level == lv) & (nodes.category == code)].area.sum()
+                if code == "SEP":   # Treegram compte les toitures dans la SEP ; le MDP exporté les en retire
+                    got -= nodes[(nodes.level == lv) & (nodes.category == "SPT")].area.sum()
                 n_ref = n_got = None
             else:
                 part_r, part_g = nettes[(nettes.level == lv) & (nettes.code == code)], leaves[(leaves.level == lv) & (leaves.category == code)]
@@ -161,14 +181,16 @@ def summary(c: dict) -> str:
              f"Locaux : {c['locaux_mdp']} au MDP, {c['pieces_generees']} générés, {c['apparies']} appariés, "
              f"{c['meme_code']} au même code ({c['meme_code'] / c['apparies']:.0%} des appariés)" if c["apparies"] else
              "Aucun local apparié"]
-    head = f"\n  {'étage':<9}" + "".join(f"{code:>22}" for code in CODES)
-    lines += [head, "  " + " " * 9 + "".join(f"{'MDP → généré':>22}" for _ in CODES)]
-    for r in c["etages"] + [{"level": "Total", **{code: {"mdp": tot(code, "mdp"), "genere": tot(code, "genere")} for code in CODES}}]:
-        cells = []
-        for code in CODES:
-            a, b = r[code]["mdp"], r[code]["genere"]
-            cells.append(f"{a:>9.1f} → {b:>9.1f}" if (a or b) else f"{'·':>21}")
-        lines.append(f"  {r['level']:<9}" + "".join(f"{x:>22}" for x in cells))
+    total = {"level": "Total", **{code: {"mdp": tot(code, "mdp"), "genere": tot(code, "genere")} for code in CODES}}
+    for codes in TABLES:
+        lines += [f"\n  {'étage':<9}" + "".join(f"{code:>22}" for code in codes),
+                  "  " + " " * 9 + "".join(f"{'MDP → généré':>22}" for _ in codes)]
+        for r in c["etages"] + [total]:
+            cells = []
+            for code in codes:
+                a, b = r[code]["mdp"], r[code]["genere"]
+                cells.append(f"{a:>9.1f} → {b:>9.1f}" if (a or b) else f"{'·':>21}")
+            lines.append(f"  {r['level']:<9}" + "".join(f"{x:>22}" for x in cells))
     lines.append("\nConfusion des codes (MDP → généré) : " + " · ".join(
         f"{x['mdp']}→{x['genere']} {x['n']}" for x in c["confusion"] if x["mdp"] != x["genere"]))
     if c["desaccords"]:

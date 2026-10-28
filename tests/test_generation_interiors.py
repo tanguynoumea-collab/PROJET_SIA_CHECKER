@@ -105,7 +105,8 @@ def test_synthetic_model_generated(generated):
 def test_generated_project_follows_the_treegram_model(generated):
     doc = json.loads(generated.siagen.read_text(encoding="utf-8"))
     n00 = [e for e in doc["elements"] if e["level"] == "N00"]
-    assert [e["name"] for e in n00 if e["kind"] == "node"] == ["SUP", "SUS", "SD", "SI", "SUT", "SP"]
+    assert [e["name"] for e in n00 if e["kind"] == "node"] == [
+        "SFN", "SRV", "SUP", "SUS", "SD", "SED", "SI", "SUT", "SEU", "SP", "SEP", "SPT"]   # USPI : phase 23
     leaves = {e["props"]["IfcGlobalId"]: e for e in n00 if e["kind"] == "leaf"}
     names = sorted(e["name"] for e in leaves.values())
     assert names == ["A_N00_ShellByTgm-01_SpaceByTgm-1_SUP", "A_N00_ShellByTgm-01_SpaceByTgm-2_SUP",
@@ -201,11 +202,11 @@ MDP_1712 = ROOT / "00_RESSOURCES/03-DataBase-DonneesProjets/MDP-1712.00_Myonaz.x
 
 @pytest.mark.skipif(not (MYONAZ.is_file() and MDP_1712.is_file()), reason="maquette Myonaz ou MDP 1712 absents")
 def test_myonaz_matches_its_mdp(tmp_path, gen_cfg, cfg):
-    """Référence réelle : MDP 1712 (bâtiment 1) — même SP par étage, chaque local au même code."""
+    """Référence réelle : MDP 1712 (bâtiment 1) — même SP par étage, chaque local (balcons compris) au même code."""
     from sia_check.generation import compare
     g = engine.generate(MYONAZ, gen_cfg, tmp_path, "Myonaz-1")
     c = compare.compare(g.folder, MDP_1712, cfg, "Bat. 1")
-    assert c["apparies"] == c["meme_code"] == c["locaux_mdp"] == 101
+    assert c["apparies"] == c["meme_code"] == c["locaux_mdp"] == 111
     for row in c["etages"]:
-        for code in ("SP", "SUP", "SUS", "SD", "SI"):
+        for code in ("SP", "SUP", "SUS", "SD", "SI", "SEU"):
             assert abs(row[code]["ecart"]) < 0.5, (row["level"], code, row[code])

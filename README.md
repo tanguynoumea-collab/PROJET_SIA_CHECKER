@@ -58,7 +58,7 @@ Code de sortie : `1` si un point bloque la génération (pas d'espaces, pas de n
 
 ### Génération des surfaces (`--generer`)
 
-`--generer` produit `<out>/<projet>/<projet>.siagen.json`, que la Fiabilisation ouvre comme un projet Treegram, et `generation/rapport.json`. Les surfaces intérieures sont générées depuis la V4 phase 21 ; les extérieurs, l'USPI et l'enveloppe suivront.
+`--generer` produit `<out>/<projet>/<projet>.siagen.json`, que la Fiabilisation ouvre comme un projet Treegram, et `generation/rapport.json`. Il génère les surfaces intérieures (V4 phase 21), puis les extérieurs, les toitures, la façade et les vitrages (phase 22, `exteriors.py`). L'USPI suivra.
 
 1. **Nature des espaces** (`classify.py`). Un espace qui couvre au moins deux autres espaces est un contour : surface de plancher (`GFA`) ou logement dessiné en entier. Les extérieurs (loggias, balcons, « Surface externe… ») et le terrain sont mis de côté. Le reste, ce sont les pièces.
 2. **Classement des pièces**, de la source la plus sûre à la moins sûre :

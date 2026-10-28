@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from .. import __version__, siagen
-from . import assemble, audit, classify, ingest, interiors, plans
+from . import assemble, audit, classify, exteriors, ingest, interiors, plans
 
 FORMAT, VERSION = "sia-check-generation", 1
 SURE = 0.8   # en dessous : décision à confirmer (IA ou manuel)
@@ -45,7 +45,7 @@ def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, l
            project: str, codes: dict[str, str] | None = None) -> dict:
     codes = codes or {}
     placed = {p.item.gid: p for plan in pl for p in plan.spaces}
-    counted = {r.placed.item.gid: r.area for lv in levels for r in lv.rooms}
+    counted = {r.placed.item.gid: r.area for lv in levels for r in lv.rooms + lv.exteriors}
     spaces = []
     for s in model.spaces:
         d = decisions[s.gid]
@@ -60,12 +60,16 @@ def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, l
         })
     lv_out = []
     for lv in levels:
+        if lv.empty:
+            continue
         totals = Counter()
-        for r in lv.rooms:
+        for r in lv.rooms + lv.exteriors:
             totals[r.decision.code] += r.area
         lv_out.append({"building": lv.plan.storey.building, "storey": lv.plan.storey.name,
                        "level": codes.get(lv.plan.storey.gid),
                        "sp_m2": _r(lv.sp_area, 2), "sp_method": lv.sp_method, "rooms": len(lv.rooms),
+                       "exteriors": len(lv.exteriors), "sep_m2": _r(lv.sep.area if lv.sep is not None else 0.0, 2),
+                       "spt_m2": _r(lv.spt.area if lv.spt is not None else 0.0, 2), "envelope": lv.envelope,
                        "totals": {k: _r(v, 2) for k, v in sorted(totals.items())}})
     pieces = [x for x in spaces if x["nature"] == classify.PIECE]
     return {
@@ -93,10 +97,13 @@ def generate(ifc: Path, cfg_generation: dict, out_dir: Path, project: str | None
         raise GenerationBlocked(issues)
     decisions = classify.classify(model, pl, cfg_generation)
     levels = interiors.build(pl, decisions, cfg_generation)
+    levels += exteriors.roof_levels(levels)
+    storeys = [lv.plan.storey for lv in levels]
+    occupied = {lv.plan.storey.gid for lv in levels if lv.rooms}
+    codes = assemble.level_codes(storeys, occupied, cfg_generation)
+    exteriors.build(levels, decisions, {g for g, c in codes.items() if c.startswith("S")}, cfg_generation)
     project = project or assemble.clean(ifc.stem)
     folder = Path(out_dir) / project
-    occupied = {lv.plan.storey.gid for lv in levels if lv.rooms}
-    codes = assemble.level_codes(model.storeys, occupied, cfg_generation)
     path = siagen.write(assemble.elements(levels, codes), folder / f"{project}{siagen.SUFFIX}", project, source=str(ifc))
     data = report(model, pl, issues, decisions, levels, project, codes)
     rep = folder / "generation" / "rapport.json"
@@ -111,14 +118,17 @@ def summary(data: dict) -> str:
              + " · ".join(f"{k} {v}" for k, v in c["natures"].items() if k != classify.PIECE)]
     lines.append("Sources du classement : " + " · ".join(f"{k} {v}" for k, v in sorted(c["sources"].items())))
     lines.append(f"Non classées {c['unclassified']} · sources en désaccord {c['conflicts']} · à confirmer {c['to_confirm']}")
-    lines.append(f"\n  {'bâtiment':<10}{'niveau':<24}{'SP':>10}  " + "".join(f"{k:>9}" for k in assemble.INTERIOR_NODES[:-1])
-                 + "  méthode SP")
+    cols = assemble.INTERIOR_NODES[:-1] + ["SEU", "SED"]
+    lines.append(f"\n  {'bâtiment':<10}{'niveau':<24}{'SP':>10}  " + "".join(f"{k:>9}" for k in cols)
+                 + f"{'SEP':>9}{'SPT':>9}{'façade':>9}{'vitr.':>8}  méthode SP")
     for lv in data["levels"]:
-        t = lv["totals"]
+        t, env = lv["totals"], lv["envelope"]
         name = f"{lv['level'] or '?'} ({lv['storey']})"
         lines.append(f"  {lv['building'][:9]:<10}{name[:23]:<24}{lv['sp_m2']:>10.2f}  "
-                     + "".join(f"{t.get(k, 0):>9.2f}" for k in assemble.INTERIOR_NODES[:-1]) + f"  {lv['sp_method']}")
-    doubt = [x for x in data["spaces"] if x["nature"] == classify.PIECE and x["confidence"] < SURE]
+                     + "".join(f"{t.get(k, 0):>9.2f}" for k in cols)
+                     + f"{lv['sep_m2']:>9.2f}{lv['spt_m2']:>9.2f}{env.get('GrossArea', 0):>9.1f}{env.get('SRV', 0):>8.1f}"
+                     + f"  {lv['sp_method']}")
+    doubt = [x for x in data["spaces"] if x["nature"] in (classify.PIECE, classify.EXTERIEUR) and x["confidence"] < SURE]
     if doubt:
         lines.append("\nÀ confirmer (confiance la plus basse d'abord) :")
         for x in sorted(doubt, key=lambda x: x["confidence"])[:15]:

@@ -285,6 +285,17 @@ generation:
     default_types: {SUP: PieceDeVie, SUS: SUS, SD: CirculationH, SI: Local, SUT: Commerce}
     # code d'une pièce qui en fait autre chose qu'une pièce intérieure
     code_natures: {SEU: exterieur, SED: exterieur, SEI: exterieur, SEP: exterieur, SA: site, SP: plancher}
+    # Extérieurs (phase 22). Un « plancher externe » est le contour d'un extérieur (SEP), pas une surface élémentaire :
+    # Treegram n'a de SEP qu'en total de niveau. Les autres prennent SEU, SED ou SEI : propriété, catégorie, puis noms.
+    exterior_floor: '(plancher externe|externe de plancher)'
+    exterior_categories: {'externe utile': SEU, 'externe de degagement': SED, 'externe interieure?': SEI}
+    exterior_rooms:
+      - {match: '\b(balcons?|bal|loggias?|logg)\b', code: SEU, type: Balcon}
+      - {match: '\b(terrasses?|ter|attique|jardins?|jar|toiture accessible)\b', where: lot, code: SEU, type: Terrasse}
+      - {match: '\b(coursives?|passage|entree|ent|couvert|circulation|galerie|porche|preau|perron)\b', code: SED, type: CirculationExt}
+      - {match: '\b(terrasses?|ter|toiture accessible)\b', code: SEU, type: Terrasse}
+    exterior_default: {code: SEU, type: Terrasse}
+    exterior_default_types: {SEU: Terrasse, SED: CirculationExt}
     # Conventions de Treegram, appliquées après les sources : dans un logement, un dégagement est de la SUP
     # « Distribution » (L'Orée : SD réservée aux circulations communes, escaliers et ascenseurs), et un réduit
     # ou un rangement classé SUS par l'architecte reste de la SUP (MDP Myonaz)

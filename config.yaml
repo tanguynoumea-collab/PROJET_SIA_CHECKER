@@ -292,7 +292,9 @@ generation:
     exterior_rooms:
       - {match: '\b(balcons?|bal|loggias?|logg)\b', code: SEU, type: Balcon}
       - {match: '\b(terrasses?|ter|attique|jardins?|jar|toiture accessible)\b', where: lot, code: SEU, type: Terrasse}
-      - {match: '\b(coursives?|passage|entree|ent|couvert|circulation|galerie|porche|preau|perron)\b', code: SED, type: CirculationExt}
+      # entrées couvertes : SEU comme le MDP de La Bâtie (Treegram L'Orée : SED), choix du 28.10.2026
+      - {match: '\b(entree|ent|porche|perron)\b', code: SEU, type: Terrasse}
+      - {match: '\b(coursives?|passage|couvert|circulation|galerie|preau)\b', code: SED, type: CirculationExt}
       - {match: '\b(terrasses?|ter|toiture accessible)\b', code: SEU, type: Terrasse}
     exterior_default: {code: SEU, type: Terrasse}
     exterior_default_types: {SEU: Terrasse, SED: CirculationExt}

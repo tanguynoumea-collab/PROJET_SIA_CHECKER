@@ -52,8 +52,8 @@ def test_roofs_terraces_and_slab_over_basement():
     assert [lv.plan.storey.name for lv in levels][-1] == "Toiture" and levels[-1].plan.storey.elevation == 6.0
     decisions = {"t": classify.Decision("t", "exterieur", "SEU", "Terrasse")}
     exteriors.build(levels, decisions, {"S01"}, {"sp": {"area_source": "plan"}})
-    # dalle sur sous-sol (600 − 200 m²) : dans la SEP du rez, pas une toiture
-    assert n00.spt is None and n00.sep.area == pytest.approx(400.0)
+    # dalle sur sous-sol (600 − 200 m²) : abords, ni toiture ni SEP (MDP La Bâtie)
+    assert n00.spt is None and n00.sep is None and n00.slab.area == pytest.approx(400.0)
     # toiture de l'étage sous l'attique, moins la terrasse dessinée : 200 − 100 − 40
     assert n01.spt.area == pytest.approx(60.0) and n01.sep.area == pytest.approx(100.0)
     assert levels[-1].spt.area == pytest.approx(100.0)                       # toiture de l'attique

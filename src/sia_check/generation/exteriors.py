@@ -7,10 +7,11 @@
 - **SPT** (toitures, code Treegram) : ce que la SP du niveau inférieur laisse à découvert, posé sur le niveau
   du dessus (Treegram : toiture d'attique sur l'attique, toiture du dernier étage sur le niveau « Toiture »,
   créé s'il manque), moins les extérieurs dessinés (une terrasse accessible est une SEU). Au-dessus d'un
-  sous-sol, ce n'est pas une toiture mais une dalle sur sous-sol : elle reste dans la SEP du niveau, sans
-  catégorie (Treegram L'Orée : abords du rez, signalés par A1).
-- **SEP** du niveau : union des extérieurs, des contours, des dalles sur sous-sol et des toitures (Treegram
-  compte les SPT dans la SEP ; la Fiabilisation les en retire, rules.COUNTED_IN).
+  sous-sol, ce n'est pas une toiture mais une dalle sur sous-sol : des abords (SA, SIA 416 §1.2), hors SEP,
+  gardés dans `Level.slab` pour le rapport. Treegram L'Orée la laisse dans la SEP du rez (A1, R3) ; le MDP de
+  La Bâtie ne la compte pas (SEP du rez 49,8 m², dalle 1 081 m²).
+- **SEP** du niveau : union des extérieurs, des contours et des toitures (Treegram compte les SPT dans la SEP ;
+  la Fiabilisation les en retire, rules.COUNTED_IN).
 - **SFN** (façade) : périmètre de la SP × hauteur d'étage ; réservations = fenêtres et portes de la façade
   (largeur de l'emprise × hauteur du maillage) ; **SRV** (vitrages) = ces mêmes ouvertures, comme chez Treegram.
 - Dimensions des totaux SP, SEP et SPT : hauteur d'étage, périmètre, DeltaX / DeltaY (rectangle minimal).
@@ -135,7 +136,7 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
             if free is None:
                 continue
             if below.plan.storey.gid in below_ground:
-                lv.sep = shapely.union_all([g for g in (lv.sep, free) if g is not None])   # dalle sur sous-sol
+                lv.slab = free   # dalle sur sous-sol : abords (SA), hors SEP
             else:
                 lv.spt = free
                 lv.sep = shapely.union_all([g for g in (lv.sep, free) if g is not None])

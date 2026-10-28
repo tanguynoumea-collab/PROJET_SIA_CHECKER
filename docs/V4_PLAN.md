@@ -278,8 +278,9 @@ Le test d'intégration `test_myonaz_matches_its_mdp` fixe le résultat Myonaz (1
 ### Modèle Treegram reproduit (relevé sur L'Orée)
 
 - **SEU, SED, SEI** : une surface élémentaire `ExtShellByTgm-n` par extérieur, avec son logement et son type (Balcon, Terrasse, CirculationExt).
-- **SEP** : un total seulement. Elle additionne les extérieurs, les contours « plancher externe », les dalles sur sous-sol (abords, que la Fiabilisation signale par A1 et propose de découper en SA, sujet S1) et les toitures SPT (que la Fiabilisation retire de la SEP, comme pour un `.tgm`).
+- **SEP** : un total seulement. Elle additionne les extérieurs, les contours « plancher externe » et les toitures SPT (que la Fiabilisation retire de la SEP, comme pour un `.tgm`).
 - **SPT** : ce que la SP du niveau inférieur laisse à découvert, posée sur le niveau du dessus. Un niveau « Toiture » est créé s'il manque.
+- **Dalle sur sous-sol** à découvert : des abords (SA), hors SEP (décision du 28.10.2026, voir plus bas). Treegram L'Orée la laissait dans la SEP du rez (erreur R3 et alerte A1 dans la Fiabilisation).
 - **SFN** : périmètre de la SP × hauteur d'étage, sous-sols compris (Treegram les calcule aussi) ; réservations = fenêtres et portes de façade. **SRV** = ces mêmes ouvertures (L'Orée : SRV ≈ réservations).
 - Les totaux SP, SEP et SPT portent la hauteur d'étage, le périmètre et DeltaX / DeltaY (rectangle minimal).
 
@@ -288,13 +289,14 @@ Le test d'intégration `test_myonaz_matches_its_mdp` fixe le résultat Myonaz (1
 | Projet | SEU par étage | SEP | Façade (SFN brute) | Vitrages (SRV) |
 |---|---|---|---|---|
 | Myonaz 1 et 2 | identique | le MDP n'y met que les « Surface externe de plancher » dessinées : écart attendu | absente du MDP | absente du MDP |
-| La Bâtie B | identique du N01 au N05 et au S01 ; rez : 29 m² d'entrées en SED au lieu de SEU | étages +1,7 m² ; rez 1 131 m² (dalle sur sous-sol, comme Treegram ; le MDP corrigé en garde 50) | −10 % (321 contre 356 m² par étage courant) | +2 % |
+| La Bâtie B | identique à tous les niveaux (337,1 m²), entrées comprises | étages +1,7 m² (murs des balcons, comme le MDP) ; rez 70,5 contre 49,8 m² (le MDP y compte moins de SEP que de SEU) | −10 % (321 contre 356 m² par étage courant) | +2 % |
 
 Myonaz 1 et 2 restent à 100 % des locaux au même code, balcons compris (111 et 210 locaux).
 
 ### Points à contrôler
 
-1. **Entrées couvertes du rez** (La Bâtie) : le MDP les compte en SEU. Le moteur les met en SED (circulation extérieure), comme Treegram sur L'Orée, où les SED du rez sont des passages. Laquelle des deux conventions suivre ?
+1. ~~Entrées couvertes du rez~~ : **tranché le 28.10.2026, SEU comme le MDP** (`config.yaml`, `exterior_rooms` : entrée, porche, perron). Les passages, coursives et préaux restent en SED.
+1. ~~Dalle sur sous-sol dans la SEP du rez~~ : **corrigé le 28.10.2026**. La Bâtie y avait 1 131 m² de SEP, dont 1 066 m² sans sous-catégorie (R3, A1) ; le MDP n'en compte pas. Elle reste hors SEP (`Level.slab`, `slab_m2` dans `generation/rapport.json`).
 2. **Façade** : le MDP La Bâtie (« enveloppe thermique ») est 10 % plus long que le périmètre de la SP. Sur les attiques, il compte aussi une façade au niveau TOI (122,6 m²), que le moteur ne produit pas.
 3. **Jardins privatifs** : en SEU dans un logement (MDP Myonaz), sinon en extérieur par défaut.
 4. **SP et locaux hors du contour dessiné** : on ajoute les locaux utiles et de dégagement (La Bâtie : poussettes, buanderie), pas les installations (Myonaz 2 : bassin de rétention en SI hors SP). C'est une règle déduite de deux références seulement.

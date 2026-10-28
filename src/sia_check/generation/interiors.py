@@ -48,6 +48,7 @@ class Level:
     exteriors: list[Room] = field(default_factory=list)
     sep: BaseGeometry | None = None
     spt: BaseGeometry | None = None
+    slab: BaseGeometry | None = None   # dalle sur sous-sol, à découvert : abords, hors SEP
     envelope: dict = field(default_factory=dict)
     facade: object = None     # geom.Mesh vertical de la façade (SFN)
     glazing: object = None    # geom.Mesh des ouvertures de façade (SRV)

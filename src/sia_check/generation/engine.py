@@ -69,7 +69,8 @@ def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, l
                        "level": codes.get(lv.plan.storey.gid),
                        "sp_m2": _r(lv.sp_area, 2), "sp_method": lv.sp_method, "rooms": len(lv.rooms),
                        "exteriors": len(lv.exteriors), "sep_m2": _r(lv.sep.area if lv.sep is not None else 0.0, 2),
-                       "spt_m2": _r(lv.spt.area if lv.spt is not None else 0.0, 2), "envelope": lv.envelope,
+                       "spt_m2": _r(lv.spt.area if lv.spt is not None else 0.0, 2),
+                       "slab_m2": _r(lv.slab.area if lv.slab is not None else 0.0, 2), "envelope": lv.envelope,
                        "totals": {k: _r(v, 2) for k, v in sorted(totals.items())}})
     pieces = [x for x in spaces if x["nature"] == classify.PIECE]
     return {

@@ -309,6 +309,8 @@ generation:
       - {match: '\b(terrasses?|ter|toiture accessible)\b', code: SEU, type: Terrasse}
     exterior_default: {code: SEU, type: Terrasse}
     exterior_default_types: {SEU: Terrasse, SED: CirculationExt}
+    # Bâtiment sans logement : la SUP de l'architecte devient SUT (sanitaires : SUS), décision du 28.10.2026
+    sut_without_flats: true
     # Conventions de Treegram, appliquées après les sources : dans un logement, un dégagement est de la SUP
     # « Distribution » (L'Orée : SD réservée aux circulations communes, escaliers et ascenseurs), et un réduit
     # ou un rangement classé SUS par l'architecte reste de la SUP (MDP Myonaz)

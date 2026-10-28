@@ -217,3 +217,19 @@ def test_myonaz_matches_its_mdp(tmp_path, gen_cfg, cfg):
     for row in c["etages"]:
         for code in ("SP", "SUP", "SUS", "SD", "SI", "SEU"):
             assert abs(row[code]["ecart"]) < 0.5, (row["level"], code, row[code])
+
+
+def test_building_without_flats_counts_sup_as_sut():
+    """Afiro : aucun logement, la SUP de l'architecte est de la SUT chez Treegram ; les sanitaires de la SUS."""
+    from types import SimpleNamespace
+    items = [Item("b", "IfcSpace", "BUREAU", "Ateliers", "N00"), Item("w", "IfcSpace", "WC", "Ateliers", "N00"),
+             Item("c", "IfcSpace", "CH", "Logements", "N00", lot="1A.00.01"),
+             Item("s", "IfcSpace", "SEJ", "Logements", "N00", lot="1A.00.01")]
+    d = {"b": classify.Decision("b", "piece", "SUP", "PieceDeVie", "propriete", 0.95, "Données.SIA416 = SUP"),
+         "w": classify.Decision("w", "piece", "SUP", "PieceSecondaire_2PointsEau", "propriete", 0.95, ""),
+         "c": classify.Decision("c", "piece", "SUP", "Chambre", "dictionnaire", 0.7, "", in_lot=True),
+         "s": classify.Decision("s", "piece", "SUP", "PieceDeVie", "dictionnaire", 0.7, "", in_lot=True)}
+    assert classify.without_flats(SimpleNamespace(spaces=items), d) == {"Ateliers": 2}
+    assert (d["b"].code, d["b"].type, d["b"].source, d["b"].confidence) == ("SUT", "Commerce", "convention", 0.95)
+    assert (d["w"].code, d["w"].type) == ("SUS", "SUS") and not d["b"].conflicts
+    assert d["c"].code == d["s"].code == "SUP"                       # bâtiment avec logements : inchangé

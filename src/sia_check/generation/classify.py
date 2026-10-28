@@ -235,4 +235,27 @@ def classify(model: Model, plans: list[Plan], cfg_generation: dict | None = None
             out[p.item.gid] = k.decide(p.item, p.item.gid in containers)
     for s in model.spaces:   # espaces sans niveau : jugés quand même, ils ne seront pas comptés
         out.setdefault(s.gid, k.decide(s, False))
+    if c.get("treegram_conventions", True) and c.get("sut_without_flats", True):
+        without_flats(model, out)
+    return out
+
+
+def without_flats(model: Model, decisions: dict[str, Decision]) -> dict[str, int]:
+    """Bâtiment sans logement (aucune pièce dans un lot) : la SUP de l'architecte, au sens de la SIA 416, est de
+    la SUT chez Treegram, dont les sous-types SUP sont ceux du logement (décision du 28.10.2026, sur la
+    proposition de l'analyse IA d'Afiro). Les sanitaires passent en SUS, comme des sanitaires communs.
+    Renvoie, par bâtiment touché, le nombre de pièces reclassées."""
+    building = {s.gid: s.building for s in model.spaces}
+    flats = {building[g] for g, d in decisions.items() if d.nature == PIECE and d.in_lot}
+    out: dict[str, int] = {}
+    for g, d in decisions.items():
+        b = building.get(g)
+        if d.nature != PIECE or d.code != "SUP" or b in flats:
+            continue
+        # décision approuvée : pas un désaccord, l'espace ne repart pas à l'analyse IA pour cette seule raison
+        sanitary = (d.type or "").startswith("PieceSecondaire")
+        d.code, d.type = ("SUS", "SUS") if sanitary else ("SUT", "Commerce")
+        d.reason = f"convention Treegram : bâtiment sans logement, SUP ({d.source} : {d.reason}) comptée en {d.code}"
+        d.source = "convention"
+        out[b] = out.get(b, 0) + 1
     return out

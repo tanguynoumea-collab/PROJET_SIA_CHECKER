@@ -365,3 +365,9 @@ Le prompt rappelle les codes et sous-types Treegram et les conventions relevées
 | CGA L04 | 4 | locaux « SUS_ELE » (SUS par le préfixe, SI par le nom), un WC compté pièce de vie |
 
 Coût estimé avec Claude Opus 5.5 : de 0,05 à 0,30 $ par projet.
+
+### Premier appel réel (Afiro, 28.10.2026)
+
+39 questions, 39 propositions (19 sûres, 18 probables, 2 incertaines) pour 0,28 $ (23 606 jetons en entrée, 9 153 en sortie). L'IA a relevé qu'Afiro n'a aucun logement : la SUP écrite par l'architecte, au sens de la SIA 416, est de la SUT chez Treegram, dont les sous-types SUP sont ceux du logement. Les 19 propositions sûres ont été acceptées.
+
+**Décision du 28.10.2026, devenue une règle du moteur** (`classify.without_flats`, `config.yaml > generation.classify.sut_without_flats`) : dans un bâtiment sans aucune pièce de logement, la SUP devient SUT (type Commerce), et les sanitaires deviennent SUS. Afiro : 71 pièces reclassées, plus de SUP. Il ne reste que 20 questions à poser à l'IA. Les bâtiments avec logements ne changent pas.

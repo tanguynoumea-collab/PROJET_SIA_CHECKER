@@ -28,7 +28,11 @@ avec --inventaire, une maquette architecte IFC est lue par le moteur de généra
 éléments, plans, audit d'entrée (sia_check.generation.audit), écrits dans --inventaire-json ; code de sortie 1
 si un point bloque la génération ;
 avec --generer, la maquette devient un projet généré <--out>/<projet>/<projet>.siagen.json, au modèle Treegram,
-avec son rapport de génération (sia_check.generation.engine) ; le dossier s'ouvre comme un projet Treegram.
+avec son rapport de génération (sia_check.generation.engine) ; le dossier s'ouvre comme un projet Treegram ;
+avec --questions-ia, les espaces où les règles hésitent deviennent les questions et le prompt de l'analyse IA
+(sia_check.generation.ia) ; --reponse-ia lit la réponse enregistrée par l'app et ajoute ses propositions au
+journal des décisions ; --accepter-ia / --rejeter-ia les tranchent (toutes, ou --ids) ; la génération suivante
+applique les décisions acceptées.
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -82,6 +86,13 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--comparer-mdp", type=Path, help="MDP de référence auquel comparer un projet généré (V4)")
     ap.add_argument("--batiment-mdp", help="bâtiment du MDP à comparer (« Partie d'Ouvrage »)")
     ap.add_argument("--generer", type=Path, help="maquette architecte IFC dont générer les surfaces SIA (V4)")
+    ap.add_argument("--questions-ia", type=Path, metavar="DOSSIER",
+                    help="projet généré : questions et prompt de l'analyse IA (generation/prompt-ia.json)")
+    ap.add_argument("--reponse-ia", type=Path, metavar="DOSSIER",
+                    help="projet généré : lit generation/reponse-ia.txt et ajoute ses propositions au journal")
+    ap.add_argument("--accepter-ia", type=Path, metavar="DOSSIER", help="projet généré : accepte les propositions")
+    ap.add_argument("--rejeter-ia", type=Path, metavar="DOSSIER", help="projet généré : rejette les propositions")
+    ap.add_argument("--ids", help="avec --accepter-ia / --rejeter-ia : identifiants séparés par des virgules")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -168,6 +179,12 @@ def main(argv: list[str] | None = None) -> int:
         return _inventaire(args)
     if args.generer:
         return _generer(args)
+    if args.questions_ia:
+        return _questions_ia(args.questions_ia)
+    if args.reponse_ia:
+        return _reponse_ia(args.reponse_ia)
+    if args.accepter_ia or args.rejeter_ia:
+        return _trancher_ia(args.accepter_ia or args.rejeter_ia, "acceptée" if args.accepter_ia else "rejetée", args.ids)
     if args.comparer_mdp:
         return _comparer_mdp(args)
     if not args.models:
@@ -361,7 +378,7 @@ def _inventaire(args: argparse.Namespace) -> int:
 
 
 def _generer(args: argparse.Namespace) -> int:
-    from .generation import engine, ingest
+    from .generation import engine, ingest, journal
     try:
         cfg = config_mod.load(args.config or _default_config())
         g = engine.generate(args.generer, cfg.generation, args.out or args.generer.parent, args.project)
@@ -369,13 +386,59 @@ def _generer(args: argparse.Namespace) -> int:
         for i in ex.issues:
             log.error("%s %s", i.code, i.message)
         return 1
-    except (OSError, config_mod.ConfigError, ingest.IngestError) as ex:
+    except (OSError, config_mod.ConfigError, ingest.IngestError, journal.JournalError) as ex:
         log.error("%s", ex)
         return 2
     if not args.quiet:
         print(engine.summary(g.data))
     log.info("projet généré : %s", g.siagen)
     log.info("rapport de génération : %s", g.report)
+    return 0
+
+
+def _questions_ia(folder: Path) -> int:
+    from .generation import ia
+    try:
+        rapport = json.loads((folder / "generation" / "rapport.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as ex:
+        log.error("rapport de génération illisible : %s", ex)
+        return 2
+    q = ia.questions(rapport)
+    for path, data in ((ia.QUESTIONS, q), (ia.PROMPT, ia.prompt(q))):
+        (folder / path).write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    log.info("%d questions pour l'analyse IA (sur %d espaces incertains) : %s", len(q["questions"]), q["total"],
+             folder / ia.PROMPT)
+    return 0
+
+
+def _reponse_ia(folder: Path) -> int:
+    from .generation import ia, journal
+    try:
+        q = json.loads((folder / ia.QUESTIONS).read_text(encoding="utf-8"))
+        text = (folder / ia.RESPONSE).read_text(encoding="utf-8")
+        decisions, summary, missing = ia.parse(text, q)
+        merged = journal.merge(journal.load(folder), decisions)
+        journal.save(folder, merged)
+    except (OSError, ValueError) as ex:   # ia.ResponseError, journal.JournalError, JSON
+        log.error("réponse de l'analyse IA inexploitable : %s", ex)
+        return 2
+    (folder / ia.SUMMARY).write_text(summary + "\n", encoding="utf-8")
+    open_ = sum(1 for d in decisions if d["statut"] == "proposée")
+    log.info("analyse IA : %d propositions, %d classements confirmés, %d questions sans réponse", open_,
+             len(decisions) - open_, len(missing))
+    return 0
+
+
+def _trancher_ia(folder: Path, status: str, ids: str | None) -> int:
+    from .generation import journal
+    try:
+        entries = journal.load(folder)
+        n = journal.set_status(entries, status, {i.strip() for i in ids.split(",")} if ids else None)
+        journal.save(folder, entries)
+    except (OSError, journal.JournalError) as ex:
+        log.error("%s", ex)
+        return 2
+    log.info("%d propositions %ss ; régénérer le projet (--generer) pour les appliquer", n, status)
     return 0
 
 

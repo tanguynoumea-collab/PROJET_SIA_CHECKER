@@ -46,6 +46,8 @@ public sealed class AiReviewPrompt
     public required string System { get; init; }
     public required string User { get; init; }
     public required int IssueCount { get; init; }
+    /// <summary>Sortie attendue (jetons) quand elle ne suit pas la revue de la Fiabilisation (analyse IA de la génération).</summary>
+    public (long Min, long Max)? Output { get; init; }
 
     private static string Resource(string name)
     {
@@ -139,7 +141,7 @@ public sealed class AiReviewClient(string apiKey)
             Messages = [new Msg.UserMessageParam { Content = prompt.User }],
             Thinking = new Msg.ThinkingConfigAdaptive(),
         }, ct));
-        var (min, max) = AiPricing.OutputTokens(prompt.IssueCount);
+        var (min, max) = prompt.Output ?? AiPricing.OutputTokens(prompt.IssueCount);
         return new AiCostEstimate(count.InputTokens, min, max);
     }
 

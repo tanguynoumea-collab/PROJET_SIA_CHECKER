@@ -118,6 +118,14 @@ public sealed partial class AnalysisService(string enginePath)
                                                  CancellationToken ct) =>
         RunAsync(["-q", projectDir, "--benchmark-projet", json, "--project-name", projectName, .. inputs.Args()], null, ct);
 
+    /// <summary>Projet généré (V4) : questions et prompt de l'analyse IA (generation/prompt-ia.json).</summary>
+    public Task<EngineRun> QuestionsIaAsync(string generatedDir, CancellationToken ct) =>
+        RunAsync(["--questions-ia", generatedDir], null, ct);
+
+    /// <summary>Projet généré (V4) : la réponse enregistrée (generation/reponse-ia.txt) devient des propositions du journal.</summary>
+    public Task<EngineRun> ReponseIaAsync(string generatedDir, CancellationToken ct) =>
+        RunAsync(["--reponse-ia", generatedDir], null, ct);
+
     private async Task<EngineRun> RunAsync(IEnumerable<string> args, IProgress<AnalysisProgress>? progress,
                                            CancellationToken ct)
     {

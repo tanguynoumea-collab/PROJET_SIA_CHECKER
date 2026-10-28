@@ -5,7 +5,11 @@
 Le dossier du projet généré s'ouvre dans la Fiabilisation comme un dossier Treegram. Il contient aussi
 `generation/rapport.json` : chaque espace de la maquette, sa nature, son code, son sous-type, la source et la
 confiance de la décision, les sources en désaccord ; la SP de chaque niveau et sa méthode ; l'audit d'entrée.
-C'est la liste de travail de l'analyse IA (phase 24) et des ajustements manuels (phase 25).
+C'est la liste de travail de l'analyse IA (phase 24) et des ajustements manuels (phase 25) : chaque espace y a
+aussi ses voisins (espaces qui le touchent) et ses propriétés de classement.
+
+`generation/decisions.json` (journal.py) garde les décisions de l'IA et de l'utilisateur : celles qui sont
+acceptées remplacent le classement des règles à chaque génération.
 """
 
 from __future__ import annotations
@@ -16,11 +20,45 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import shapely
+
 from .. import __version__, siagen
-from . import assemble, audit, classify, exteriors, ingest, interiors, plans, uspi
+from . import assemble, audit, classify, exteriors, ingest, interiors, journal, plans, uspi
 
 FORMAT, VERSION = "sia-check-generation", 1
 SURE = 0.8   # en dessous : décision à confirmer (IA ou manuel)
+TOUCH_M = 0.35   # espaces à moins de cette distance : voisins (un mur les sépare)
+NEIGHBOURS = 8
+PROP_KEYS = ("category", "sia", "usage", "affectation", "fonction", "nom", "name", "type")   # propriétés utiles au classement
+
+
+def _neighbours(pl: list[plans.Plan], decisions: dict) -> dict[str, list[str]]:
+    """Espaces voisins de chaque espace, du plus long contact au plus court : « nom (code) »."""
+    out = {}
+    for plan in pl:
+        spaces = [p for p in plan.spaces if p.shape is not None]
+        if not spaces:
+            continue
+        tree = shapely.STRtree([p.shape for p in spaces])
+        for p in spaces:
+            zone = p.shape.buffer(TOUCH_M)
+            near = []
+            for j in tree.query(zone):
+                q = spaces[j]
+                if q is p or decisions[q.item.gid].nature not in (classify.PIECE, classify.EXTERIEUR):
+                    continue
+                contact = q.shape.intersection(zone).area
+                if contact > 0.05:
+                    d = decisions[q.item.gid]
+                    label = " / ".join(v for v in (q.item.name, q.item.long_name) if v) or q.item.gid
+                    near.append((contact, f"{label} ({d.code}{' ' + d.type if d.type and d.type != d.code else ''})"))
+            out[p.item.gid] = [t for _, t in sorted(near, reverse=True)[:NEIGHBOURS]]
+    return out
+
+
+def _props(item) -> dict:
+    return {k: v for k, v in (item.props or {}).items()
+            if any(w in k.lower() for w in PROP_KEYS) and v not in (None, "") and len(str(v)) <= 80}
 
 
 class GenerationBlocked(RuntimeError):
@@ -46,6 +84,7 @@ def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, l
     codes = codes or {}
     placed = {p.item.gid: p for plan in pl for p in plan.spaces}
     counted = {r.placed.item.gid: r.area for lv in levels for r in lv.rooms + lv.exteriors}
+    near = _neighbours(pl, decisions)
     spaces = []
     for s in model.spaces:
         d = decisions[s.gid]
@@ -57,6 +96,7 @@ def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, l
             "confidence": round(d.confidence, 2), "reason": d.reason, "conflicts": d.conflicts,
             "area": _r(counted.get(s.gid)), "area_plan": _r(placed[s.gid].area if s.gid in placed else None),
             "area_declared": _r(audit.declared_area(s)),
+            "neighbours": near.get(s.gid, []), "props": _props(s),
         })
     lv_out = []
     for lv in levels:
@@ -99,6 +139,9 @@ def generate(ifc: Path, cfg_generation: dict, out_dir: Path, project: str | None
     if audit.blocking(issues):
         raise GenerationBlocked(issues)
     decisions = classify.classify(model, pl, cfg_generation)
+    project = project or assemble.clean(ifc.stem)
+    folder = Path(out_dir) / project
+    journal.apply(journal.load(folder), decisions, cfg_generation)   # décisions acceptées (IA, manuel)
     levels = interiors.build(pl, decisions, cfg_generation)
     levels += exteriors.roof_levels(levels)
     storeys = [lv.plan.storey for lv in levels]
@@ -107,8 +150,6 @@ def generate(ifc: Path, cfg_generation: dict, out_dir: Path, project: str | None
     exteriors.build(levels, decisions, {g for g, c in codes.items() if c.startswith("S")}, cfg_generation)
     for lv in levels:
         lv.lots = uspi.build(lv, decisions, cfg_generation)
-    project = project or assemble.clean(ifc.stem)
-    folder = Path(out_dir) / project
     els = assemble.elements(levels, codes)
     # maillages en repère local : en float32, les coordonnées nationales les arrondiraient au quart de mètre
     path = siagen.write(els, folder / f"{project}{siagen.SUFFIX}", project, source=str(ifc), origin=siagen.local_origin(els))

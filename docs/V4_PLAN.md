@@ -343,3 +343,25 @@ Les règles USPI de la Fiabilisation (U1 à U4) passent sur les trois projets. L
 1. **SNH du niveau = SUP + SUS** (sous-sol : SNH = SUS), comme Treegram. Le ratio SNH / SP en tient compte.
 2. **Myonaz 2, N03** : 2A.03.01 et 2B.03.01 valent tous deux 104,6 m² au MDP. Ce sont peut-être des duplex, que la maquette répartit autrement. Il y a aussi une pièce de 2,2 m² portant un numéro de logement à part (2B.03.02).
 3. **SE non pondérées** : SVN et SVB ajoutent les SEU à 100 %, comme Treegram. L'USPI pondère les surfaces externes.
+
+## 16. Phase 24 livrée (28.10.2026) : analyse IA du classement
+
+### Chaîne
+
+1. **Questions** (`sia-check --questions-ia <projet généré>`, `generation/ia.py`) : seuls les espaces où les règles hésitent partent (confiance < 0,8, sources en désaccord, aucune source), du plus douteux au moins douteux, 300 au plus. Chaque question porte des preuves compactes : noms, propriétés de classement, aire, logement et ses autres pièces, voisins (espaces à moins de 0,35 m, du plus long contact au plus court, désormais dans `rapport.json`), décision des règles et désaccords. Sortie : `generation/questions-ia.json` et `generation/prompt-ia.json` (system + user + sortie attendue).
+2. **Appel** (app, `AiGenerationService`) : estimation du coût (comptage des jetons par l'API), accord de l'utilisateur, appel en flux avec la clé chiffrée DPAPI, comme la revue IA. La réponse brute et sa consommation vont dans `generation/reponse-ia.txt` et `reponse-ia.json`. Point d'entrée provisoire : `SiaCheck.Viewer.exe --analyse-ia-generation <projet généré>` ; la section Génération (phase 25) le remplacera.
+3. **Réponse** (`sia-check --reponse-ia`) : chaque décision devient une proposition du journal `generation/decisions.json` (`generation/journal.py`), ou une « confirmée » si l'IA garde le classement des règles. Une clé inventée ou un code hors liste est écarté ; un sous-type hors liste prend le premier du code. Synthèse dans `generation/synthese-ia.md`.
+4. **Décision** (`--accepter-ia` / `--rejeter-ia`, toutes ou `--ids` ; la phase 25 le fera à l'écran) : à chaque génération, les décisions acceptées remplacent le classement des règles (source « ia » ou « manuel », confiance 1), et l'espace n'est plus jamais redemandé. Une décision acceptée, rejetée ou manuelle n'est jamais écrasée par une nouvelle proposition.
+
+Le prompt rappelle les codes et sous-types Treegram et les conventions relevées : dégagements et réduits de logement en SUP Distribution, pièces d'eau par nombre de points d'eau, propriété SIA de l'architecte comme preuve forte, SUT hors logement, entrées couvertes en SEU.
+
+### Questions par projet
+
+| Projet | Questions | Exemples |
+|---|---|---|
+| La Bâtie B | 38 | balcons « BAL », entrées « ENT », une circulation « CIR » classée SUS par la catégorie de l'architecte |
+| Myonaz 1 / 2 | 2 / 7 | réduits de logement (SUP par convention, SUS par la catégorie) |
+| Afiro | 39 | bureaux et salles notés SUP par l'architecte, SUT par le nom |
+| CGA L04 | 4 | locaux « SUS_ELE » (SUS par le préfixe, SI par le nom), un WC compté pièce de vie |
+
+Coût estimé avec Claude Opus 5.5 : de 0,05 à 0,30 $ par projet.

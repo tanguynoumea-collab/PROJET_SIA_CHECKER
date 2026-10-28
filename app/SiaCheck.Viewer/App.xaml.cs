@@ -47,8 +47,52 @@ public partial class App : Application
         // (revue visuelle, plan Phase 2 ; rapport et boîte de la revue IA, Évolution 1.1).
         var project = e.Args.FirstOrDefault(a => !a.StartsWith("--") && Directory.Exists(a));
         var capture = ArgAfter(e.Args, "--capture");
-        if (project is not null) _ = OpenThenCaptureAsync(window, project, capture, ArgAfter(e.Args, "--focus"), ArgAfter(e.Args, "--click"));
+        // --analyse-ia-generation dossier : analyse IA d'un projet généré (V4, phase 24), avec estimation et accord.
+        if (ArgAfter(e.Args, "--analyse-ia-generation") is { } generated && engine is not null)
+            _ = AnalyseGeneratedAsync(window, paths, engine, generated);
+        else if (project is not null) _ = OpenThenCaptureAsync(window, project, capture, ArgAfter(e.Args, "--focus"), ArgAfter(e.Args, "--click"));
         else if (capture is not null) _ = CaptureAsync(window, capture);
+    }
+
+    private static async Task AnalyseGeneratedAsync(MainWindow window, AppPaths paths, string engine, string dir)
+    {
+        const string title = "Analyse IA de la génération";
+        try
+        {
+            await window.ViewModel.OpenAsync(dir);
+            var key = new ApiKeyStore(paths.ApiKeyFile).Load();
+            if (key is null)
+            {
+                MessageBox.Show(window, "Aucune clé API enregistrée : saisissez-la dans la revue IA de l'application.", title,
+                                MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var service = new AiGenerationService(new AnalysisService(engine));
+            var prompt = await service.PrepareAsync(dir, CancellationToken.None);
+            if (prompt.IssueCount == 0)
+            {
+                MessageBox.Show(window, "Les règles n'hésitent sur aucun espace : rien à demander à l'IA.", title);
+                return;
+            }
+            var client = new AiReviewClient(key);
+            var cost = await client.EstimateAsync(prompt, CancellationToken.None);
+            var ok = MessageBox.Show(window,
+                $"{prompt.IssueCount} espaces où les règles hésitent seront soumis à {AiPricing.ModelLabel}.\n\n" +
+                $"Entrée : {cost.InputTokens:N0} jetons · sortie estimée : {cost.MinOutputTokens:N0} à {cost.MaxOutputTokens:N0} jetons.\n" +
+                $"Coût estimé : {cost.MinUsd:0.00} à {cost.MaxUsd:0.00} $.\n\n" +
+                "Les réponses deviennent des propositions : rien n'est appliqué sans votre accord. Lancer l'analyse ?",
+                title, MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (ok != MessageBoxResult.Yes) return;
+            var response = await client.RunAsync(prompt, null, CancellationToken.None);
+            AiGenerationService.SaveResponse(dir, response, DateTime.Now);
+            var summary = await service.RecordAsync(dir, CancellationToken.None);
+            var text = File.Exists(AiGenerationService.SummaryPath(dir)) ? File.ReadAllText(AiGenerationService.SummaryPath(dir)) : "";
+            MessageBox.Show(window, $"{summary.Replace("INFO ", "")}\nCoût réel : {response.CostUsd:0.00} $.\n\n{text}", title);
+        }
+        catch (AiReviewException ex)
+        {
+            MessageBox.Show(window, ex.Message, title, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private static string? ArgAfter(string[] args, string flag)

@@ -74,3 +74,11 @@ def test_facade_and_glazing():
 def test_dims_follow_the_minimal_rectangle():
     assert exteriors.dims(box(0, 0, 4, 10)) == {"Perimeter": 28.0, "DeltaX": 10.0, "DeltaY": 4.0}
     assert exteriors.dims(None) == {"Perimeter": 0.0, "DeltaX": 0.0, "DeltaY": 0.0}
+
+
+def test_facade_and_glazing_meshes_are_vertical():
+    n00 = level("N00", 10.0, 3.0, sp=box(0, 0, 20, 10), openings=[("w1", "IfcWindow", box(5, -0.1, 7, 0.1), 1.5)])
+    exteriors.build([n00], {}, set(), {})
+    f, g = n00.facade, n00.glazing
+    assert len(f.indices) == 4 * 6 and set(f.vertices[2::3]) == {10.0, 13.0}   # 4 murs, 2 triangles chacun
+    assert len(g.indices) == 6 and set(g.vertices[2::3]) == {10.0, 11.5}

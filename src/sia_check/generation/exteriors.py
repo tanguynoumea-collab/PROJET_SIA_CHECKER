@@ -21,6 +21,7 @@ from __future__ import annotations
 import shapely
 from shapely.geometry.base import BaseGeometry
 
+from ..geom import Mesh
 from .classify import EXTERIEUR, Decision
 from .ingest import Storey
 from .interiors import Level, Room, area_of
@@ -68,23 +69,44 @@ def roof_levels(levels: list[Level]) -> list[Level]:
     return out
 
 
-def _openings(level: Level, sp: BaseGeometry) -> tuple[float, float]:
-    """(réservations, vitrages) en m² : fenêtres et portes posées sur le contour de la SP."""
+def vertical_mesh(segments: list[tuple[tuple[float, float], tuple[float, float], float, float]]) -> Mesh | None:
+    """Panneaux verticaux : un quadrilatère (deux triangles) par segment en plan, de z0 à z1."""
+    v, i = [], []
+    for (x0, y0), (x1, y1), z0, z1 in segments:
+        if z1 <= z0 or (x0, y0) == (x1, y1):
+            continue
+        k = len(v) // 3
+        v += [x0, y0, z0, x1, y1, z0, x1, y1, z1, x0, y0, z1]
+        i += [k, k + 1, k + 2, k, k + 2, k + 3]
+    return Mesh(v, i) if i else None
+
+
+def _rings(g: BaseGeometry):
+    for p in getattr(g, "geoms", [g]):
+        if hasattr(p, "exterior"):
+            yield p.exterior
+            yield from p.interiors
+
+
+def _openings(level: Level, sp: BaseGeometry) -> tuple[float, list]:
+    """(réservations en m², panneaux) : fenêtres et portes posées sur le contour de la SP. Largeur = grand côté
+    du rectangle minimal de leur emprise, hauteur = celle du maillage."""
     edge = sp.boundary
-    resa = glass = 0.0
+    resa, panels = 0.0, []
     for p in level.plan.of("IfcWindow", "IfcDoor"):
         it = p.item
         if p.shape is None or it.z_min is None or it.z_max is None or p.shape.distance(edge) > FACADE_REACH_M:
             continue
         r = p.shape.minimum_rotated_rectangle
         c = list(r.exterior.coords) if hasattr(r, "exterior") else []
-        width = max((((c[i + 1][0] - c[i][0]) ** 2 + (c[i + 1][1] - c[i][1]) ** 2) ** 0.5 for i in range(len(c) - 1)),
-                    default=0.0)
+        if len(c) < 3:
+            continue
+        a, b, d = c[0], c[1], c[3] if len(c) > 3 else c[2]
+        side = max(((a, b), (a, d)), key=lambda s: (s[1][0] - s[0][0]) ** 2 + (s[1][1] - s[0][1]) ** 2)
+        width = ((side[1][0] - side[0][0]) ** 2 + (side[1][1] - side[0][1]) ** 2) ** 0.5
         resa += width * (it.z_max - it.z_min)
-    # Treegram : vitrages ≈ réservations (L'Orée E09 N03 : SRV 246,2 m², réservations 244,4 m²) ; portes-fenêtres
-    # et portes vitrées comprises
-    glass = resa
-    return resa, glass
+        panels.append((side[0], side[1], it.z_min, it.z_max))
+    return resa, panels
 
 
 def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set[str],
@@ -126,7 +148,13 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
                            "GrossHeight": round(h, 3), "SRV": 0.0}
             continue
         perimeter = lv.sp.length
-        resa, glass = _openings(lv, lv.sp)
+        # Treegram : vitrages ≈ réservations (L'Orée E09 N03 : SRV 246,2 m², réservations 244,4 m²) ; portes-fenêtres
+        # et portes vitrées comprises
+        resa, panels = _openings(lv, lv.sp)
+        glass = resa
+        lv.facade = vertical_mesh([(a, b, st.elevation, st.elevation + h) for ring in _rings(lv.sp)
+                                   for a, b in zip(list(ring.coords), list(ring.coords)[1:])])
+        lv.glazing = vertical_mesh(panels)
         gross = perimeter * h
         lv.envelope = {"GrossArea": round(gross, 2), "NetArea": round(max(gross - resa, 0.0), 2),
                        "ReservationsArea": round(resa, 2), "Perimeter": round(perimeter, 2),

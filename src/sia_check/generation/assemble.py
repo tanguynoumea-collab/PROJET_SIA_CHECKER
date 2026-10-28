@@ -143,9 +143,9 @@ def elements(levels: list[Level], codes: dict[str, str] | None = None) -> list[E
         for code in (c for c in NODE_ORDER if c not in USPI_NODES):
             if code == "SFN":
                 add(code, "node", b, lv, {k: env.get(k, 0.0) for k in ("GrossArea", "NetArea", "ReservationsArea",
-                                                                         "Perimeter", "GrossHeight")})
+                                                                         "Perimeter", "GrossHeight")}, level.facade)
             elif code == "SRV":
-                add(code, "node", b, lv, {"Area": env.get("SRV", 0.0)})
+                add(code, "node", b, lv, {"Area": env.get("SRV", 0.0)}, level.glazing)
             elif code in shapes:
                 props = {CATEGORY: code, "Area": round(totals[code], 3), "GrossHeight": height} | dims(shapes[code])
                 add(code, "node", b, lv, props, mesh_of(shapes[code], st.elevation) if code != "SPT" else None)

@@ -49,6 +49,8 @@ class Level:
     sep: BaseGeometry | None = None
     spt: BaseGeometry | None = None
     envelope: dict = field(default_factory=dict)
+    facade: object = None     # geom.Mesh vertical de la façade (SFN)
+    glazing: object = None    # geom.Mesh des ouvertures de façade (SRV)
 
     @property
     def sp_area(self) -> float:

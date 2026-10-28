@@ -1,6 +1,7 @@
 """Moteur de génération, phase 21 : nature et classement des espaces, SP, assemblage au modèle Treegram."""
 
 import json
+from pathlib import Path
 
 import pytest
 from shapely.geometry import box
@@ -96,8 +97,9 @@ def test_synthetic_model_generated(generated):
     assert by[("N00", "Couloir")] == ("SD", "CirculationH", False)     # 1A.99.00 : parties communes
     assert by[("N01", "Local technique")] == ("SI", "Local", False)
     n00 = next(lv for lv in generated.data["levels"] if lv["storey"] == "N00")
-    # pièces 8 × 5,5 et mur de façade 8 × 0,2 : contour extérieur 8 × 5,7
-    assert n00["sp_m2"] == pytest.approx(45.6) and n00["totals"] == {"SD": 12.0, "SUP": 32.0}
+    # pièces 8 × 5,5 et mur de façade 8 × 0,2 : contour extérieur 8 × 5,7 ; la chambre compte son aire déclarée
+    # (10 m², generation.sp.area_source: declared), pas son emprise (12 m²)
+    assert n00["sp_m2"] == pytest.approx(45.6) and n00["totals"] == {"SD": 12.0, "SUP": 30.0}
 
 
 def test_generated_project_follows_the_treegram_model(generated):
@@ -109,7 +111,7 @@ def test_generated_project_follows_the_treegram_model(generated):
     assert names == ["A_N00_ShellByTgm-01_SpaceByTgm-1_SUP", "A_N00_ShellByTgm-01_SpaceByTgm-2_SUP",
                      "A_N00_ShellByTgm-02_SpaceByTgm-1_SD"]
     sup = next(e for e in leaves.values() if e["props"].get("Type") == "Chambre")
-    assert sup["props"]["ApartmentByTgm"] == "A_N00_Apart-01" and sup["props"]["Area"] == 12.0 and sup["meshes"]
+    assert sup["props"]["ApartmentByTgm"] == "A_N00_Apart-01" and sup["props"]["Area"] == 10.0 and sup["meshes"]
     assert all(e["meshes"] for e in n00 if e["name"] == "SP")
 
 
@@ -117,7 +119,7 @@ def test_generated_project_is_checked_like_a_treegram_project(generated, cfg):
     df = reader.read(generated.siagen, cfg)
     res = rules.run(df, cfg)
     r1 = res.residuals[(res.residuals.rule == "R1") & (res.residuals.level == "N00")].iloc[0]
-    assert r1.expected == pytest.approx(45.6) and r1.diff_m2 == pytest.approx(1.6) and r1.verdict == "INFO"
+    assert r1.expected == pytest.approx(45.6) and r1.diff_m2 == pytest.approx(3.6) and r1.verdict == "INFO"
     assert set(df[df.kind == "leaf"].lot.dropna()) == {"A_N00_Apart-01"}
 
 
@@ -158,3 +160,52 @@ def test_level_codes_follow_treegram(gen_cfg):
     assert list(assemble.level_codes(cga, set(), gen_cfg).values()) == ["S01", "N00", "N01"]
     odd = [Storey("a", "Rouge", "B", 0.0), Storey("b", "Bleu_2", "B", 3.0)]
     assert assemble.level_codes(odd, set(), gen_cfg) == {"a": "Rouge", "b": "Bleu-2"}   # sans rez : noms gardés
+
+
+def test_lot_from_first_property_found_and_storey_scope():
+    spec = [{"pset": "Pset_HRS", "property": "NumeroPiece", "pattern": r"^(?P<lot>[^.]+\.[^.]+\.[^.]+)\."},
+            {"pset": "Pset_SpaceOccupancyRequirements", "property": "Appartement", "scope": "storey"}]
+    assert ingest._lot({"Pset_HRS.NumeroPiece": "1A.01.02.03"}, spec, "E01") == "1A.01.02"
+    assert ingest._lot({"Pset_SpaceOccupancyRequirements.Appartement": "2"}, spec, "1erEtage") == "1erEtage/2"
+    assert ingest._lot({"Pset_SpaceOccupancyRequirements.Appartement": ""}, spec, "1erEtage") is None
+
+
+def test_la_batie_conventions(k):
+    sjr = space("1", "4", "SJR", lot="1erEtage/2", **{"Pset_SpaceCommon.Category": "416-SN-Surface utile principale"})
+    assert (k.decide(sjr, False).code, k.decide(sjr, False).in_lot) == ("SUP", True)
+    commun = space("2", None, "COU", lot="1erEtage/C", **{"Pset_SpaceCommon.Category": "416-SN-Surface de degagement"})
+    assert (k.decide(commun, False).code, k.decide(commun, False).in_lot) == ("SD", False)
+    balcon = space("3", "5", "LUP", **{"Pset_SpaceCommon.Category": "416-SBP-Surface de plancher externe"})
+    assert k.decide(balcon, True).nature == "exterieur"
+
+
+def test_rooms_outside_the_drawn_floor_area_are_added():
+    plan = plans.Plan(Storey("st", "N00", "A", 0.0))
+    floor = space("f", "LOG", "Surface de plancher", predefined="GFA")
+    room, buggy = space("r", "SEJ", "Séjour"), space("b", "BUA", "Buanderie")
+    plan.spaces = [plans.Placed(floor, box(0, 0, 10, 10)), plans.Placed(room, box(0, 0, 9.8, 9.8)),
+                   plans.Placed(buggy, box(10.2, 0, 12.2, 3))]
+    wall = Item("w", "IfcWall", "Mur", "A", "st")
+    plan.elements = [plans.Placed(wall, box(10, 0, 10.2, 10))]
+    decisions = {"f": classify.Decision("f", "plancher"), "r": classify.Decision("r", "piece", "SUS"),
+                 "b": classify.Decision("b", "piece", "SUS")}
+    sp, why = interiors.surface_de_plancher(plan, decisions, 0.3, 4.0)
+    # 100 m² dessinés + buanderie 6 m² + le mur qui la sépare, sur sa longueur (0,2 × 3,5 environ)
+    assert 106.5 < sp.area < 107.5 and "1 pièce(s) hors de ce contour" in why
+
+
+MYONAZ = Path.home() / ("HRS Real Estate AG/HRS BIM-WEST - Documents/10-WIP/Analyse parametrique des projets/"
+                        "analys maquettes arc/1712.00 ORO - La Myonaz 1_ARC-GEN #44.ifc")
+MDP_1712 = ROOT / "00_RESSOURCES/03-DataBase-DonneesProjets/MDP-1712.00_Myonaz.xlsx"
+
+
+@pytest.mark.skipif(not (MYONAZ.is_file() and MDP_1712.is_file()), reason="maquette Myonaz ou MDP 1712 absents")
+def test_myonaz_matches_its_mdp(tmp_path, gen_cfg, cfg):
+    """Référence réelle : MDP 1712 (bâtiment 1) — même SP par étage, chaque local au même code."""
+    from sia_check.generation import compare
+    g = engine.generate(MYONAZ, gen_cfg, tmp_path, "Myonaz-1")
+    c = compare.compare(g.folder, MDP_1712, cfg, "Bat. 1")
+    assert c["apparies"] == c["meme_code"] == c["locaux_mdp"] == 101
+    for row in c["etages"]:
+        for code in ("SP", "SUP", "SUS", "SD", "SI"):
+            assert abs(row[code]["ecart"]) < 0.5, (row["level"], code, row[code])

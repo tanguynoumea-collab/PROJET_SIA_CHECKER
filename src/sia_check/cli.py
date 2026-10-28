@@ -79,6 +79,8 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--inventaire", type=Path, help="maquette architecte IFC à inventorier (moteur de génération)")
     ap.add_argument("--inventaire-json", type=Path,
                     help="inventaire à écrire (défaut : <maquette>.inventaire.json dans --out, sinon à côté)")
+    ap.add_argument("--comparer-mdp", type=Path, help="MDP de référence auquel comparer un projet généré (V4)")
+    ap.add_argument("--batiment-mdp", help="bâtiment du MDP à comparer (« Partie d'Ouvrage »)")
     ap.add_argument("--generer", type=Path, help="maquette architecte IFC dont générer les surfaces SIA (V4)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
@@ -166,6 +168,8 @@ def main(argv: list[str] | None = None) -> int:
         return _inventaire(args)
     if args.generer:
         return _generer(args)
+    if args.comparer_mdp:
+        return _comparer_mdp(args)
     if not args.models:
         log.error("fichier .tgm, .ifc ou dossier de projet attendu")
         return 2
@@ -372,6 +376,24 @@ def _generer(args: argparse.Namespace) -> int:
         print(engine.summary(g.data))
     log.info("projet généré : %s", g.siagen)
     log.info("rapport de génération : %s", g.report)
+    return 0
+
+
+def _comparer_mdp(args: argparse.Namespace) -> int:
+    from .generation import compare
+    if len(args.models) != 1 or not args.models[0].is_dir():
+        log.error("--comparer-mdp attend le dossier d'un projet généré")
+        return 2
+    try:
+        cfg = config_mod.load(args.config or _default_config())
+        c = compare.compare(args.models[0], args.comparer_mdp, cfg, args.batiment_mdp)
+    except (OSError, ValueError, StopIteration, config_mod.ConfigError, reader.ReadError) as ex:
+        log.error("comparaison impossible : %s", ex)
+        return 2
+    out = args.models[0] / "generation" / "comparaison-mdp.json"
+    out.write_text(json.dumps(c, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    print(compare.summary(c))
+    log.info("comparaison écrite : %s", out)
     return 0
 
 

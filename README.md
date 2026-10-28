@@ -28,6 +28,7 @@ sia-check --mdp-identite MDP-1746.00-Avallons.xlsx --identite identite.json   # 
 sia-check "L OREE.tgm" --siagen generes/   # le projet au contrat .siagen.json (V4), surfaces et maillages
 sia-check --inventaire maquette.ifc --out inventaires/   # maquette architecte lue par le moteur de génération (V4)
 sia-check --generer maquette.ifc --out generes/ --project "Myonaz 1"   # surfaces SIA générées, au modèle Treegram
+sia-check "generes/Myonaz 1" --comparer-mdp MDP-1712.00_Myonaz.xlsx --batiment-mdp "Bat. 1"   # écarts au MDP
 ```
 
 - Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet), projet généré `.siagen.json` (V4, ci-dessous) ou `.ifc` (mapping dans `config.yaml > sources.ifc`). Un dossier désigne son unique `.tgm` ou `.siagen.json`.
@@ -71,6 +72,12 @@ Code de sortie : `1` si un point bloque la génération (pas d'espaces, pas de n
 4. **Assemblage** (`assemble.py`). Les noms, les coques, `ApartmentByTgm` et les totaux de niveau suivent ceux de Treegram, ainsi que les codes de niveau (N00, S01, Toiture : le rez est trouvé par son nom, les autres niveaux sont numérotés par altitude). `IfcGlobalId` relie chaque surface à son espace.
 
 Code de sortie : `1` si l'audit d'entrée bloque, `2` si la maquette est illisible.
+
+`--comparer-mdp` compare un projet généré au MDP du même projet, pris dans la base du benchmark :
+- par étage et par code, en m² et en nombre de locaux ;
+- local par local, chaque local étant apparié par son nom et son aire, avec une matrice de confusion des codes.
+
+Le résultat est écrit dans `generation/comparaison-mdp.json`.
 
 ## Rapports (`--out`)
 

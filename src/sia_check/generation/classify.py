@@ -98,7 +98,7 @@ class Classifier:
         v = item.props.get(self.cat_prop) if self.cat_prop else None
         t = norm(v)
         for rx, spec in self.categories:
-            if t and rx.fullmatch(t):
+            if t and rx.search(t):
                 return spec, f"catégorie « {v} »"
         return None
 
@@ -176,6 +176,12 @@ class Classifier:
             d.conflicts.append(f"{source} : SD ({why})")
             d.code, d.type, d.source = "SUP", "Distribution", "convention"
             d.reason = "convention Treegram : dégagement d'un logement compté en SUP « Distribution »"
+            d.confidence = CONFIDENCE["dictionnaire"]
+        elif (self.c.get("treegram_conventions", True) and lot and code == "SUS" and room
+              and room[0]["code"] == "SUP"):
+            d.conflicts.append(f"{source} : SUS ({why})")
+            d.code, d.type, d.source = "SUP", room[0].get("type"), "convention"
+            d.reason = f"convention Treegram : {room[1]} dans un logement compté en SUP (MDP Myonaz : réduits en SUP)"
             d.confidence = CONFIDENCE["dictionnaire"]
         return d
 

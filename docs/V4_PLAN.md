@@ -1,7 +1,7 @@
 # V4_PLAN — Génération des surfaces SIA depuis l'IFC architecte
 
 > Statut : ☑ Brouillon · ☐ Validé par l'utilisateur
-> Version : 0.4 — 28.10.2026 · décisions prises (§9), phases 19 à 21 livrées (§10 à §12)
+> Version : 0.5 — 28.10.2026 · phases 19 à 21 livrées (§10 à §12), premières comparaisons à un MDP réel (§13)
 
 ## 1. Objectif
 
@@ -241,3 +241,34 @@ Le projet généré s'ouvre dans l'app (3D aux couleurs SIA, bilan par niveau, p
 4. **Aire d'une pièce** : l'emprise en plan est retenue (SIA 416 §0.4), pas l'aire déclarée par Revit. Sous les toitures en pente, l'écart va jusqu'à 15 %. C'est réglable : `generation.sp.area_source: declared`.
 5. **SP d'une maquette sans murs** (Afiro n'exporte que les pièces) : la SP est le contour des pièces, sans l'épaisseur des murs de façade. Elle est donc sous-estimée.
 6. **Cages d'escalier** : les Myonaz n'ont aucun espace « escalier » (les paliers sont des SD de circulation). Le KPI cages reste vide, ce qui relève de la phase 22 (escaliers depuis les `IfcStair`).
+
+## 13. Comparaison à des MDP réels (28.10.2026)
+
+Une paire IFC ↔ `.tgm` manque toujours, mais la base du benchmark contient les MDP de projets dont on a les maquettes ARC : 1712 Myonaz (bâtiments 1, 2, 3, P), 1467 La Bâtie (bâtiments B et C), 1399 Quartier de l'Étang C (C1 à C4). Le MDP est le livrable HRS final, construit depuis les exports Treegram. `--comparer-mdp` mesure l'écart.
+
+### Ce que la référence a tranché
+
+| Point du §12 | Décision prise sur la référence |
+|---|---|
+| Aire d'une pièce | **aire déclarée par l'IFC** (Revit), à défaut l'emprise : sous la toiture en pente (Myonaz N03), le MDP compte 164,7 m² de SUP et non les 182,6 m² de l'emprise |
+| Réduits classés SUS par l'architecte | **SUP** dans un logement (convention Treegram) |
+| SP « surface de plancher » dessinée | on la respecte telle quelle ; on n'en retire qu'un extérieur dessiné **dedans** (≥ 80 %), et on y ajoute les pièces qui en sortent, avec leurs murs (La Bâtie, rez : poussettes, buanderie) |
+| « Surface de plancher externe » | c'est un extérieur, pas de la SP |
+
+Le moteur lit aussi les conventions de La Bâtie : les catégories préfixées (« 416-SN-Surface utile principale »), et le logement noté dans `Pset_SpaceOccupancyRequirements.Appartement`, valable dans son étage, « C » désignant les parties communes.
+
+### Résultats
+
+| Projet | Locaux MDP / générés | Même code | SP par étage | SUP, SUS, SD, SI par étage |
+|---|---|---|---|---|
+| Myonaz bât. 1 (22 Mo) | 101 / 101 | **100 %** | identique (5 étages) | identiques |
+| Myonaz bât. 2 (39 Mo) | 193 / 193 | **100 %** | identique (5 étages) | identiques |
+| La Bâtie B (83 Mo, 540 espaces) | 358 / 413 | 99 % des appariés | identique du N01 au N05 ; rez −19,8 m² (−3,9 %) ; sous-sol +11,7 m² (+0,7 %) | SUP, SUS et SI identiques ; SD +2,8 m² au N02 |
+
+Écarts de La Bâtie restant ouverts :
+
+- **55 locaux générés en trop** : ce sont de petites gaines de logement (0,1 à 0,6 m²). Le MDP les regroupe en une ligne « Gaines techniques Logements » par logement, pour la même aire totale. Treegram regroupe-t-il les gaines par coque ? Cela se vérifiera sur L'Orée.
+- **Rez, −19,8 m²** : la SP du MDP dépasse le contour pièces + murs. On ne sait pas encore ce qu'elle compte de plus (les entrées couvertes « ENT », dessinées en extérieur ?).
+- **Sous-sol, +0,7 %** : aucune surface de plancher n'y est dessinée, et le contour pièces + murs déborde légèrement.
+
+Le test d'intégration `test_myonaz_matches_its_mdp` fixe le résultat Myonaz (100 % des locaux au même code, aucun écart d'étage au-delà de 0,5 m²).

@@ -1,8 +1,9 @@
 """Surfaces intérieures d'un niveau : pièces classées et SP (V4_PLAN §3.1, phase 21).
 
 **SP** (SIA 416 §2, surface de plancher, contour extérieur des murs) :
-1. les espaces « surface de plancher » du niveau, s'il y en a (nature `plancher`) : leur union, moins les
-   extérieurs du niveau (loggias, balcons : SEP au sens de SIA 416 §3, que les architectes y laissent souvent) ;
+1. les espaces « surface de plancher » du niveau, s'il y en a (nature `plancher`) : leur union, plus les pièces
+   qui en sortent avec leurs murs (locaux oubliés par l'architecte), moins les extérieurs dessinés à l'intérieur
+   (loggia comptée par erreur : SEP au sens de SIA 416 §3) ;
 2. sinon le contour des pièces, des murs, des murs-rideaux et des poteaux du niveau, joints fermés (fermeture
    morphologique de `sp.close_m`) et vides intérieurs de moins de `sp.min_hole_m2` bouchés (gaines, joints).
    Les vides plus grands (cours, patios) restent hors SP.
@@ -24,6 +25,9 @@ from .classify import EXTERIEUR, PIECE, PLANCHER, Decision
 from .plans import Placed, Plan
 
 ENVELOPE_CLASSES = ("IfcWall", "IfcCurtainWall", "IfcColumn")
+INSIDE = 0.8        # part d'un extérieur dans la surface de plancher au-delà de laquelle il en est retiré
+OUTSIDE_M2 = 0.5    # part d'une pièce hors de la surface de plancher dessinée au-delà de laquelle elle y est ajoutée
+WALL_REACH = 0.5    # murs pris autour de ces pièces (m)
 
 
 @dataclass
@@ -53,25 +57,40 @@ def _fill_holes(g: BaseGeometry, min_hole: float) -> BaseGeometry:
     return shapely.union_all([fix(p) for p in getattr(g, "geoms", []) if isinstance(p, Polygon)])
 
 
+def _contour(parts: list, walls: list, close: float, min_hole: float) -> BaseGeometry:
+    g = shapely.union_all(parts + walls)
+    if close > 0:
+        g = g.buffer(close, join_style="mitre").buffer(-close, join_style="mitre")
+    return _fill_holes(g.buffer(0), min_hole)
+
+
 def surface_de_plancher(plan: Plan, decisions: dict[str, Decision], close: float, min_hole: float) -> tuple[BaseGeometry | None, str]:
     planchers = [p.shape for p in plan.spaces if p.shape is not None and decisions[p.item.gid].nature == PLANCHER]
+    pieces = [p.shape for p in plan.spaces if p.shape is not None and decisions[p.item.gid].nature == PIECE]
+    walls = [p.shape for p in plan.of(*ENVELOPE_CLASSES) if p.shape is not None]
     if planchers:
         g, why = shapely.union_all(planchers), f"{len(planchers)} espace(s) « surface de plancher »"
-        ext = [p.shape for p in plan.spaces if p.shape is not None and decisions[p.item.gid].nature == EXTERIEUR]
+        # pièces que la surface dessinée oublie (La Bâtie, rez : poussettes, buanderie) : ajoutées avec leurs murs,
+        # comme dans le MDP
+        outside = [x for x in pieces if x.difference(g).area > OUTSIDE_M2]
+        if outside:
+            near = shapely.union_all(outside).buffer(WALL_REACH)
+            extra = _contour(outside, [w.intersection(near) for w in walls if w.intersects(near)], close, min_hole)
+            before = g.area
+            g = shapely.union_all([g, extra]).buffer(0)
+            why += f", plus {g.area - before:.2f} m² de {len(outside)} pièce(s) hors de ce contour"
+        # seuls les extérieurs dessinés dans la surface de plancher (loggia oubliée par l'architecte) en sortent ;
+        # un balcon qui la touche de quelques centimètres la laisse intacte (Myonaz : SP du MDP = espace dessiné)
+        ext = [p.shape for p in plan.spaces if p.shape is not None and decisions[p.item.gid].nature == EXTERIEUR
+               and p.shape.intersection(g).area >= INSIDE * p.shape.area]
         cut = g.intersection(shapely.union_all(ext)).area if ext else 0.0
         if cut > 0.01:
             g = g.difference(shapely.union_all(ext))
             why += f", moins {cut:.2f} m² d'extérieurs"
         return g, why
-    parts = [p.shape for p in plan.spaces if p.shape is not None and decisions[p.item.gid].nature == PIECE]
-    if not parts:
+    if not pieces:
         return None, "aucune pièce"
-    walls = [p.shape for p in plan.of(*ENVELOPE_CLASSES) if p.shape is not None]
-    g = shapely.union_all(parts + walls)
-    if close > 0:
-        g = g.buffer(close, join_style="mitre").buffer(-close, join_style="mitre")
-    g = _fill_holes(g.buffer(0), min_hole)
-    return g, f"contour de {len(parts)} pièces et {len(walls)} murs ou poteaux"
+    return _contour(pieces, walls, close, min_hole), f"contour de {len(pieces)} pièces et {len(walls)} murs ou poteaux"
 
 
 def build(plans: list[Plan], decisions: dict[str, Decision], cfg_generation: dict | None = None) -> list[Level]:

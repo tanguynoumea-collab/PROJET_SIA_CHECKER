@@ -227,7 +227,10 @@ generation:
     threads: 0                 # 0 : tous les cœurs
   # Logement d'une pièce : propriété des IfcSpace (décision du 28.10.2026). Le motif garde la partie qui désigne
   # le logement : « 1A.01.02.01 » (bâtiment, étage, logement, pièce) -> « 1A.01.02 ».
-  lot: {pset: Pset_HRS, property: NumeroPiece, pattern: '^(?P<lot>[^.]+\.[^.]+\.[^.]+)\.'}
+  # Première propriété renseignée de la liste ; « scope: storey » : numéro valable dans son étage seulement.
+  lot:
+    - {pset: Pset_HRS, property: NumeroPiece, pattern: '^(?P<lot>[^.]+\.[^.]+\.[^.]+)\.'}
+    - {pset: Pset_SpaceOccupancyRequirements, property: Appartement, scope: storey}   # La Bâtie : « 2 », « C »
   audit:
     area_rel: 0.02             # aire déclarée (Qto) vs aire en plan : écart signalé au-delà de 2 %…
     area_abs: 0.5              # … et de 0,5 m²
@@ -239,17 +242,17 @@ generation:
   classify:
     unclassified: NONCLASSE
     # parties communes, pas un logement : « 1A.99.00 » (tout le bâtiment) ou « 1A.01.00 » (palier du niveau)
-    common_lot: '(^[^.]+\.99\.|\.00$)'
+    common_lot: '(^[^.]+\.99\.|\.00$|(^|/)C$)'
     sia_codes: [SUP, SUS, SUT, SD, SI, SEU, SED, SEI, SEP, SP, SA, SPT]
     code_properties: ['SIA416', 'SIA 416', 'Catégorie SIA', 'CategorieSIA', 'SIA']   # nom de la propriété (fin de clé)
     category_property: Pset_SpaceCommon.Category
-    categories:                    # catégorie en toutes lettres -> code ; « nature » : pas une pièce intérieure
+    # catégorie en toutes lettres -> code ; « nature » : pas une pièce intérieure. Motif cherché dans le texte
+    # (« 416-SN-Surface utile principale » à La Bâtie), dans l'ordre : les extérieurs avant le reste.
+    categories:
+      '\bexternes?\b': {nature: exterieur}   # « Surface externe nette », « Surface de plancher externe »
       'surface de plancher': {nature: plancher}
       'surface de terrain': {nature: site}
       'surface des abords': {nature: site}
-      'surface externe de plancher': {nature: exterieur}
-      'surface externe utile': {nature: exterieur}
-      'surface externe de degagement': {nature: exterieur}
       'surface utile principale?': {code: SUP}
       'surface utile secondaire': {code: SUS}
       'surface de degagement': {code: SD}
@@ -282,15 +285,18 @@ generation:
     default_types: {SUP: PieceDeVie, SUS: SUS, SD: CirculationH, SI: Local, SUT: Commerce}
     # code d'une pièce qui en fait autre chose qu'une pièce intérieure
     code_natures: {SEU: exterieur, SED: exterieur, SEI: exterieur, SEP: exterieur, SA: site, SP: plancher}
-    # Conventions de Treegram, appliquées après les sources : un dégagement dans un logement est de la SUP
-    # « Distribution » (L'Orée : SD réservée aux circulations communes, escaliers et ascenseurs)
+    # Conventions de Treegram, appliquées après les sources : dans un logement, un dégagement est de la SUP
+    # « Distribution » (L'Orée : SD réservée aux circulations communes, escaliers et ascenseurs), et un réduit
+    # ou un rangement classé SUS par l'architecte reste de la SUP (MDP Myonaz)
     treegram_conventions: true
   # SP par niveau (generation/interiors.py) : espaces « surface de plancher » s'il y en a, sinon contour des
   # pièces, murs et poteaux du niveau, joints fermés et petits vides bouchés
   sp:
     close_m: 0.3
     min_hole_m2: 4.0
-    area_source: plan              # plan (projection, SIA 416 §0.4) | declared (quantités IFC)
+    # aire d'une pièce : declared (quantités IFC, à défaut l'emprise) | plan (emprise, SIA 416 §0.4). Le MDP Myonaz
+    # retient l'aire Revit, plus petite que l'emprise sous les toitures en pente (N03 : 164,7 m² de SUP, pas 182,6)
+    area_source: declared
   # Codes de niveau Treegram (N00, N01…, S01…, Toiture) : le rez est le niveau dont le nom correspond au premier
   # motif trouvé ; les autres sont numérotés par altitude. Un niveau sans pièce au-dessus du dernier niveau
   # occupé, au nom de toiture, devient « Toiture ». Sans rez reconnu, les noms de la maquette sont gardés.

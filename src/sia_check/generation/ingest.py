@@ -106,17 +106,21 @@ def _props(entity) -> dict[str, object]:
     return out
 
 
-def _lot(props: dict, spec: dict | None) -> str | None:
-    if not spec:
-        return None
-    v = props.get(f"{spec.get('pset')}.{spec.get('property')}")
-    if v in (None, "", "-"):
-        return None
-    v = str(v).strip()
-    if spec.get("pattern"):
-        m = re.match(spec["pattern"], v)
-        return m["lot"] if m else None
-    return v
+def _lot(props: dict, spec: dict | list | None, storey: str | None = None) -> str | None:
+    """Logement d'un espace : première propriété renseignée de la liste (config.yaml > generation.lot). Avec
+    `scope: storey`, le numéro ne vaut que dans son étage (La Bâtie : « 2 ») et prend le nom de l'étage en tête."""
+    for s in spec if isinstance(spec, list) else [spec] if spec else []:
+        v = props.get(f"{s.get('pset')}.{s.get('property')}")
+        if v in (None, "", "-"):
+            continue
+        v = str(v).strip()
+        if s.get("pattern"):
+            m = re.match(s["pattern"], v)
+            if not m:
+                continue
+            v = m["lot"]
+        return f"{storey}/{v}" if s.get("scope") == "storey" and storey else v
+    return None
 
 
 def _ancestor(el, cls: str):
@@ -152,7 +156,7 @@ def _storeys(f, scale: float) -> tuple[list[Storey], dict[int, str]]:
     return out, building_of
 
 
-def _item(e, storeys_by_id: dict, lot_spec: dict | None) -> Item:
+def _item(e, storeys_by_id: dict, lot_spec: dict | list | None) -> Item:
     import ifcopenshell.util.element as ue
     st = _ancestor(e, "IfcBuildingStorey")
     bd = _ancestor(e, "IfcBuilding")
@@ -166,7 +170,7 @@ def _item(e, storeys_by_id: dict, lot_spec: dict | None) -> Item:
         type_name=t.Name if t is not None else getattr(e, "ObjectType", None),
         long_name=getattr(e, "LongName", None) if e.is_a(SPACE) else None,
         predefined=_scalar(getattr(e, "PredefinedType", None)),
-        props=props, lot=_lot(props, lot_spec) if e.is_a(SPACE) else None)
+        props=props, lot=_lot(props, lot_spec, st.Name if st is not None else None) if e.is_a(SPACE) else None)
 
 
 def _tessellate(f, entities: list, threads: int) -> tuple[dict[str, Mesh], list[str]]:

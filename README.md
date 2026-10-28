@@ -27,6 +27,7 @@ sia-check "L OREE.tgm" --mdp MDP-1778-Loree.xlsx --identite identite.json   # MD
 sia-check --mdp-identite MDP-1746.00-Avallons.xlsx --identite identite.json   # identité écrite dans un MDP existant
 sia-check "L OREE.tgm" --siagen generes/   # le projet au contrat .siagen.json (V4), surfaces et maillages
 sia-check --inventaire maquette.ifc --out inventaires/   # maquette architecte lue par le moteur de génération (V4)
+sia-check --generer maquette.ifc --out generes/ --project "Myonaz 1"   # surfaces SIA générées, au modèle Treegram
 ```
 
 - Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet), projet généré `.siagen.json` (V4, ci-dessous) ou `.ifc` (mapping dans `config.yaml > sources.ifc`). Un dossier désigne son unique `.tgm` ou `.siagen.json`.
@@ -53,6 +54,23 @@ Première brique du moteur de génération (`src/sia_check/generation/`).
 - `audit.py` fait l'audit d'entrée (codes G1 à G10 : maquette sans espaces, espace sans niveau ou sans emprise, aire déclarée différente de l'aire en plan, plancher loin de son niveau…) et écrit l'inventaire JSON.
 
 Code de sortie : `1` si un point bloque la génération (pas d'espaces, pas de niveaux), `2` si la maquette est illisible.
+
+### Génération des surfaces (`--generer`)
+
+`--generer` produit `<out>/<projet>/<projet>.siagen.json`, que la Fiabilisation ouvre comme un projet Treegram, et `generation/rapport.json`. Les surfaces intérieures sont générées depuis la V4 phase 21 ; les extérieurs, l'USPI et l'enveloppe suivront.
+
+1. **Nature des espaces** (`classify.py`). Un espace qui couvre au moins deux autres espaces est un contour : surface de plancher (`GFA`) ou logement dessiné en entier. Les extérieurs (loggias, balcons, « Surface externe… ») et le terrain sont mis de côté. Le reste, ce sont les pièces.
+2. **Classement des pièces**, de la source la plus sûre à la moins sûre :
+   - code SIA dans une propriété (`SIA416`) ;
+   - catégorie en toutes lettres (`Pset_SpaceCommon.Category`) ;
+   - préfixe du nom (`SUS_CON`) ;
+   - dictionnaire des noms de pièces (`config.yaml > generation.classify.rooms`).
+
+   Le sous-type Treegram vient du dictionnaire. Les parties communes (logement « .99. » ou « .00 ») ne sont pas des logements. Convention Treegram : un dégagement de logement compte en SUP « Distribution ». Chaque décision garde sa source, sa confiance et les sources en désaccord. Une pièce sans source prend le code `NONCLASSE`, que A3 liste.
+3. **SP par niveau** (`interiors.py`). C'est l'union des surfaces de plancher dessinées, moins les extérieurs. À défaut, c'est le contour des pièces, des murs et des poteaux, joints fermés.
+4. **Assemblage** (`assemble.py`). Les noms, les coques, `ApartmentByTgm` et les totaux de niveau suivent ceux de Treegram, ainsi que les codes de niveau (N00, S01, Toiture : le rez est trouvé par son nom, les autres niveaux sont numérotés par altitude). `IfcGlobalId` relie chaque surface à son espace.
+
+Code de sortie : `1` si l'audit d'entrée bloque, `2` si la maquette est illisible.
 
 ## Rapports (`--out`)
 
@@ -232,7 +250,8 @@ src/sia_check/
   tgm.py      décodeur du format binaire Treegram (non documenté, voir docs/ifc-schema.md §2.2)
   reader.py   .tgm / .siagen.json / .ifc -> DataFrame normalisé (seul module à lire les surfaces)
   siagen.py   contrat .siagen.json : projet au modèle Treegram produit hors Treegram (V4)
-  generation/ moteur de génération depuis l'IFC architecte (V4) : ingest, plans, audit
+  generation/ moteur de génération depuis l'IFC architecte (V4) : ingest, plans, audit, classify, interiors,
+              assemble, engine
   rules.py    règles, fonctions pures sur le DataFrame
   ratios.py   ratios informatifs SIA 416 / USPI
   viewer.py   fichier pour SIA Check Viewer (--viewer-json)

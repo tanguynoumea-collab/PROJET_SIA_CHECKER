@@ -26,7 +26,9 @@ avec --siagen, les surfaces lues (avant corrections) et leurs maillages sont éc
 un projet généré se lit comme un `.tgm`, et ce fichier tiré d'un `.tgm` en est la preuve ;
 avec --inventaire, une maquette architecte IFC est lue par le moteur de génération (V4) : niveaux, espaces,
 éléments, plans, audit d'entrée (sia_check.generation.audit), écrits dans --inventaire-json ; code de sortie 1
-si un point bloque la génération.
+si un point bloque la génération ;
+avec --generer, la maquette devient un projet généré <--out>/<projet>/<projet>.siagen.json, au modèle Treegram,
+avec son rapport de génération (sia_check.generation.engine) ; le dossier s'ouvre comme un projet Treegram.
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -77,6 +79,7 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--inventaire", type=Path, help="maquette architecte IFC à inventorier (moteur de génération)")
     ap.add_argument("--inventaire-json", type=Path,
                     help="inventaire à écrire (défaut : <maquette>.inventaire.json dans --out, sinon à côté)")
+    ap.add_argument("--generer", type=Path, help="maquette architecte IFC dont générer les surfaces SIA (V4)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -161,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
         return _mdp_identite(args)
     if args.inventaire:
         return _inventaire(args)
+    if args.generer:
+        return _generer(args)
     if not args.models:
         log.error("fichier .tgm, .ifc ou dossier de projet attendu")
         return 2
@@ -349,6 +354,25 @@ def _inventaire(args: argparse.Namespace) -> int:
         print(audit.summary(inv))
     log.info("inventaire écrit : %s", out)
     return 1 if inv["blocking"] else 0
+
+
+def _generer(args: argparse.Namespace) -> int:
+    from .generation import engine, ingest
+    try:
+        cfg = config_mod.load(args.config or _default_config())
+        g = engine.generate(args.generer, cfg.generation, args.out or args.generer.parent, args.project)
+    except engine.GenerationBlocked as ex:
+        for i in ex.issues:
+            log.error("%s %s", i.code, i.message)
+        return 1
+    except (OSError, config_mod.ConfigError, ingest.IngestError) as ex:
+        log.error("%s", ex)
+        return 2
+    if not args.quiet:
+        print(engine.summary(g.data))
+    log.info("projet généré : %s", g.siagen)
+    log.info("rapport de génération : %s", g.report)
+    return 0
 
 
 def _benchmark(args: argparse.Namespace) -> int:

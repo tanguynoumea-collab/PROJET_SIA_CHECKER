@@ -1,7 +1,7 @@
 # V4_PLAN — Génération des surfaces SIA depuis l'IFC architecte
 
 > Statut : ☑ Brouillon · ☐ Validé par l'utilisateur
-> Version : 0.3 — 28.10.2026 · décisions prises (§9), phases 19 et 20 livrées (§10, §11)
+> Version : 0.4 — 28.10.2026 · décisions prises (§9), phases 19 à 21 livrées (§10 à §12)
 
 ## 1. Objectif
 
@@ -211,3 +211,33 @@ Sondage de quatre maquettes du dossier `Analyse parametrique des projets` et de 
 
 - Le moteur embarqué dans l'app exclut aujourd'hui ifcopenshell (`app/build.ps1`). La section Génération (phase 25) devra l'embarquer, ce qui alourdira l'exécutable.
 - Pas encore de cache de triangulation : sur les maquettes de plus de 200 Mo, chaque lecture la refait.
+
+## 12. Phase 21 livrée (28.10.2026) : surfaces intérieures
+
+### Livré
+
+- `classify.py` : nature de chaque espace (pièce, plancher, logement, extérieur, site), puis classement des pièces par source (propriété, catégorie, préfixe, dictionnaire), sous-type Treegram, convention « dégagement de logement = SUP Distribution », confiance et désaccords.
+- `interiors.py` : SP par niveau, à partir des surfaces de plancher moins les extérieurs, sinon du contour des pièces, des murs et des poteaux.
+- `assemble.py` : éléments `.siagen` au modèle Treegram (coques, `ApartmentByTgm`, totaux SUP, SUS, SD, SI, SUT et SP par niveau, maillages triangulés), codes de niveau Treegram.
+- `engine.py` et CLI `--generer` : projet généré et `generation/rapport.json`, la liste de travail de l'IA et des ajustements.
+- Tests : `tests/test_generation_interiors.py` (27 tests : dictionnaire, sources, natures, SP, noms, contrôle par la Fiabilisation).
+
+### Essais (IFC → `.siagen.json` → Fiabilisation)
+
+| Maquette | Pièces | Sources | À confirmer | Fiabilisation |
+|---|---|---|---|---|
+| La Myonaz 1 | 101 | catégorie 101 | 2 | INFO ×6 (SC implicite 15–18 %), ERREUR R1 au N00 : 79 m² de surface de plancher sans pièce dessinée |
+| La Myonaz 2 | 193 | catégorie 193 | 7 | INFO ×7, aucune erreur |
+| Afiro | 135 | propriété 132, dictionnaire 3 | 39 | INFO ×7, aucune erreur |
+| CGA L04 | 31 | préfixe 31 | 4 | ERREUR R1 au N02 (toit-terrasse : 68 m² de SP pour 9 m² de pièces) |
+
+Le projet généré s'ouvre dans l'app (3D aux couleurs SIA, bilan par niveau, propositions MDP).
+
+### Points à contrôler par l'utilisateur
+
+1. **Réduits** : l'architecte les classe en SUS (« Surface utile secondaire »), alors qu'un réduit de logement serait de la SUP chez Treegram. L'IFC est suivi, et la décision est marquée à confirmer.
+2. **Bâtiments non résidentiels** (Afiro) : le `SIA416` de l'architecte est suivi même quand le nom dit autre chose (couloir en SUP, stockages en SUP, « cage des secours » en SUP). 36 désaccords sont listés pour l'IA.
+3. **SUP sans sous-type reconnu** (bureaux, ateliers) : elle prend « PieceDeVie ». Treegram n'a pas de sous-type pour le tertiaire.
+4. **Aire d'une pièce** : l'emprise en plan est retenue (SIA 416 §0.4), pas l'aire déclarée par Revit. Sous les toitures en pente, l'écart va jusqu'à 15 %. C'est réglable : `generation.sp.area_source: declared`.
+5. **SP d'une maquette sans murs** (Afiro n'exporte que les pièces) : la SP est le contour des pièces, sans l'épaisseur des murs de façade. Elle est donc sous-estimée.
+6. **Cages d'escalier** : les Myonaz n'ont aucun espace « escalier » (les paliers sont des SD de circulation). Le KPI cages reste vide, ce qui relève de la phase 22 (escaliers depuis les `IfcStair`).

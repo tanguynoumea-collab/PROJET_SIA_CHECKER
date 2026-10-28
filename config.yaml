@@ -232,3 +232,68 @@ generation:
     area_rel: 0.02             # aire déclarée (Qto) vs aire en plan : écart signalé au-delà de 2 %…
     area_abs: 0.5              # … et de 0,5 m²
     storey_gap_m: 1.0          # plancher d'un espace à plus de 1 m de l'altitude de son niveau : signalé
+  # Nature et classement des espaces (generation/classify.py). Les textes sont comparés sans accents ni casse.
+  # Ordre des sources, de la plus sûre à la moins sûre : code SIA écrit dans une propriété, catégorie SIA en
+  # toutes lettres, code en préfixe du nom, dictionnaire des noms de pièces. Un espace sans source reste
+  # « NONCLASSE » (code inconnu, listé par A3) pour l'analyse IA (phase 24) ou l'ajustement manuel.
+  classify:
+    unclassified: NONCLASSE
+    # parties communes, pas un logement : « 1A.99.00 » (tout le bâtiment) ou « 1A.01.00 » (palier du niveau)
+    common_lot: '(^[^.]+\.99\.|\.00$)'
+    sia_codes: [SUP, SUS, SUT, SD, SI, SEU, SED, SEI, SEP, SP, SA, SPT]
+    code_properties: ['SIA416', 'SIA 416', 'Catégorie SIA', 'CategorieSIA', 'SIA']   # nom de la propriété (fin de clé)
+    category_property: Pset_SpaceCommon.Category
+    categories:                    # catégorie en toutes lettres -> code ; « nature » : pas une pièce intérieure
+      'surface de plancher': {nature: plancher}
+      'surface de terrain': {nature: site}
+      'surface des abords': {nature: site}
+      'surface externe de plancher': {nature: exterieur}
+      'surface externe utile': {nature: exterieur}
+      'surface externe de degagement': {nature: exterieur}
+      'surface utile principale?': {code: SUP}
+      'surface utile secondaire': {code: SUS}
+      'surface de degagement': {code: SD}
+      "surface d'installations?": {code: SI}
+      'surface de construction': {nature: construction}
+    predefined: {GFA: plancher}
+    # contour : espace dont l'emprise couvre au moins deux autres espaces du niveau (logement dessiné en entier,
+    # surface de plancher) ; il ne compte pas comme pièce
+    container_min_children: 2
+    container_cover: 0.9
+    exterior_names: '\b(balcon|loggia|terrasse|coursive|jardin|attique ext|patio|preau|perron|toiture)\b'
+    # Dictionnaire : premier motif qui correspond au nom long, sinon au nom. « where » : lot (dans un logement),
+    # commun (hors logement), sinon partout.
+    rooms:
+      - {match: '\b(sejour|salon|living|cuisine|salle a manger|piece de vie|sej|cui|liv|sam)\b', code: SUP, type: PieceDeVie}
+      - {match: '\b(chambre|chambre pr|ch|chs|chp)\b', code: SUP, type: Chambre}
+      - {match: '\b(bureau)\b', where: lot, code: SUP, type: Chambre}
+      - {match: '\b(salle de bains?|bain|sdb)\b', code: SUP, type: PieceSecondaire_4PointsEau}
+      - {match: '\b(douche|salle d''eau|sdd|sde|wc ?/ ?d|wc d)\b', code: SUP, type: PieceSecondaire_3PointsEau}
+      - {match: '\b(wc|toilettes?|lavabo|wcv)\b', where: lot, code: SUP, type: PieceSecondaire_2PointsEau}
+      - {match: '\b(hall|entree|degagement|couloir|deg|hal|circulation|reduit|dressing|rangement|red|dre)\b', where: lot, code: SUP, type: Distribution}
+      - {match: '\b(escaliers?|cage d.escalier|esc|cage)\b', code: SD, type: Escalier}
+      - {match: '\b(ascenseurs?|asc|lift)\b', code: SD, type: Ascenseur}
+      - {match: '\b(couloir|degagement|palier|hall|corridor|circulation|sas|deg|pal|hal|cir|entree)\b', where: commun, code: SD, type: CirculationH}
+      - {match: '\b(gaines?|gtc|gt|gaine technique|shaft|vide)\b', code: SI, type: Gaine}
+      - {match: '\b(local technique|technique|chaufferie|electricite|ventilation|sprinkler|tableau|cvse|ltc|lte|ltv|lts|tec|ven|ele|machinerie|sous-station)\b', code: SI, type: Local}
+      - {match: '\b(caves?|cav|buanderie|bua|velos?|poussettes|depot|stock|stockage|abri|pc|garage|parking|stationnement|place de parc|voie de circulation|containers|dechets|sechoir|concierge|conciergerie|archives)\b', code: SUS, type: SUS}
+      - {match: '\b(wc|toilettes?|sanitaires?|vestiaires?)\b', where: commun, code: SUS, type: SUS}
+      - {match: '\b(commerce|arcade|magasin|boutique|restaurant|cafe|bureau|bureaux|administration|atelier|salle|cabinet|creche|uape|ecole)\b', where: commun, code: SUT, type: Commerce}
+    default_types: {SUP: PieceDeVie, SUS: SUS, SD: CirculationH, SI: Local, SUT: Commerce}
+    # code d'une pièce qui en fait autre chose qu'une pièce intérieure
+    code_natures: {SEU: exterieur, SED: exterieur, SEI: exterieur, SEP: exterieur, SA: site, SP: plancher}
+    # Conventions de Treegram, appliquées après les sources : un dégagement dans un logement est de la SUP
+    # « Distribution » (L'Orée : SD réservée aux circulations communes, escaliers et ascenseurs)
+    treegram_conventions: true
+  # SP par niveau (generation/interiors.py) : espaces « surface de plancher » s'il y en a, sinon contour des
+  # pièces, murs et poteaux du niveau, joints fermés et petits vides bouchés
+  sp:
+    close_m: 0.3
+    min_hole_m2: 4.0
+    area_source: plan              # plan (projection, SIA 416 §0.4) | declared (quantités IFC)
+  # Codes de niveau Treegram (N00, N01…, S01…, Toiture) : le rez est le niveau dont le nom correspond au premier
+  # motif trouvé ; les autres sont numérotés par altitude. Un niveau sans pièce au-dessus du dernier niveau
+  # occupé, au nom de toiture, devient « Toiture ». Sans rez reconnu, les noms de la maquette sont gardés.
+  levels:
+    ground: ['^N00$', '(?i)^RDC\b', '^EG\b', '^E00\b', '(?i)^niveau\s*0\b', '^0+$', '(?i)rez']
+    roof: '(?i)(toit|ttr|toiture|roof|dach)'

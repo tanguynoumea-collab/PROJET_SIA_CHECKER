@@ -1,0 +1,194 @@
+"""Nature et classement des espaces de la maquette (V4_PLAN §3.1, phase 21).
+
+1. **Nature** : tous les `IfcSpace` ne sont pas des pièces. Un espace dont l'emprise couvre au moins deux autres
+   espaces du niveau est un *contour* : surface de plancher (`GFA`, « Surface de plancher ») ou logement dessiné
+   en entier. Les extérieurs (balcons, terrasses…) et le terrain sont mis de côté pour la phase 22.
+2. **Classement des pièces**, sources de la plus sûre à la moins sûre (config.yaml > generation.classify) :
+   code SIA écrit dans une propriété (`SIA416` = SUP), catégorie en toutes lettres (`Pset_SpaceCommon.Category`
+   = « Surface utile principal »), code en préfixe du nom (`SUS_CON`), dictionnaire des noms de pièces.
+   Le sous-type Treegram (`Type`) vient du dictionnaire quand il s'accorde avec le code retenu, sinon du type
+   par défaut du code.
+3. **Conventions Treegram** : un dégagement dans un logement est de la SUP « Distribution ».
+
+Chaque décision garde sa source, sa confiance (0 à 1), sa raison et les sources en désaccord : c'est ce que
+l'analyse IA (phase 24) et l'ajustement manuel reprendront, en commençant par les moins sûres.
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+from dataclasses import dataclass, field
+
+from .ingest import Item, Model
+from .plans import Plan
+
+PIECE, PLANCHER, LOGEMENT, EXTERIEUR, SITE, CONSTRUCTION = "piece", "plancher", "logement", "exterieur", "site", "construction"
+CONFIDENCE = {"propriete": 0.95, "categorie": 0.9, "prefixe": 0.9, "dictionnaire": 0.7}
+CONFLICT_PENALTY = 0.2
+
+
+@dataclass
+class Decision:
+    gid: str
+    nature: str
+    code: str | None = None
+    type: str | None = None
+    source: str | None = None        # propriete | categorie | prefixe | dictionnaire | convention | None
+    confidence: float = 0.0
+    reason: str = ""
+    conflicts: list[str] = field(default_factory=list)
+    in_lot: bool = False
+
+
+def norm(text) -> str:
+    """Sans accents ni casse, séparateurs (_ - . /) remplacés par des espaces : « SD_ASC_1 » -> « sd asc 1 »."""
+    if text is None:
+        return ""
+    t = unicodedata.normalize("NFKD", str(text))
+    t = "".join(c for c in t if not unicodedata.combining(c)).lower()
+    return re.sub(r"[_\-.]+", " ", t).strip()
+
+
+def _label(item: Item) -> str:
+    return " / ".join(x for x in (item.name, item.long_name) if x)
+
+
+def _containers(plan: Plan, need: int, cover: float) -> set[str]:
+    shapes = [(p.item.gid, p.shape) for p in plan.spaces if p.shape is not None]
+    out = set()
+    for gid, g in shapes:
+        inside = 0
+        for other, h in shapes:
+            if other != gid and h.area > 0 and g.intersection(h).area >= cover * h.area and h.area < g.area:
+                inside += 1
+                if inside >= need:
+                    out.add(gid)
+                    break
+    return out
+
+
+class Classifier:
+    def __init__(self, cfg_generation: dict):
+        c = (cfg_generation or {}).get("classify") or {}
+        self.c = c
+        self.codes = set(c.get("sia_codes") or [])
+        self.code_props = {norm(k) for k in c.get("code_properties") or []}
+        self.cat_prop = c.get("category_property")
+        self.categories = [(re.compile(k), v) for k, v in (c.get("categories") or {}).items()]
+        self.prefix = re.compile(r"^(%s)(?=[\s_\-.]|$)" % "|".join(sorted(self.codes, key=len, reverse=True))) \
+            if self.codes else None
+        self.exterior = re.compile(c["exterior_names"]) if c.get("exterior_names") else None
+        self.rooms = [dict(r, rx=re.compile(r["match"])) for r in c.get("rooms") or []]
+        self.common = re.compile(c["common_lot"]) if c.get("common_lot") else None
+        self.defaults = c.get("default_types") or {}
+
+    def in_lot(self, item: Item) -> bool:
+        """Pièce d'un logement : numéro de logement présent et hors parties communes (sans logements : aucune)."""
+        return item.lot is not None and not (self.common and self.common.search(item.lot))
+
+    # --------------------------------------------------------------- sources
+    def _from_property(self, item: Item):
+        for k, v in item.props.items():
+            if norm(k.rsplit(".", 1)[-1]) in self.code_props and isinstance(v, str) and v.strip().upper() in self.codes:
+                return v.strip().upper(), f"propriété {k} = {v.strip()}"
+        return None
+
+    def _from_category(self, item: Item):
+        v = item.props.get(self.cat_prop) if self.cat_prop else None
+        t = norm(v)
+        for rx, spec in self.categories:
+            if t and rx.fullmatch(t):
+                return spec, f"catégorie « {v} »"
+        return None
+
+    def _from_prefix(self, item: Item):
+        for text in (item.long_name, item.name):
+            m = self.prefix.match(text.strip().upper()) if (self.prefix and text) else None
+            if m:
+                return m[1], f"préfixe du nom « {text} »"
+        return None
+
+    def _from_rooms(self, item: Item, in_lot: bool):
+        for text in (item.long_name, item.name):
+            t = norm(text)
+            if not t:
+                continue
+            for r in self.rooms:
+                where = r.get("where")
+                if where and (where == "lot") != in_lot:
+                    continue
+                if r["rx"].search(t):
+                    return r, f"nom « {text} »"
+        return None
+
+    # --------------------------------------------------------------- décision
+    def nature(self, item: Item, container: bool) -> tuple[str, str]:
+        cat = self._from_category(item)
+        cat_nature = cat[0].get("nature") if cat else None
+        gfa = (self.c.get("predefined") or {}).get(str(item.predefined or "").upper())
+        # Un extérieur l'emporte sur tout le reste : les « Surface externe de plancher » des Myonaz sont typées GFA
+        if cat_nature in (EXTERIEUR, SITE):
+            return cat_nature, cat[1]
+        if self.exterior and self.exterior.search(norm(item.long_name) + " " + norm(item.name)):
+            return EXTERIEUR, f"nom « {_label(item)} »"
+        if container:
+            if gfa == PLANCHER or cat_nature == PLANCHER or "surface de plancher" in norm(item.long_name):
+                return PLANCHER, "contour des pièces, surface de plancher"
+            return LOGEMENT, "contour d'autres espaces du niveau (logement dessiné en entier)"
+        if gfa:
+            return gfa, f"type prédéfini {item.predefined}"
+        if cat_nature:
+            return cat_nature, cat[1]
+        return PIECE, ""
+
+    def decide(self, item: Item, container: bool) -> Decision:
+        nature, why = self.nature(item, container)
+        lot = self.in_lot(item)
+        d = Decision(item.gid, nature, in_lot=lot, reason=why)
+        if nature != PIECE:
+            p = self._from_property(item)
+            if p and nature == EXTERIEUR:
+                d.code, d.source, d.confidence = p[0], "propriete", CONFIDENCE["propriete"]
+            return d
+        found = []   # (source, code, raison)
+        if (p := self._from_property(item)):
+            found.append(("propriete", p[0], p[1]))
+        if (cat := self._from_category(item)) and cat[0].get("code"):
+            found.append(("categorie", cat[0]["code"], cat[1]))
+        if (p := self._from_prefix(item)):
+            found.append(("prefixe", p[0], p[1]))
+        room = self._from_rooms(item, lot)
+        if room:
+            found.append(("dictionnaire", room[0]["code"], room[1]))
+        if not found:
+            d.code, d.reason = self.c.get("unclassified", "NONCLASSE"), f"aucune source pour « {_label(item)} »"
+            return d
+        source, code, why = found[0]
+        d.code, d.source, d.reason = code, source, why
+        if (other := (self.c.get("code_natures") or {}).get(code)):
+            d.nature, d.confidence = other, CONFIDENCE[source]
+            return d
+        d.conflicts = [f"{s} : {c} ({w})" for s, c, w in found[1:] if c != code]
+        d.confidence = CONFIDENCE[source] - (CONFLICT_PENALTY if d.conflicts else 0.0)
+        d.type = room[0].get("type") if room and room[0]["code"] == code else self.defaults.get(code)
+        if self.c.get("treegram_conventions", True) and lot and code == "SD" and d.type in ("CirculationH", None):
+            d.conflicts.append(f"{source} : SD ({why})")
+            d.code, d.type, d.source = "SUP", "Distribution", "convention"
+            d.reason = "convention Treegram : dégagement d'un logement compté en SUP « Distribution »"
+            d.confidence = CONFIDENCE["dictionnaire"]
+        return d
+
+
+def classify(model: Model, plans: list[Plan], cfg_generation: dict | None = None) -> dict[str, Decision]:
+    c = (cfg_generation or {}).get("classify") or {}
+    need, cover = int(c.get("container_min_children", 2)), float(c.get("container_cover", 0.9))
+    k = Classifier(cfg_generation or {})
+    out = {}
+    for plan in plans:
+        containers = _containers(plan, need, cover)
+        for p in plan.spaces:
+            out[p.item.gid] = k.decide(p.item, p.item.gid in containers)
+    for s in model.spaces:   # espaces sans niveau : jugés quand même, ils ne seront pas comptés
+        out.setdefault(s.gid, k.decide(s, False))
+    return out

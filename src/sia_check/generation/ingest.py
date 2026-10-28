@@ -108,7 +108,8 @@ def _props(entity) -> dict[str, object]:
 
 def _lot(props: dict, spec: dict | list | None, storey: str | None = None) -> str | None:
     """Logement d'un espace : première propriété renseignée de la liste (config.yaml > generation.lot). Avec
-    `scope: storey`, le numéro ne vaut que dans son étage (La Bâtie : « 2 ») et prend le nom de l'étage en tête."""
+    `scope: storey`, le numéro ne vaut que dans son étage (La Bâtie : « 2 ») et prend le nom de l'étage en tête ;
+    `with` met d'autres propriétés devant (La Bâtie : cage d'escalier, « 26-2 »)."""
     for s in spec if isinstance(spec, list) else [spec] if spec else []:
         v = props.get(f"{s.get('pset')}.{s.get('property')}")
         if v in (None, "", "-"):
@@ -119,6 +120,8 @@ def _lot(props: dict, spec: dict | list | None, storey: str | None = None) -> st
             if not m:
                 continue
             v = m["lot"]
+        head = [str(props[k]).strip() for k in s.get("with") or [] if props.get(k) not in (None, "", "-")]
+        v = "-".join(head + [v])
         return f"{storey}/{v}" if s.get("scope") == "storey" and storey else v
     return None
 

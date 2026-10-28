@@ -227,10 +227,21 @@ generation:
     threads: 0                 # 0 : tous les cœurs
   # Logement d'une pièce : propriété des IfcSpace (décision du 28.10.2026). Le motif garde la partie qui désigne
   # le logement : « 1A.01.02.01 » (bâtiment, étage, logement, pièce) -> « 1A.01.02 ».
-  # Première propriété renseignée de la liste ; « scope: storey » : numéro valable dans son étage seulement.
+  # Première propriété renseignée de la liste ; « scope: storey » : numéro valable dans son étage seulement ;
+  # « with » : propriétés mises devant le numéro (La Bâtie : cage 26 ou 28, appartement 2 -> « 26-2 », le MDP
+  # note « 26-202 »).
   lot:
     - {pset: Pset_HRS, property: NumeroPiece, pattern: '^(?P<lot>[^.]+\.[^.]+\.[^.]+)\.'}
-    - {pset: Pset_SpaceOccupancyRequirements, property: Appartement, scope: storey}   # La Bâtie : « 2 », « C »
+    - {pset: Pset_SpaceOccupancyRequirements, property: Appartement, scope: storey,
+       with: [Pset_SpaceOccupancyRequirements.CageEscalier]}   # La Bâtie : « 2 », « C » (communs)
+  # Chaîne USPI par logement (generation/uspi.py, modèle Treegram relevé sur L'Orée)
+  uspi:
+    partition_m: 0.2           # cloison intérieure la plus épaisse : SHA = SNH + cloisons entre les SUP
+    wall_max_m: 0.6            # mur extérieur le plus épais : SBH s'étend jusque-là, mitoyens partagés
+    step_m: 0.05               # pas de croissance des logements dans les murs (partage des mitoyens)
+    # contour brut de tout un niveau (Myonaz : « LOG », nom long « SBH », catégorie « Surface brute habitable
+    # PPE ») : borne les logements à la place de la SP. Texte sans accents ni casse (nom, nom long, propriétés).
+    sbh_contour: '(brute habitable|\bsbh\b)'
   audit:
     area_rel: 0.02             # aire déclarée (Qto) vs aire en plan : écart signalé au-delà de 2 %…
     area_abs: 0.5              # … et de 0,5 m²
@@ -242,7 +253,7 @@ generation:
   classify:
     unclassified: NONCLASSE
     # parties communes, pas un logement : « 1A.99.00 » (tout le bâtiment) ou « 1A.01.00 » (palier du niveau)
-    common_lot: '(^[^.]+\.99\.|\.00$|(^|/)C$)'
+    common_lot: '(^[^.]+\.99\.|\.00$|(^|[/-])C$)'
     sia_codes: [SUP, SUS, SUT, SD, SI, SEU, SED, SEI, SEP, SP, SA, SPT]
     code_properties: ['SIA416', 'SIA 416', 'Catégorie SIA', 'CategorieSIA', 'SIA']   # nom de la propriété (fin de clé)
     category_property: Pset_SpaceCommon.Category

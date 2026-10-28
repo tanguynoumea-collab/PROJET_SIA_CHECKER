@@ -8,6 +8,8 @@ Reproduit ce que Treegram écrit dans le `.tgm` (relevé sur L'Orée, docs/ifc-s
 - propriétés `Catégorie SIA`, `Area`, `Type`, et `ApartmentByTgm` (`Bât_Niv_Apart-nn`) pour une pièce de
   logement. `IfcGlobalId` garde le lien vers l'espace de la maquette ;
 - une surface élémentaire par extérieur (`Bât_Niv_ExtShellByTgm-n_CODE` : SEU, SED, SEI) et par toiture (SPT) ;
+- la chaîne USPI de chaque logement (`Bât_Niv_Apart-nn_CODE` : SNH avec `Bedrooms`, SHA, SBH, SVN, SVB ;
+  uspi.py) ;
 - un total par code et par niveau, dans l'ordre de Treegram, y compris à 0 m² ; SP et SEP n'existent qu'en total.
   SP, SEP et SPT portent hauteur d'étage, périmètre et DeltaX / DeltaY ; SFN (façade, sans catégorie) ses aires
   brute, nette et de réservations ; SRV (vitrages) son aire.
@@ -35,7 +37,7 @@ CATEGORY = "Catégorie SIA"
 NODE_ORDER = ["SFN", "SRV", "SUP", "SUS", "SD", "SED", "SI", "SUT", "SEU", "SNH", "SHA", "SBH", "SVN", "SVB",
               "SP", "SEP", "SPT"]
 INTERIOR_NODES = ["SUP", "SUS", "SD", "SI", "SUT", "SP"]
-USPI_NODES = ["SNH", "SHA", "SBH", "SVN", "SVB"]            # phase 23
+USPI_NODES = ["SNH", "SHA", "SBH", "SVN", "SVB"]
 EXTERIOR_CODES = ["SED", "SEU", "SEI"]
 CONTAINER_ID = 1
 
@@ -137,10 +139,18 @@ def elements(levels: list[Level], codes: dict[str, str] | None = None) -> list[E
             ext += 1
             leaves.append((f"{b}_{lv}_ExtShellByTgm-{ext}_SPT", {CATEGORY: "SPT", "Area": round(part.area, 3),
                                                                  "Type": "Toiture"}, mesh_of(part, level.z)))
+        for lot in level.lots:
+            for code in USPI_NODES:
+                props = {CATEGORY: code, "Area": round(lot.areas[code], 3), "ApartmentByTgm": apart[lot.key]}
+                if code == "SNH":
+                    props["Bedrooms"] = lot.bedrooms
+                leaves.append((f"{apart[lot.key]}_{code}", props, mesh_of(lot.shapes.get(code), level.z)))
+                totals[code] += lot.areas[code]
+        totals["SNH"] = totals["SUP"] + totals["SUS"]     # Treegram : SUP + SUS du niveau, logement ou non
         env = level.envelope or {}
         height = env.get("GrossHeight", 0.0)
         shapes = {"SP": level.sp, "SEP": level.sep, "SPT": level.spt}
-        for code in (c for c in NODE_ORDER if c not in USPI_NODES):
+        for code in NODE_ORDER:
             if code == "SFN":
                 add(code, "node", b, lv, {k: env.get(k, 0.0) for k in ("GrossArea", "NetArea", "ReservationsArea",
                                                                          "Perimeter", "GrossHeight")}, level.facade)
@@ -149,6 +159,11 @@ def elements(levels: list[Level], codes: dict[str, str] | None = None) -> list[E
             elif code in shapes:
                 props = {CATEGORY: code, "Area": round(totals[code], 3), "GrossHeight": height} | dims(shapes[code])
                 add(code, "node", b, lv, props, mesh_of(shapes[code], level.z) if code != "SPT" else None)
+            elif code == "SNH" and not level.lots and totals[code] > 0:
+                # sans logement (sous-sol : SNH = SUS), aucun Apart-nn ne le dessine : le total porte ses locaux
+                own = [r.placed.shape for r in level.rooms if r.decision.code in ("SUP", "SUS")]
+                add(code, "node", b, lv, {CATEGORY: code, "Area": round(totals[code], 3)},
+                    mesh_of(shapely.union_all(own), level.z))
             else:
                 add(code, "node", b, lv, {CATEGORY: code, "Area": round(totals[code], 3)})
         for name, props, mesh in leaves:

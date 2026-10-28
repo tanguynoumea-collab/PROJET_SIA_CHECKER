@@ -61,6 +61,7 @@ class Level:
     glazing: object = None    # geom.Mesh des ouvertures de façade (SRV)
     floor_z: float | None = None   # sol des pièces ; None : altitude du niveau IFC
     height: float | None = None    # jusqu'au niveau suivant du bâtiment ; None : hauteur IFC
+    lots: list = field(default_factory=list)   # phase 23 (uspi.py) : logements et chaîne USPI
 
     @property
     def z(self) -> float:

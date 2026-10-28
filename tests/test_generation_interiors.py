@@ -106,11 +106,18 @@ def test_generated_project_follows_the_treegram_model(generated):
     doc = json.loads(generated.siagen.read_text(encoding="utf-8"))
     n00 = [e for e in doc["elements"] if e["level"] == "N00"]
     assert [e["name"] for e in n00 if e["kind"] == "node"] == [
-        "SFN", "SRV", "SUP", "SUS", "SD", "SED", "SI", "SUT", "SEU", "SP", "SEP", "SPT"]   # USPI : phase 23
-    leaves = {e["props"]["IfcGlobalId"]: e for e in n00 if e["kind"] == "leaf"}
+        "SFN", "SRV", "SUP", "SUS", "SD", "SED", "SI", "SUT", "SEU", "SNH", "SHA", "SBH", "SVN", "SVB",
+        "SP", "SEP", "SPT"]
+    leaves = {e["props"]["IfcGlobalId"]: e for e in n00 if e["kind"] == "leaf" and "IfcGlobalId" in e["props"]}
     names = sorted(e["name"] for e in leaves.values())
     assert names == ["A_N00_ShellByTgm-01_SpaceByTgm-1_SUP", "A_N00_ShellByTgm-01_SpaceByTgm-2_SUP",
                      "A_N00_ShellByTgm-02_SpaceByTgm-1_SD"]
+    # chaîne USPI du logement (phase 23) : Apart-01, SNH = ses SUP, chambres comptées
+    uspi = {e["name"].rsplit("_", 1)[1]: e["props"] for e in n00 if "_Apart-" in e["name"]}
+    assert list(uspi) == ["SNH", "SHA", "SBH", "SVN", "SVB"]
+    assert uspi["SNH"]["ApartmentByTgm"] == "A_N00_Apart-01" and uspi["SNH"]["Bedrooms"] == 1
+    sups = sum(e["props"]["Area"] for e in leaves.values() if e["props"].get("ApartmentByTgm"))
+    assert uspi["SNH"]["Area"] == pytest.approx(sups) and uspi["SNH"]["Area"] <= uspi["SHA"]["Area"] <= uspi["SBH"]["Area"]
     sup = next(e for e in leaves.values() if e["props"].get("Type") == "Chambre")
     assert sup["props"]["ApartmentByTgm"] == "A_N00_Apart-01" and sup["props"]["Area"] == 10.0 and sup["meshes"]
     assert all(e["meshes"] for e in n00 if e["name"] == "SP")

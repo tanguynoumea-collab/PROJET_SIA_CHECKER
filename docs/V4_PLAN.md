@@ -311,3 +311,35 @@ La visionneuse pose aussi la dalle SEP sous ses surfaces élémentaires, comme l
 
 - **Altitude** : chaque surface était posée à la base de son IfcSpace, et les totaux à l'altitude du niveau IFC. Au S01 de Myonaz 2, cela donnait trois altitudes (escalier à 610,20, pièces à 611,40, SP à 612,04). Toutes les surfaces d'un niveau sont désormais posées au sol de la plupart de ses pièces (`Level.z` : altitude de base la plus fréquente, pondérée par l'aire ; à défaut, celle du niveau IFC). La hauteur d'étage (SFN, GrossHeight) est l'écart au niveau suivant : 3,60 m au S01 de Myonaz 2 au lieu de 2,96.
 - **Visionneuse** : les dalles ont maintenant un dessous. Vues d'en dessous, elles étaient ouvertes et laissaient voir la triangulation de leur dessus.
+
+## 15. Phase 23 livrée (28.10.2026) : logements et chaîne USPI
+
+### Modèle Treegram reproduit (relevé sur L'Orée, 314 logements)
+
+| Code | Treegram | Moteur (`generation/uspi.py`) |
+|---|---|---|
+| SNH | somme des SUP du logement (au millième) | idem ; `Bedrooms` = pièces de type Chambre |
+| SHA | SNH + cloisons (SHA / SNH ≈ 1,02) | contour intérieur dessiné du logement (Myonaz : `LOG`, « Surface utile principal »), sinon SUP fermées sur 0,2 m, gaines exclues |
+| SBH | un contour par logement, murs extérieurs et mitoyens (SBH / SHA ≈ 1,16) | contour brut dessiné du logement (La Bâtie : « 3P », « 4P »), sinon croissance des logements et des communs dans les murs (mitoyens partagés), bornée par le contour brut du niveau s'il existe (Myonaz : `LOG` « SBH »), sinon par la SP |
+| SVN, SVB | SHA + SEU, SBH + SEU (au centième) | idem |
+| totaux | SNH = SUP + SUS du niveau ; les autres = somme des logements | idem |
+
+Les contours dessinés prennent leur aire déclarée, comme les pièces (Myonaz N03, combles). Un lot sans SUP (caves du sous-sol) n'a pas de chaîne USPI.
+
+**Logement d'une pièce, La Bâtie** : le numéro d'appartement ne suffit pas, il faut la cage d'escalier (`with` dans `config.yaml > generation.lot`) : 4, 5 puis 6 logements par niveau, comme le MDP (avant : 2 ou 3).
+
+### Comparaison aux MDP
+
+| Projet | Logements, chambres | SHA (le MDP l'appelle SVN) | SBH par niveau |
+|---|---|---|---|
+| Myonaz 1 | 8 / 8 | identique sur les 8 logements | 181,0 / 181,0 · 223,5 / 224,0 · 223,5 / 224,0 · 186,4 / 186,7 |
+| Myonaz 2 | 16 (+1 pièce égarée) | identique du N00 au N02, sauf 2B.00.01 ; écarts au N03 (duplex ?) | −0,3 % à −0,4 % du N00 au N02 ; N03 +4,5 % |
+| La Bâtie B | 32 / 32, chambres identiques (19 × 1, 6 × 2, 7 × 3) | pas d'USPI au MDP | pas d'USPI au MDP |
+
+Les règles USPI de la Fiabilisation (U1 à U4) passent sur les trois projets. Le sujet « Typologies des logements » s'ouvre de lui-même, avec les chambres générées.
+
+### Points à contrôler
+
+1. **SNH du niveau = SUP + SUS** (sous-sol : SNH = SUS), comme Treegram. Le ratio SNH / SP en tient compte.
+2. **Myonaz 2, N03** : 2A.03.01 et 2B.03.01 valent tous deux 104,6 m² au MDP. Ce sont peut-être des duplex, que la maquette répartit autrement. Il y a aussi une pièce de 2,2 m² portant un numéro de logement à part (2B.03.02).
+3. **SE non pondérées** : SVN et SVB ajoutent les SEU à 100 %, comme Treegram. L'USPI pondère les surfaces externes.

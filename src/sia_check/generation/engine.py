@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from .. import __version__, siagen
-from . import assemble, audit, classify, exteriors, ingest, interiors, plans
+from . import assemble, audit, classify, exteriors, ingest, interiors, plans, uspi
 
 FORMAT, VERSION = "sia-check-generation", 1
 SURE = 0.8   # en dessous : décision à confirmer (IA ou manuel)
@@ -71,7 +71,9 @@ def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, l
                        "exteriors": len(lv.exteriors), "sep_m2": _r(lv.sep.area if lv.sep is not None else 0.0, 2),
                        "spt_m2": _r(lv.spt.area if lv.spt is not None else 0.0, 2),
                        "slab_m2": _r(lv.slab.area if lv.slab is not None else 0.0, 2), "envelope": lv.envelope,
-                       "totals": {k: _r(v, 2) for k, v in sorted(totals.items())}})
+                       "totals": {k: _r(v, 2) for k, v in sorted(totals.items())},
+                       "lots": [{"lot": x.key, "bedrooms": x.bedrooms, "sbh_source": x.sbh_source,
+                                 **{k: _r(v, 2) for k, v in x.areas.items()}} for x in lv.lots]})
     pieces = [x for x in spaces if x["nature"] == classify.PIECE]
     return {
         "format": FORMAT, "version": VERSION, "tool": f"sia-check {__version__}",
@@ -103,6 +105,8 @@ def generate(ifc: Path, cfg_generation: dict, out_dir: Path, project: str | None
     occupied = {lv.plan.storey.gid for lv in levels if lv.rooms}
     codes = assemble.level_codes(storeys, occupied, cfg_generation)
     exteriors.build(levels, decisions, {g for g, c in codes.items() if c.startswith("S")}, cfg_generation)
+    for lv in levels:
+        lv.lots = uspi.build(lv, decisions, cfg_generation)
     project = project or assemble.clean(ifc.stem)
     folder = Path(out_dir) / project
     els = assemble.elements(levels, codes)

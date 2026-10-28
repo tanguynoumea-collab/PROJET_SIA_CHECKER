@@ -306,3 +306,8 @@ Myonaz 1 et 2 restent à 100 % des locaux au même code, balcons compris (111 et
 Les maillages générés étaient écrits en coordonnées nationales (E ≈ 2 552 777 m) dans le `.siagen.json`, en float32 comme le cache VWR. Avec 24 bits de mantisse, chaque sommet était arrondi au quart de mètre, d'où des triangles en éventail et un scintillement en 3D (signalés sur Myonaz 2), et des aires de maillage fausses. Le moteur écrit désormais ses maillages par rapport à une origine locale (`siagen.local_origin`, arrondie à 100 m), enregistrée dans l'en-tête (`"origin"`, champ facultatif du contrat v1). Ce repère local est celui de la visionneuse, comme pour Treegram.
 
 La visionneuse pose aussi la dalle SEP sous ses surfaces élémentaires, comme la SP : SEP et balcons étaient coplanaires et se disputaient la profondeur.
+
+### Correctif du 28.10.2026 : altitude des niveaux, dalles fermées
+
+- **Altitude** : chaque surface était posée à la base de son IfcSpace, et les totaux à l'altitude du niveau IFC. Au S01 de Myonaz 2, cela donnait trois altitudes (escalier à 610,20, pièces à 611,40, SP à 612,04). Toutes les surfaces d'un niveau sont désormais posées au sol de la plupart de ses pièces (`Level.z` : altitude de base la plus fréquente, pondérée par l'aire ; à défaut, celle du niveau IFC). La hauteur d'étage (SFN, GrossHeight) est l'écart au niveau suivant : 3,60 m au S01 de Myonaz 2 au lieu de 2,96.
+- **Visionneuse** : les dalles ont maintenant un dessous. Vues d'en dessous, elles étaient ouvertes et laissaient voir la triangulation de leur dessus.

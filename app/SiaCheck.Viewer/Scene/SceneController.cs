@@ -281,7 +281,8 @@ public sealed class SceneController
 
     /// <summary>
     /// Dessus (triangulation du moteur, décalée de dz) + chants : un quadrilatère vers le bas sur chaque
-    /// arête de contour, c'est-à-dire chaque arête utilisée par un seul triangle de la surface.
+    /// arête de contour, c'est-à-dire chaque arête utilisée par un seul triangle de la surface ; + dessous,
+    /// dans le maillage des chants (même teinte assombrie).
     /// </summary>
     private static (MeshGeometry3D Top, MeshGeometry3D Edges, int[] Starts, string[] Ids) Extrude(
         IEnumerable<SurfaceGeometry> surfaces, double dz, double thickness, bool textured)
@@ -317,6 +318,17 @@ public sealed class SceneController
                 edgePos.Add(new Point3D(pa.X, pa.Y, pa.Z + dz - thickness));
                 edgeIdx.Add(k); edgeIdx.Add(k + 2); edgeIdx.Add(k + 1);
                 edgeIdx.Add(k); edgeIdx.Add(k + 3); edgeIdx.Add(k + 2);
+            }
+            // Dessous : la triangulation du dessus, retournée, au pied des chants. Sans elle, une dalle vue
+            // d'en dessous est ouverte et laisse voir les triangles de son dessus.
+            if (thickness > 0)
+            {
+                var k = edgePos.Count;
+                foreach (var p in s.Points) edgePos.Add(new Point3D(p.X, p.Y, p.Z + dz - thickness));
+                for (var t = 0; t + 2 < s.Indices.Length; t += 3)
+                {
+                    edgeIdx.Add(k + s.Indices[t]); edgeIdx.Add(k + s.Indices[t + 2]); edgeIdx.Add(k + s.Indices[t + 1]);
+                }
             }
         }
         top.Positions = topPos;

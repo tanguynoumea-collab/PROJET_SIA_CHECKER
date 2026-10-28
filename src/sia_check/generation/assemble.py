@@ -117,7 +117,7 @@ def elements(levels: list[Level], codes: dict[str, str] | None = None) -> list[E
                 props["ApartmentByTgm"] = apart[item.lot]
             props["IfcGlobalId"] = item.gid
             name = f"{b}_{lv}_ShellByTgm-{shell:02d}_SpaceByTgm-{counter[shell]}_{d.code}"
-            leaves.append((name, props, mesh_of(r.placed.shape, item.z_min if item.z_min is not None else st.elevation)))
+            leaves.append((name, props, mesh_of(r.placed.shape, level.z)))
             if d.code in totals:
                 totals[d.code] += r.area
         ext = 0
@@ -131,12 +131,12 @@ def elements(levels: list[Level], codes: dict[str, str] | None = None) -> list[E
                 props["Type"] = d.type
             props["IfcGlobalId"] = item.gid
             leaves.append((f"{b}_{lv}_ExtShellByTgm-{ext}_{d.code}", props,
-                           mesh_of(r.placed.shape, item.z_min if item.z_min is not None else st.elevation)))
+                           mesh_of(r.placed.shape, level.z)))
             totals[d.code] += r.area
         for part in getattr(level.spt, "geoms", [level.spt]) if level.spt is not None else []:
             ext += 1
             leaves.append((f"{b}_{lv}_ExtShellByTgm-{ext}_SPT", {CATEGORY: "SPT", "Area": round(part.area, 3),
-                                                                 "Type": "Toiture"}, mesh_of(part, st.elevation)))
+                                                                 "Type": "Toiture"}, mesh_of(part, level.z)))
         env = level.envelope or {}
         height = env.get("GrossHeight", 0.0)
         shapes = {"SP": level.sp, "SEP": level.sep, "SPT": level.spt}
@@ -148,7 +148,7 @@ def elements(levels: list[Level], codes: dict[str, str] | None = None) -> list[E
                 add(code, "node", b, lv, {"Area": env.get("SRV", 0.0)}, level.glazing)
             elif code in shapes:
                 props = {CATEGORY: code, "Area": round(totals[code], 3), "GrossHeight": height} | dims(shapes[code])
-                add(code, "node", b, lv, props, mesh_of(shapes[code], st.elevation) if code != "SPT" else None)
+                add(code, "node", b, lv, props, mesh_of(shapes[code], level.z) if code != "SPT" else None)
             else:
                 add(code, "node", b, lv, {CATEGORY: code, "Area": round(totals[code], 3)})
         for name, props, mesh in leaves:

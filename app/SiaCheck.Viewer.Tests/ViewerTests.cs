@@ -223,7 +223,7 @@ public class ExtrusionTests
         var models = err.Children.OfType<GeometryModel3D>().ToList();
         Assert.Equal(4, models.Count);   // SEP et SEU : dessus + chants
         var edge = (MeshGeometry3D)models[1].Geometry;
-        Assert.Equal(16, edge.Positions.Count);   // 4 côtés × 4 sommets
+        Assert.Equal(16 + 4, edge.Positions.Count);   // 4 côtés × 4 sommets + dessous (4 sommets)
         // SEP : total de plancher, posé sous ses surfaces élémentaires comme la SP (descente 0,04, épaisseur 0,30)
         Assert.Equal(0.03 - 0.04 - 0.30, edge.Positions.Min(p => p.Z), 3);
     }

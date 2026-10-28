@@ -61,11 +61,12 @@ def roof_levels(levels: list[Level]) -> list[Level]:
         occupied = [lv for lv in own if lv.sp is not None]
         if not occupied:
             continue
-        top = max(occupied, key=lambda lv: lv.plan.storey.elevation)
-        if any(lv.plan.storey.elevation > top.plan.storey.elevation for lv in own):
+        top = max(occupied, key=lambda lv: lv.z)
+        if any(lv.z > top.z for lv in own):
             continue
         st = top.plan.storey
-        roof = Storey(f"toiture:{b}", "Toiture", b, st.elevation + (st.height or DEFAULT_HEIGHT_M), None, st.rank + 1)
+        roof = Storey(f"toiture:{b}", "Toiture", b, top.z + (top.height or st.height or DEFAULT_HEIGHT_M), None,
+                      st.rank + 1)
         out.append(Level(Plan(roof)))
     return out
 
@@ -127,7 +128,7 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
         lv.sep = shapely.union_all(contours + [r.placed.shape for r in lv.exteriors]) if (contours or lv.exteriors) else None
 
     for b in dict.fromkeys(lv.plan.storey.building for lv in levels):
-        own = sorted((lv for lv in levels if lv.plan.storey.building == b), key=lambda lv: lv.plan.storey.elevation)
+        own = sorted((lv for lv in levels if lv.plan.storey.building == b), key=lambda lv: lv.z)
         for below, lv in zip(own, own[1:]):
             if below.sp is None:
                 continue
@@ -143,7 +144,7 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
 
     for lv in levels:
         st = lv.plan.storey
-        h = st.height or DEFAULT_HEIGHT_M
+        h = lv.height or st.height or DEFAULT_HEIGHT_M
         if lv.sp is None:
             lv.envelope = {"GrossArea": 0.0, "NetArea": 0.0, "ReservationsArea": 0.0, "Perimeter": 0.0,
                            "GrossHeight": round(h, 3), "SRV": 0.0}
@@ -153,7 +154,7 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
         # et portes vitrées comprises
         resa, panels = _openings(lv, lv.sp)
         glass = resa
-        lv.facade = vertical_mesh([(a, b, st.elevation, st.elevation + h) for ring in _rings(lv.sp)
+        lv.facade = vertical_mesh([(a, b, lv.z, lv.z + h) for ring in _rings(lv.sp)
                                    for a, b in zip(list(ring.coords), list(ring.coords)[1:])])
         lv.glazing = vertical_mesh(panels)
         gross = perimeter * h

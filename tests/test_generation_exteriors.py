@@ -82,3 +82,18 @@ def test_facade_and_glazing_meshes_are_vertical():
     f, g = n00.facade, n00.glazing
     assert len(f.indices) == 4 * 6 and set(f.vertices[2::3]) == {10.0, 13.0}   # 4 murs, 2 triangles chacun
     assert len(g.indices) == 6 and set(g.vertices[2::3]) == {10.0, 11.5}
+
+
+def test_level_altitude_is_the_floor_of_most_rooms():
+    """Myonaz 2 S01 : niveau IFC à 612,04, pièces à 611,40, un escalier qui descend à 610,20 : tout à 611,40."""
+    s01, n00 = level("S01", 612.04, 2.96), level("N00", 615.0, 2.81)
+    for gid, shape, z in (("cave", box(0, 0, 10, 10), 611.40), ("esc", box(10, 0, 12, 3), 610.20)):
+        s01.rooms.append(interiors.Room(plans.Placed(Item(gid, "IfcSpace", gid, "A", "S01", z_min=z), shape),
+                                        classify.Decision(gid, "piece", "SUS"), 1.0))
+    n00.rooms.append(interiors.Room(plans.Placed(Item("ch", "IfcSpace", "ch", "A", "N00", z_min=615.0), box(0, 0, 9, 9)),
+                                    classify.Decision("ch", "piece", "SUP"), 1.0))
+    for lv in (s01, n00):
+        lv.floor_z = interiors.floor_z(lv)
+    interiors.heights([s01, n00])
+    assert s01.z == 611.40 and n00.z == 615.0 and s01.height == pytest.approx(3.6)
+    assert level("N01", 618.0, 3.0).z == 618.0          # sans pièce : altitude du niveau IFC

@@ -12,8 +12,16 @@
   La Bâtie ne la compte pas (SEP du rez 49,8 m², dalle 1 081 m²).
 - **SEP** du niveau : union des extérieurs, des contours et des toitures (Treegram compte les SPT dans la SEP ;
   la Fiabilisation les en retire, rules.COUNTED_IN).
-- **SFN** (façade) : périmètre de la SP × hauteur d'étage ; réservations = fenêtres et portes de la façade
-  (largeur de l'emprise × hauteur du maillage) ; **SRV** (vitrages) = ces mêmes ouvertures, comme chez Treegram.
+- **Ouvertures de façade** : fenêtres et portes posées sur le contour de la SP (à `FACADE_REACH_M` près). Une
+  ouverture que la maquette dit intérieure (`IsExternal` faux, Pset_WindowCommon / Pset_DoorCommon) n'en est
+  jamais, même près du contour ; une ouverture dite extérieure en est une. Aire : grand côté de l'emprise × hauteur
+  du maillage.
+- **SFN** (façade) : périmètre de la SP × hauteur d'étage ; réservations = toutes les ouvertures de façade. Le
+  maillage de la façade est percé de ces ouvertures (une baie vitrée se voit comme un trou dans la SFN).
+- **SRV** (vitrages extérieurs) : les fenêtres de façade, et les portes de façade vitrées (nom ou type :
+  `envelope.glazed_doors`). Une porte d'entrée pleine, une porte de garage restent des réservations sans vitrage.
+  Les vitrages intérieurs (cloisons vitrées, fenêtres intérieures) ne comptent pas. Treegram L'Orée : SRV ≈
+  réservations, il ne distinguait pas les portes pleines.
 - Dimensions des totaux SP, SEP et SPT : hauteur d'étage, périmètre, DeltaX / DeltaY (rectangle minimal).
 """
 
@@ -22,8 +30,12 @@ from __future__ import annotations
 import shapely
 from shapely.geometry.base import BaseGeometry
 
+import re
+
+from shapely.geometry import box
+
 from ..geom import Mesh
-from .classify import EXTERIEUR, Decision
+from .classify import EXTERIEUR, Decision, norm
 from .ingest import Storey
 from .interiors import Level, Room, area_of
 from .plans import Plan
@@ -90,15 +102,33 @@ def _rings(g: BaseGeometry):
             yield from p.interiors
 
 
-def _openings(level: Level, sp: BaseGeometry) -> tuple[float, list]:
-    """(réservations en m², panneaux) : fenêtres et portes posées sur le contour de la SP. Largeur = grand côté
-    du rectangle minimal de leur emprise, hauteur = celle du maillage."""
+GLAZED_DOORS = r"(vitr|fenetre|verre|glass|baie|coulissant|porte fenetre|\bpf\b)"
+
+
+def _external(it) -> bool | None:
+    """IsExternal de la maquette (Pset_WindowCommon, Pset_DoorCommon), None s'il n'est pas renseigné."""
+    v = next((v for k, v in (it.props or {}).items() if k.endswith(".IsExternal")), None)
+    return v if isinstance(v, bool) else None
+
+
+def _openings(level: Level, sp: BaseGeometry, glazed_doors: str = GLAZED_DOORS, band: tuple[float, float] | None = None
+              ) -> tuple[float, float, list, list]:
+    """(réservations m², vitrages m², panneaux des réservations, panneaux des vitrages) de la façade du niveau.
+    `band` (z0, z1) : hauteur d'étage ; une ouverture n'y compte que pour sa part comprise (allège sous le sol fini,
+    fenêtre à cheval sur deux étages), comme la façade brute qui n'a que cette hauteur."""
     edge = sp.boundary
-    resa, panels = 0.0, []
+    glazed = re.compile(glazed_doors)
+    resa = glass = 0.0
+    holes, panes = [], []
     for p in level.plan.of("IfcWindow", "IfcDoor"):
         it = p.item
-        if p.shape is None or it.z_min is None or it.z_max is None or p.shape.distance(edge) > FACADE_REACH_M:
+        if p.shape is None or it.z_min is None or it.z_max is None:
             continue
+        external = _external(it)
+        if external is False or (external is None and p.shape.distance(edge) > FACADE_REACH_M):
+            continue   # intérieure (dit la maquette), ou loin de la façade
+        if external is True and p.shape.distance(edge) > 2 * FACADE_REACH_M:
+            continue   # dite extérieure mais hors du contour de ce niveau (cour, autre bâtiment)
         r = p.shape.minimum_rotated_rectangle
         c = list(r.exterior.coords) if hasattr(r, "exterior") else []
         if len(c) < 3:
@@ -106,9 +136,48 @@ def _openings(level: Level, sp: BaseGeometry) -> tuple[float, list]:
         a, b, d = c[0], c[1], c[3] if len(c) > 3 else c[2]
         side = max(((a, b), (a, d)), key=lambda s: (s[1][0] - s[0][0]) ** 2 + (s[1][1] - s[0][1]) ** 2)
         width = ((side[1][0] - side[0][0]) ** 2 + (side[1][1] - side[0][1]) ** 2) ** 0.5
-        resa += width * (it.z_max - it.z_min)
-        panels.append((side[0], side[1], it.z_min, it.z_max))
-    return resa, panels
+        zl, zh = (max(it.z_min, band[0]), min(it.z_max, band[1])) if band else (it.z_min, it.z_max)
+        if zh - zl <= 0.01:
+            continue
+        m2 = width * (zh - zl)
+        panel = (side[0], side[1], zl, zh)
+        resa += m2
+        holes.append(panel)
+        if it.ifc_class.startswith("IfcWindow") or glazed.search(norm(f"{it.name} {it.type_name} {it.long_name}")):
+            glass += m2
+            panes.append(panel)
+    return resa, glass, holes, panes
+
+
+def facade_mesh(sp: BaseGeometry, z0: float, z1: float, holes: list) -> Mesh | None:
+    """Façade du niveau : un panneau vertical par côté de la SP, percé des ouvertures qui s'y projettent."""
+    v, idx = [], []
+    for ring in _rings(sp):
+        pts = list(ring.coords)
+        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+            length = ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
+            if length < 1e-6:
+                continue
+            ux, uy = (x1 - x0) / length, (y1 - y0) / length
+            wall = box(0.0, z0, length, z1)
+            cut = []
+            for (ax, ay), (bx, by), zl, zh in holes:
+                # distance au côté (normale) et position le long du côté, pour les deux bouts de l'ouverture
+                ua, ub = (ax - x0) * ux + (ay - y0) * uy, (bx - x0) * ux + (by - y0) * uy
+                da, db = abs((ax - x0) * uy - (ay - y0) * ux), abs((bx - x0) * uy - (by - y0) * ux)
+                if max(da, db) > 2 * FACADE_REACH_M or max(ua, ub) < 0 or min(ua, ub) > length:   # emprise à 0,6 m, axe un peu plus loin
+                    continue
+                cut.append(box(min(ua, ub), zl, max(ua, ub), zh))
+            face = wall.difference(shapely.union_all(cut)) if cut else wall
+            if face.is_empty:
+                continue
+            for t in getattr(shapely.constrained_delaunay_triangles(face), "geoms", []):
+                if t.area <= 1e-9 or not face.covers(t.representative_point()):
+                    continue
+                for u, z in list(t.exterior.coords)[:3]:
+                    idx.append(len(v) // 3)
+                    v += [x0 + ux * u, y0 + uy * u, z]
+    return Mesh(v, idx) if idx else None
 
 
 def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set[str],
@@ -150,13 +219,10 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
                            "GrossHeight": round(h, 3), "SRV": 0.0}
             continue
         perimeter = lv.sp.length
-        # Treegram : vitrages ≈ réservations (L'Orée E09 N03 : SRV 246,2 m², réservations 244,4 m²) ; portes-fenêtres
-        # et portes vitrées comprises
-        resa, panels = _openings(lv, lv.sp)
-        glass = resa
-        lv.facade = vertical_mesh([(a, b, lv.z, lv.z + h) for ring in _rings(lv.sp)
-                                   for a, b in zip(list(ring.coords), list(ring.coords)[1:])])
-        lv.glazing = vertical_mesh(panels)
+        env_cfg = (cfg_generation or {}).get("envelope") or {}
+        resa, glass, holes, panes = _openings(lv, lv.sp, env_cfg.get("glazed_doors") or GLAZED_DOORS, (lv.z, lv.z + h))
+        lv.facade = facade_mesh(lv.sp, lv.z, lv.z + h, holes)
+        lv.glazing = vertical_mesh(panes)
         gross = perimeter * h
         lv.envelope = {"GrossArea": round(gross, 2), "NetArea": round(max(gross - resa, 0.0), 2),
                        "ReservationsArea": round(resa, 2), "Perimeter": round(perimeter, 2),

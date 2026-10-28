@@ -88,7 +88,10 @@ def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, l
            project: str, codes: dict[str, str] | None = None, surfaces: dict[str, str] | None = None) -> dict:
     codes, surfaces = codes or {}, surfaces or {}
     placed = {p.item.gid: p for plan in pl for p in plan.spaces}
-    counted = {r.placed.item.gid: r.area for lv in levels for r in lv.rooms + lv.exteriors}
+    counted = Counter()   # un palier coupé de sa cage d'escalier : deux surfaces, un espace
+    for lv in levels:
+        for r in lv.rooms + lv.exteriors:
+            counted[r.placed.item.gid] += r.area
     near = _neighbours(pl, decisions)
     spaces = []
     for s in model.spaces:
@@ -161,7 +164,8 @@ def generate(ifc: Path, cfg_generation: dict, out_dir: Path, project: str | None
     decisions = classify.classify(model, pl, cfg_generation)
     project = project or assemble.clean(ifc.stem)
     folder = Path(out_dir) / project
-    journal.apply(journal.load(folder), decisions, cfg_generation)   # décisions acceptées (IA, manuel)
+    journal.apply(journal.load(folder), decisions, cfg_generation,   # décisions acceptées (IA, manuel)
+                  classify.type_for(model, decisions, cfg_generation))
     log.info("ÉTAPE 4/%d surfaces SIA et USPI", STEPS)
     levels = interiors.build(pl, decisions, cfg_generation)
     levels += exteriors.roof_levels(levels)
@@ -175,7 +179,10 @@ def generate(ifc: Path, cfg_generation: dict, out_dir: Path, project: str | None
     # maillages en repère local : en float32, les coordonnées nationales les arrondiraient au quart de mètre
     origin = siagen.local_origin(els)
     path = siagen.write(els, folder / f"{project}{siagen.SUFFIX}", project, source=str(ifc), origin=origin)
-    surfaces = {e.props["IfcGlobalId"]: e.name for e in els if e.kind == "leaf" and e.props.get("IfcGlobalId")}
+    surfaces = {}
+    for e in els:   # première surface de l'espace (le palier, pour un palier coupé de sa cage)
+        if e.kind == "leaf" and e.props.get("IfcGlobalId"):
+            surfaces.setdefault(e.props["IfcGlobalId"], e.name)
     data = report(model, pl, issues, decisions, levels, project, codes, surfaces)
     (folder / MAQUETTE).parent.mkdir(parents=True, exist_ok=True)
     (folder / MAQUETTE).write_text(json.dumps(maquette(model, codes, origin), separators=(",", ":")), encoding="utf-8")

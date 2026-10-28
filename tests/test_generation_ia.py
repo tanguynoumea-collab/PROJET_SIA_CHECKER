@@ -111,6 +111,6 @@ def test_app_contract_maquette_surface_links_and_manual_decision(tmp_path):
     assert cli.main(["--decider", str(g.folder), "--ids", sej["gid"], "--code", "SUS"]) == 0
     assert cli.main(["--decider", str(g.folder), "--ids", sej["gid"], "--code", "SUS", "--type", "Gaine"]) == 2
     (d,) = journal.load(g.folder)
-    assert (d["origine"], d["statut"], d["code"], d["type"]) == ("manuel", "acceptée", "SUS", "SUS")
+    assert (d["origine"], d["statut"], d["code"], d["type"]) == ("manuel", "acceptée", "SUS", "Parking")
     again = engine.generate(ifc, cfg, tmp_path / "out", "Synth")
     assert next(s for s in again.data["spaces"] if s["gid"] == sej["gid"])["source"] == "manuel"

@@ -24,7 +24,8 @@ public sealed partial class MainViewModel
     public static readonly Dictionary<string, string[]> SpaceTypes = new()
     {
         ["SUP"] = ["PieceDeVie", "Chambre", "PieceSecondaire_2PointsEau", "PieceSecondaire_3PointsEau", "PieceSecondaire_4PointsEau", "Distribution"],
-        ["SUS"] = ["SUS"], ["SUT"] = ["Commerce"], ["SD"] = ["CirculationH", "Escalier", "Ascenseur"], ["SI"] = ["Gaine", "Local"],
+        ["SUS"] = ["Parking", "Cave", "Buanderie", "LocalVelos", "LocalPoussettes", "LocalConcierge", "Depot", "Sanitaires", "LocauxCommuns"],
+        ["SUT"] = ["Commerce"], ["SD"] = ["CirculationH", "Escalier", "Ascenseur"], ["SI"] = ["Gaine", "Local"],
         ["SEU"] = ["Balcon", "Terrasse"], ["SED"] = ["CirculationExt"], ["SEI"] = [],
     };
 

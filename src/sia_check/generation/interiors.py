@@ -14,6 +14,12 @@ pièces à 611,40 ; Afiro S01 : 1,9 m sous ses pièces). Toutes les surfaces du 
 Treegram : une fosse ou un escalier qui descend ne décale pas sa surface. Hauteur d'étage = écart au niveau
 suivant du bâtiment.
 
+**Cage d'escalier dans un palier** (Myonaz : « PAL », La Bâtie : hall « ENT » du rez) : la part de l'espace occupée
+par un IfcStair (enveloppe convexe de son emprise) devient une surface SD « Escalier », le reste reste palier
+(CirculationH), comme chez Treegram où cages et paliers sont des surfaces distinctes (L'Orée : 134 Escalier). Les
+ratios par cage d'escalier en dépendent. En dessous de `stairs.min_m2`, la part reste au palier ; si le palier
+restant est plus petit, l'espace entier devient la cage.
+
 **Aire d'une pièce** : son emprise en plan (`sp.area_source: plan`, SIA 416 §0.4), ou l'aire déclarée par les
 quantités IFC (`declared`), à défaut l'emprise. Les pièces sans emprise en plan ne sont pas comptées.
 """
@@ -21,7 +27,7 @@ quantités IFC (`declared`), à défaut l'emprise. Les pièces sans emprise en p
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import shapely
 from shapely.geometry import Polygon
@@ -133,11 +139,44 @@ def build(plans: list[Plan], decisions: dict[str, Decision], cfg_generation: dic
             if d.nature != PIECE or p.shape is None:
                 continue
             lv.rooms.append(Room(p, d, area_of(p, declared)))
+        split_stairs(lv, float(((cfg_generation or {}).get("stairs") or {}).get("min_m2", 2.0)))
         lv.sp, lv.sp_method = surface_de_plancher(plan, decisions, close, min_hole)
         lv.floor_z = floor_z(lv)
         out.append(lv)
     heights(out)
     return out
+
+
+STAIR_TYPES = ("Escalier", "Ascenseur")
+
+
+def split_stairs(lv: Level, min_m2: float = 2.0) -> int:
+    """Sépare les cages d'escalier des paliers qui les contiennent ; renvoie le nombre de cages créées."""
+    stairs = [p.shape.convex_hull for p in lv.plan.of("IfcStair") if p.shape is not None and not p.shape.is_empty]
+    if not stairs:
+        return 0
+    cage_all = shapely.union_all(stairs)
+    out, n = [], 0
+    for r in lv.rooms:
+        d = r.decision
+        if d.code != "SD" or d.type in STAIR_TYPES or r.placed.shape is None:
+            out.append(r)
+            continue
+        cage = r.placed.shape.intersection(cage_all)
+        if cage.area < min_m2:
+            out.append(r)
+            continue
+        rest = r.placed.shape.difference(cage_all)
+        scale = r.area / r.placed.area if r.placed.area > 0 else 1.0   # aire déclarée répartie au prorata de l'emprise
+        why = f"cage d'escalier (IfcStair) dans « {r.placed.item.long_name or r.placed.item.name} »"
+        if rest.area < min_m2:   # palier résiduel : tout l'espace est la cage
+            out.append(replace(r, decision=replace(d, type="Escalier", reason=f"{d.reason} ; {why}")))
+        else:
+            out.append(Room(replace(r.placed, shape=rest), d, rest.area * scale))
+            out.append(Room(replace(r.placed, shape=cage), replace(d, type="Escalier", reason=why), cage.area * scale))
+        n += 1
+    lv.rooms = out
+    return n
 
 
 def floor_z(lv: Level) -> float | None:

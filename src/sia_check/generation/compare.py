@@ -130,7 +130,14 @@ def compare(folder: Path, mdp_path: Path, cfg: Config, building: str | None = No
     df, _ = _generated(folder, cfg)
     etages = cfg.mdp.get("etages") or {}
     df["level"] = df.level.map(lambda lv: etages.get(lv, lv))     # Toiture -> TOI, comme dans le MDP exporté
-    leaves = df[(df.kind == "leaf") & df.category.isin(NET)].reset_index(drop=True)
+    leaves = df[(df.kind == "leaf") & df.category.isin(NET)]
+    # un espace coupé en deux surfaces (palier et cage d'escalier) est un seul local du MDP : aires sommées
+    split = leaves.gid.notna() & leaves.duplicated(["gid", "category"], keep=False)
+    if split.any():
+        merged = leaves[split].groupby(["gid", "category"], as_index=False).agg(
+            {**{c: "first" for c in leaves.columns if c not in ("gid", "category", "area")}, "area": "sum"})
+        leaves = pd.concat([leaves[~split], merged], ignore_index=True)
+    leaves = leaves.reset_index(drop=True)
     nodes = df[df.kind == "node"]
     nettes = nettes[nettes.code.isin(NET)].reset_index(drop=True)
     brutes = brutes[brutes.code.isin(GROSS)]

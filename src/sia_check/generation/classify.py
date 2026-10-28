@@ -109,18 +109,31 @@ class Classifier:
                 return m[1], f"préfixe du nom « {text} »"
         return None
 
-    def _from_rooms(self, item: Item, in_lot: bool):
+    def _from_rooms(self, item: Item, in_lot: bool, code: str | None = None):
+        """Première entrée du dictionnaire qui correspond au nom long, sinon au nom ; avec `code`, parmi les seules
+        entrées de ce code (sous-type d'une pièce dont le code vient d'une autre source)."""
         for text in (item.long_name, item.name):
             t = norm(text)
             if not t:
                 continue
             for r in self.rooms:
                 where = r.get("where")
-                if where and (where == "lot") != in_lot:
+                if where and (where == "lot") != in_lot or code is not None and r["code"] != code:
                     continue
                 if r["rx"].search(t):
                     return r, f"nom « {text} »"
         return None
+
+    def _type(self, item: Item, in_lot: bool, code: str, room) -> str | None:
+        """Sous-type : celui du dictionnaire pour ce code (« CIR » classé SUS par l'architecte : la voie du parking),
+        sinon le sous-type par défaut du code."""
+        if room and room[0]["code"] == code:
+            return room[0].get("type")
+        own = self._from_rooms(item, in_lot, code)
+        return own[0].get("type") if own else self.defaults.get(code)
+
+    #: codes dont le sous-type compte pour l'export MDP (affectation) : introuvable dans le nom, la question part à l'IA
+    TYPED = ("SUS",)
 
     # --------------------------------------------------------------- décision
     def nature(self, item: Item, container: bool) -> tuple[str, str]:
@@ -209,7 +222,9 @@ class Classifier:
             return self._exterior(item, d) if other == EXTERIEUR else d
         d.conflicts = [f"{s} : {c} ({w})" for s, c, w in found[1:] if c != code]
         d.confidence = CONFIDENCE[source] - (CONFLICT_PENALTY if d.conflicts else 0.0)
-        d.type = room[0].get("type") if room and room[0]["code"] == code else self.defaults.get(code)
+        d.type = self._type(item, lot, code, room)
+        if code in self.TYPED and not (room and room[0]["code"] == code) and not self._from_rooms(item, lot, code):
+            d.conflicts.append(f"sous-type : aucun nom reconnu pour une {code}, « {d.type} » par défaut")
         if self.c.get("treegram_conventions", True) and lot and code == "SD" and d.type in ("CirculationH", None):
             d.conflicts.append(f"{source} : SD ({why})")
             d.code, d.type, d.source = "SUP", "Distribution", "convention"
@@ -240,6 +255,17 @@ def classify(model: Model, plans: list[Plan], cfg_generation: dict | None = None
     return out
 
 
+def type_for(model: Model, decisions: dict[str, Decision], cfg_generation: dict | None = None):
+    """(gid, code) -> sous-type que le dictionnaire donne à cet espace pour ce code (journal.apply)."""
+    k = Classifier(cfg_generation or {})
+    items = {s.gid: s for s in model.spaces}
+
+    def f(gid: str, code: str) -> str | None:
+        it = items.get(gid)
+        return k._type(it, decisions[gid].in_lot, code, None) if it is not None else None
+    return f
+
+
 def without_flats(model: Model, decisions: dict[str, Decision]) -> dict[str, int]:
     """Bâtiment sans logement (aucune pièce dans un lot) : la SUP de l'architecte, au sens de la SIA 416, est de
     la SUT chez Treegram, dont les sous-types SUP sont ceux du logement (décision du 28.10.2026, sur la
@@ -254,7 +280,7 @@ def without_flats(model: Model, decisions: dict[str, Decision]) -> dict[str, int
             continue
         # décision approuvée : pas un désaccord, l'espace ne repart pas à l'analyse IA pour cette seule raison
         sanitary = (d.type or "").startswith("PieceSecondaire")
-        d.code, d.type = ("SUS", "SUS") if sanitary else ("SUT", "Commerce")
+        d.code, d.type = ("SUS", "Sanitaires") if sanitary else ("SUT", "Commerce")
         d.reason = f"convention Treegram : bâtiment sans logement, SUP ({d.source} : {d.reason}) comptée en {d.code}"
         d.source = "convention"
         out[b] = out.get(b, 0) + 1

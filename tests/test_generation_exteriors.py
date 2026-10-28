@@ -67,8 +67,21 @@ def test_facade_and_glazing():
                           ("d1", "IfcDoor", box(10, 9.9, 11, 10.1), 2.0),      # en façade : 1 × 2
                           ("d2", "IfcDoor", box(10, 5, 11, 5.2), 2.0)])        # porte intérieure : ignorée
     exteriors.build([n00], {}, set(), {})
+    # SRV : vitrages extérieurs ; la porte de façade (pleine) est une réservation sans vitrage
     assert n00.envelope == {"GrossArea": 180.0, "NetArea": 175.0, "ReservationsArea": 5.0, "Perimeter": 60.0,
-                            "GrossHeight": 3.0, "SRV": 5.0}
+                            "GrossHeight": 3.0, "SRV": 3.0}
+
+
+def test_interior_glazing_and_glazed_doors():
+    """IsExternal de la maquette : une fenêtre intérieure près du contour n'est pas de la façade ; une porte vitrée
+    de façade est un vitrage."""
+    n00 = level("N00", 0.0, 3.0, sp=box(0, 0, 20, 10),
+                openings=[("w1", "IfcWindow", box(5, -0.1, 7, 0.1), 1.5), ("w2", "IfcWindow", box(12, 0.1, 13, 0.3), 1.0),
+                          ("pf", "IfcDoor", box(15, -0.1, 16, 0.1), 2.0)])
+    n00.plan.elements[1].item.props = {"Pset_WindowCommon.IsExternal": False}
+    n00.plan.elements[2].item.type_name = "Porte-fenêtre vitrée"
+    exteriors.build([n00], {}, set(), {})
+    assert n00.envelope["ReservationsArea"] == 5.0 and n00.envelope["SRV"] == 5.0
 
 
 def test_dims_follow_the_minimal_rectangle():
@@ -80,8 +93,32 @@ def test_facade_and_glazing_meshes_are_vertical():
     n00 = level("N00", 10.0, 3.0, sp=box(0, 0, 20, 10), openings=[("w1", "IfcWindow", box(5, -0.1, 7, 0.1), 1.5)])
     exteriors.build([n00], {}, set(), {})
     f, g = n00.facade, n00.glazing
-    assert len(f.indices) == 4 * 6 and set(f.vertices[2::3]) == {10.0, 13.0}   # 4 murs, 2 triangles chacun
+    # façade percée de la fenêtre : aire du maillage = brut − réservations, sommets de 10 à 13 m (et la baie)
+    v, i = f.vertices, f.indices
+    area = 0.0
+    for t in range(0, len(i), 3):
+        (ax, ay, az), (bx, by, bz), (cx, cy, cz) = (v[3 * i[t + k]: 3 * i[t + k] + 3] for k in range(3))
+        ux, uy, uz, wx, wy, wz = bx - ax, by - ay, bz - az, cx - ax, cy - ay, cz - az
+        area += ((uy * wz - uz * wy) ** 2 + (uz * wx - ux * wz) ** 2 + (ux * wy - uy * wx) ** 2) ** 0.5 / 2
+    assert area == pytest.approx(180.0 - 3.0) and {10.0, 13.0} <= set(v[2::3]) <= {10.0, 11.5, 13.0}
     assert len(g.indices) == 6 and set(g.vertices[2::3]) == {10.0, 11.5}
+
+
+def test_stair_inside_a_landing_becomes_its_own_cage():
+    """Myonaz : palier « PAL » de 17,6 m² dont l'escalier occupe 8,2 m² -> une cage Escalier et un palier."""
+    lv = level("N01", 0.0, 3.0)
+    pal = plans.Placed(Item("pal", "IfcSpace", "PAL", "A", "N01", long_name="Palier"), box(0, 0, 6, 3))
+    lv.rooms.append(interiors.Room(pal, classify.Decision("pal", "piece", "SD", "CirculationH"), 18.0))
+    lv.plan.elements.append(plans.Placed(Item("st", "IfcStair", "Escalier", "A", "N01"), box(0, 0, 3, 3)))
+    assert interiors.split_stairs(lv) == 1
+    (rest, cage) = lv.rooms
+    assert (rest.decision.type, cage.decision.type) == ("CirculationH", "Escalier")
+    assert rest.area == pytest.approx(9.0) and cage.area == pytest.approx(9.0)   # aire déclarée au prorata
+    small = level("N02", 3.0, 3.0)
+    small.rooms.append(interiors.Room(plans.Placed(pal.item, box(0, 0, 3.5, 3)), classify.Decision("pal", "piece", "SD", "CirculationH"), 10.5))
+    small.plan.elements.append(plans.Placed(Item("st", "IfcStair", "Escalier", "A", "N02"), box(0, 0, 3, 3)))
+    interiors.split_stairs(small)
+    assert [r.decision.type for r in small.rooms] == ["Escalier"]               # palier résiduel : tout en cage
 
 
 def test_level_altitude_is_the_floor_of_most_rooms():

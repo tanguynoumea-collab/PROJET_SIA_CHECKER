@@ -34,7 +34,8 @@ CERTAINTIES = ("sûr", "probable", "incertain")
 TYPES = {
     "SUP": ["PieceDeVie", "Chambre", "PieceSecondaire_2PointsEau", "PieceSecondaire_3PointsEau",
             "PieceSecondaire_4PointsEau", "Distribution"],
-    "SUS": ["SUS"],
+    "SUS": ["Parking", "Cave", "Buanderie", "LocalVelos", "LocalPoussettes", "LocalConcierge", "Depot", "Sanitaires",
+            "LocauxCommuns"],
     "SUT": ["Commerce"],
     "SD": ["CirculationH", "Escalier", "Ascenseur"],
     "SI": ["Gaine", "Local"],
@@ -76,6 +77,11 @@ Conventions de Treegram, à respecter :
 - Une propriété SIA écrite par l'architecte est une preuve forte : ne la contredis que si le nom et les voisins
   la démentent nettement (local technique classé SUP, par exemple), et dis-le dans la raison.
 - Hors logement, un bureau, une salle ou un commerce est de la SUT ; un local de rangement commun de la SUS.
+- Une SUS prend le sous-type de son affectation : Parking (places et voies de circulation d'un parking, garages),
+  Cave (caves, abris), Buanderie, LocalVelos, LocalPoussettes, LocalConcierge, Depot (dépôts, archives, déchets),
+  Sanitaires (WC et vestiaires communs), LocauxCommuns si rien d'autre ne convient.
+- Un palier commun qui contient l'escalier a déjà été coupé en deux par le moteur (cage Escalier + palier
+  CirculationH) ; une cage d'escalier seule est de la SD de type Escalier.
 - Une entrée couverte d'immeuble, un porche ou un perron est de la SEU ; une coursive ou un passage de la SED.
 
 Garde la décision des règles quand rien ne permet de mieux faire. Certitude : « sûr » si les preuves sont

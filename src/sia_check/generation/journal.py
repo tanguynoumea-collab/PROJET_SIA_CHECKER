@@ -101,8 +101,11 @@ def _nature(code: str, cfg_generation: dict | None) -> str:
     return natures.get(code, PIECE)
 
 
-def apply(entries: list[dict], decisions: dict[str, Decision], cfg_generation: dict | None = None) -> int:
-    """Remplace, dans `decisions`, le classement des espaces dont une décision est acceptée ; renvoie leur nombre."""
+def apply(entries: list[dict], decisions: dict[str, Decision], cfg_generation: dict | None = None,
+          type_for=None) -> int:
+    """Remplace, dans `decisions`, le classement des espaces dont une décision est acceptée ; renvoie leur nombre.
+    `type_for(gid, code)` : sous-type déduit du nom pour ce code (classify.type_for), quand la décision n'en porte
+    pas de valable (décision prise avant un changement des sous-types : « SUS » des premières analyses IA)."""
     n = 0
     for e in entries:
         d = decisions.get(e["id"])
@@ -113,7 +116,10 @@ def apply(entries: list[dict], decisions: dict[str, Decision], cfg_generation: d
             continue   # contours, sites : hors du champ des décisions de classement
         c = (cfg_generation or {}).get("classify") or {}
         defaults = (c.get("default_types") or {}) | (c.get("exterior_default_types") or {})
-        typ = e.get("type") or (d.type if e["code"] == d.code else defaults.get(e["code"]))
+        from .ia import TYPES   # sous-types que le code admet aujourd'hui
+        typ = e.get("type") if e.get("type") in TYPES.get(e["code"], [e.get("type")]) else None
+        typ = typ or (d.type if e["code"] == d.code else None) or (type_for(d.gid, e["code"]) if type_for else None) \
+            or defaults.get(e["code"])
         decisions[e["id"]] = Decision(d.gid, nature, e["code"], typ, e["origine"], 1.0,
                                       f"{e['origine']} : {e.get('raison') or ''}".strip(), [], d.in_lot)
         n += 1

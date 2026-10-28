@@ -39,10 +39,10 @@ def k(gen_cfg):
     (space("3", "SDB", "Salle de bain", lot="1A.01.02"), "SUP", "PieceSecondaire_4PointsEau", "dictionnaire"),
     (space("4", "WCD", "WC/D", lot="1A.01.02"), "SUP", "PieceSecondaire_3PointsEau", "dictionnaire"),
     (space("5", "PAL", "Palier", lot="1A.01.00"), "SD", "CirculationH", "dictionnaire"),       # palier du niveau
-    (space("6", "CAV", "Cave", lot="1A.99.00"), "SUS", "SUS", "dictionnaire"),
+    (space("6", "CAV", "Cave", lot="1A.99.00"), "SUS", "Cave", "dictionnaire"),
     (space("7", "GTC", "gaine", lot="1A.01.02"), "SI", "Gaine", "dictionnaire"),
-    (space("8", "X", "Local", **{"Données.SIA416": "SUS"}), "SUS", "SUS", "propriete"),
-    (space("9", "L04_A_CON_001", "SUS_CON"), "SUS", "SUS", "prefixe"),
+    (space("8", "X", "Local", **{"Données.SIA416": "SUS"}), "SUS", "LocauxCommuns", "propriete"),   # à l'IA
+    (space("9", "L04_A_CON_001", "SUS_CON"), "SUS", "LocauxCommuns", "prefixe"),
     (space("10", "ASC", "Ascenseur", **{"Pset_SpaceCommon.Category": "Surface de dégagement"}), "SD", "Ascenseur", "categorie"),
     (space("11", "Raum 12", None), "NONCLASSE", None, None),
 ])
@@ -231,5 +231,16 @@ def test_building_without_flats_counts_sup_as_sut():
          "s": classify.Decision("s", "piece", "SUP", "PieceDeVie", "dictionnaire", 0.7, "", in_lot=True)}
     assert classify.without_flats(SimpleNamespace(spaces=items), d) == {"Ateliers": 2}
     assert (d["b"].code, d["b"].type, d["b"].source, d["b"].confidence) == ("SUT", "Commerce", "convention", 0.95)
-    assert (d["w"].code, d["w"].type) == ("SUS", "SUS") and not d["b"].conflicts
+    assert (d["w"].code, d["w"].type) == ("SUS", "Sanitaires") and not d["b"].conflicts
     assert d["c"].code == d["s"].code == "SUP"                       # bâtiment avec logements : inchangé
+
+
+@pytest.mark.parametrize("item, typ", [
+    (space("p1", "38", "VOI", **{"Pset_SpaceCommon.Category": "416-SN-Surface utile secondaire"}), "Parking"),   # La Bâtie
+    (space("p2", None, "CIR", **{"Pset_SpaceCommon.Category": "416-SN-Surface utile secondaire"}), "Parking"),   # voie du parking
+    (space("p3", "L04_A_VOI_001", "SUS_VOI"), "Parking"),                                                       # CGA
+    (space("p4", "3", "POU", **{"Pset_SpaceCommon.Category": "416-SN-Surface utile secondaire"}), "LocalPoussettes"),
+])
+def test_secondary_rooms_take_the_subtype_of_their_affectation(k, item, typ):
+    d = k.decide(item, False)
+    assert (d.code, d.type) == ("SUS", typ)

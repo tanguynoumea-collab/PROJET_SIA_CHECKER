@@ -191,7 +191,16 @@ mdp:
     CirculationH: Distribution
     Distribution: Distribution
     CirculationExt: Distribution
-    SUS: Abris/Caves
+    SUS: Abris/Caves          # sous-type Treegram unique des SUS (projets Treegram)
+    Parking: Parking          # sous-types SUS du moteur de génération (V4)
+    Cave: Abris/Caves
+    Buanderie: Buanderie
+    LocalVelos: Local vélos
+    LocalPoussettes: Local Poussette
+    LocalConcierge: Local Concierge
+    Depot: Dépôts
+    Sanitaires: Local Sanitaire
+    LocauxCommuns: Locaux communs
     Commerce: Commerce
     Balcon: Balcon
     Terrasse: Terrasse
@@ -287,13 +296,24 @@ generation:
       - {match: '\b(hall|entree|degagement|couloir|deg|hal|circulation|reduit|dressing|rangement|red|dre)\b', where: lot, code: SUP, type: Distribution}
       - {match: '\b(escaliers?|cage d.escalier|esc|cage)\b', code: SD, type: Escalier}
       - {match: '\b(ascenseurs?|asc|lift)\b', code: SD, type: Ascenseur}
+      # SUS : un sous-type par affectation du MDP (feuille Listes formulaire), pas « SUS » pour tous (décision du
+      # 28.10.2026 : Treegram met « SUS » partout, et l'export MDP en faisait des caves). Avant les circulations :
+      # la « voie de circulation » d'un parking est du parking.
+      - {match: '\b(parking|garage|stationnement|place de parc|places de parc|voie de circulation|rampe|park|pp|voi|voiture|voitures|mot|moto|motos)\b', code: SUS, type: Parking}
+      - {match: '\b(caves?|cav|cellier|abris?|pc)\b', code: SUS, type: Cave}
+      - {match: '\b(buanderie|bua|sechoir|lavoir)\b', code: SUS, type: Buanderie}
+      - {match: '\b(velos?|deux roues|2 roues|cycles?)\b', code: SUS, type: LocalVelos}
+      - {match: '\b(poussettes?|pou)\b', code: SUS, type: LocalPoussettes}
+      - {match: '\b(concierge|conciergerie)\b', code: SUS, type: LocalConcierge}
+      - {match: '\b(depots?|stock|stockage|archives|containers|conteneurs|dechets|ordures)\b', code: SUS, type: Depot}
+      - {match: '\b(wc|toilettes?|sanitaires?|vestiaires?)\b', where: commun, code: SUS, type: Sanitaires}
       - {match: '\b(couloir|degagement|palier|hall|corridor|circulation|sas|deg|pal|hal|cir|entree)\b', where: commun, code: SD, type: CirculationH}
+      # une circulation que l'architecte compte en SUS est la voie d'un parking (sous-type seulement : après le SD)
+      - {match: '\b(circulation|cir|voie|voies)\b', code: SUS, type: Parking}
       - {match: '\b(gaines?|gtc|gt|gaine technique|shaft|vide)\b', code: SI, type: Gaine}
       - {match: '\b(local technique|technique|chaufferie|electricite|ventilation|sprinkler|tableau|cvse|ltc|lte|ltv|lts|tec|ven|ele|machinerie|sous-station)\b', code: SI, type: Local}
-      - {match: '\b(caves?|cav|buanderie|bua|velos?|poussettes|depot|stock|stockage|abri|pc|garage|parking|stationnement|place de parc|voie de circulation|containers|dechets|sechoir|concierge|conciergerie|archives)\b', code: SUS, type: SUS}
-      - {match: '\b(wc|toilettes?|sanitaires?|vestiaires?)\b', where: commun, code: SUS, type: SUS}
       - {match: '\b(commerce|arcade|magasin|boutique|restaurant|cafe|bureau|bureaux|administration|atelier|salle|cabinet|creche|uape|ecole)\b', where: commun, code: SUT, type: Commerce}
-    default_types: {SUP: PieceDeVie, SUS: SUS, SD: CirculationH, SI: Local, SUT: Commerce}
+    default_types: {SUP: PieceDeVie, SUS: LocauxCommuns, SD: CirculationH, SI: Local, SUT: Commerce}
     # code d'une pièce qui en fait autre chose qu'une pièce intérieure
     code_natures: {SEU: exterieur, SED: exterieur, SEI: exterieur, SEP: exterieur, SA: site, SP: plancher}
     # Extérieurs (phase 22). Un « plancher externe » est le contour d'un extérieur (SEP), pas une surface élémentaire :

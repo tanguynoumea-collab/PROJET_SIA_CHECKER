@@ -9,6 +9,7 @@ Contrat (version 1) :
 {
   "format": "sia-check-siagen", "version": 1,
   "project": nom du projet, "created": date ISO, "generator": {"tool", "version", "source"},
+  "origin":  [x, y, z] facultatif : origine locale des maillages dans le repère de la maquette (m)
   "elements": [{
       "name":         nom de l'élément Treegram (ex. « A01_N00_ShellByTgm-1_SpaceByTgm-3_SUP », ou le code seul
                       pour un total de niveau)
@@ -18,11 +19,16 @@ Contrat (version 1) :
       "props":        propriétés Treegram telles quelles : « Catégorie SIA », Area, Type, ApartmentByTgm, Bedrooms,
                       Perimeter, GrossHeight, DeltaX, DeltaY, GrossArea, NetArea, ReservationsArea…
                       (noms lus selon config.yaml > sources.tgm, comme pour un `.tgm`)
-      "meshes":       [{"v": base64 float32 LE (x, y, z en m, repère du projet), "i": base64 uint32 LE (triangles)}]
+      "meshes":       [{"v": base64 float32 LE (x, y, z en m, repère du projet moins « origin »),
+                        "i": base64 uint32 LE (triangles)}]
   }]
 }
 L'ordre des éléments est celui du modèle Treegram : par niveau, les totaux puis les surfaces élémentaires.
 Les maillages sont en float32, comme dans le cache VWR : la géométrie relue est identique, au bit près.
+Un float32 n'a que 24 bits de mantisse : en coordonnées nationales (E ≈ 2 600 000 m), un sommet est arrondi au
+quart de mètre (triangles faux, aires fausses, scintillement en 3D). Le moteur V4 écrit donc ses maillages par
+rapport à une origine locale (`local_origin`, au mètre près sous la géométrie) ; les relire les laisse dans ce
+repère local, celui de la visionneuse, comme le cache VWR de Treegram.
 """
 
 from __future__ import annotations
@@ -89,24 +95,52 @@ def _value(v):
     return None if isinstance(v, float) and not math.isfinite(v) else v
 
 
-def to_json(elements: list[Element], project: str, source: str | None = None) -> dict:
-    return {
+ORIGIN_STEP_M = 100.0   # origine locale arrondie à 100 m : lisible, et sans effet sur la précision
+
+
+def local_origin(elements: list[Element]) -> tuple[float, float, float] | None:
+    """Origine (x, y, 0) sous la géométrie, arrondie à ORIGIN_STEP_M ; None sans maillage."""
+    xs, ys = [], []
+    for e in elements:
+        for m in e.meshes:
+            xs += m.vertices[0::3]
+            ys += m.vertices[1::3]
+    if not xs:
+        return None
+    return (math.floor(min(xs) / ORIGIN_STEP_M) * ORIGIN_STEP_M, math.floor(min(ys) / ORIGIN_STEP_M) * ORIGIN_STEP_M, 0.0)
+
+
+def _shift(vertices, origin) -> list[float]:
+    if origin is None:
+        return vertices
+    ox, oy, oz = origin
+    return [v - (ox, oy, oz)[k % 3] for k, v in enumerate(vertices)]
+
+
+def to_json(elements: list[Element], project: str, source: str | None = None,
+            origin: tuple[float, float, float] | None = None) -> dict:
+    head = {
         "format": FORMAT, "version": VERSION, "project": project,
         "created": dt.datetime.now().isoformat(timespec="seconds"),
         "generator": {"tool": "sia-check", "version": __version__, "source": source},
+    }
+    if origin is not None:
+        head["origin"] = list(origin)
+    return {**head,
         "elements": [{
             "name": e.name, "kind": e.kind, "building": e.building, "level": e.level,
             "element_id": e.element_id, "container_id": e.container_id,
             "props": {k: _value(v) for k, v in e.props.items()},
-            "meshes": [{"v": _b64(m.vertices, "f"), "i": _b64(m.indices, "I")} for m in e.meshes],
+            "meshes": [{"v": _b64(_shift(m.vertices, origin), "f"), "i": _b64(m.indices, "I")} for m in e.meshes],
         } for e in elements],
     }
 
 
-def write(elements: list[Element], path: Path, project: str, source: str | None = None) -> Path:
+def write(elements: list[Element], path: Path, project: str, source: str | None = None,
+          origin: tuple[float, float, float] | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(to_json(elements, project, source), ensure_ascii=False, allow_nan=False,
+    tmp.write_text(json.dumps(to_json(elements, project, source, origin), ensure_ascii=False, allow_nan=False,
                               separators=(",", ":")), encoding="utf-8")
     tmp.replace(path)
     return path

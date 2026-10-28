@@ -236,7 +236,9 @@ public sealed class SceneController
 
     private Batch MakeBatch(string code, IEnumerable<SurfaceGeometry> surfaces, double lift)
     {
-        var sp = code == "SP";
+        // SP et SEP : totaux de plancher, coplanaires avec leurs surfaces élémentaires (pièces, balcons) ; posés
+        // dessous, sinon les deux couleurs se disputent la profondeur (moiré en triangles)
+        var sp = code is "SP" or "SEP";
         if (code == "SRV") surfaces = OffsetOutward(surfaces.ToList(), GlazingOffset);
         // Façades et vitrages sont verticaux : pas d'épaisseur de dalle, qui les doublerait d'un chant horizontal
         var (top, edges, starts, ids) = Extrude(surfaces,

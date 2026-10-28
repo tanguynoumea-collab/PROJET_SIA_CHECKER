@@ -105,7 +105,9 @@ def generate(ifc: Path, cfg_generation: dict, out_dir: Path, project: str | None
     exteriors.build(levels, decisions, {g for g, c in codes.items() if c.startswith("S")}, cfg_generation)
     project = project or assemble.clean(ifc.stem)
     folder = Path(out_dir) / project
-    path = siagen.write(assemble.elements(levels, codes), folder / f"{project}{siagen.SUFFIX}", project, source=str(ifc))
+    els = assemble.elements(levels, codes)
+    # maillages en repère local : en float32, les coordonnées nationales les arrondiraient au quart de mètre
+    path = siagen.write(els, folder / f"{project}{siagen.SUFFIX}", project, source=str(ifc), origin=siagen.local_origin(els))
     data = report(model, pl, issues, decisions, levels, project, codes)
     rep = folder / "generation" / "rapport.json"
     rep.parent.mkdir(parents=True, exist_ok=True)

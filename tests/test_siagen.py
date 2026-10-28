@@ -126,3 +126,18 @@ def test_loree_siagen_reads_like_its_tgm(cfg, tmp_path):
     same_surfaces(reader.read(TGM, cfg), reader.read(p, cfg))
     a, b = geom.read_cache(TGM.parent).meshes, geom.for_model(p).meshes
     assert set(a) >= set(b) and all([m.vertices for m in a[k]] == [m.vertices for m in b[k]] for k in b)
+
+
+def test_national_coordinates_keep_centimetre_precision(tmp_path):
+    """En coordonnées nationales, un float32 arrondit au quart de mètre : le moteur écrit en repère local."""
+    x0, y0 = 2552777.37, 1157837.12
+    square = [x0, y0, 610.2, x0 + 3.07, y0, 610.2, x0 + 3.07, y0 + 3.01, 610.2, x0, y0 + 3.01, 610.2]
+    e = siagen.Element("A_N00_ShellByTgm-1_SpaceByTgm-1_SUP", "leaf", "A", "N00", {"Area": 9.24}, 1, 1,
+                       [geom.Mesh(square, [0, 1, 2, 0, 2, 3])])
+    origin = siagen.local_origin([e])
+    assert origin == (2552700.0, 1157800.0, 0.0)
+    doc, (back,) = siagen.load(siagen.write([e], tmp_path / "P.siagen.json", "P", origin=origin))
+    assert doc["origin"] == [2552700.0, 1157800.0, 0.0]
+    v = back.meshes[0].vertices
+    assert v[0] == pytest.approx(77.37, abs=1e-3) and v[3] - v[0] == pytest.approx(3.07, abs=1e-3)
+    assert v[7] - v[1] == pytest.approx(3.01, abs=1e-3) and v[2] == pytest.approx(610.2, abs=1e-3)

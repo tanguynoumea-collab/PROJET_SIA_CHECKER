@@ -300,3 +300,9 @@ Myonaz 1 et 2 restent à 100 % des locaux au même code, balcons compris (111 et
 2. **Façade** : le MDP La Bâtie (« enveloppe thermique ») est 10 % plus long que le périmètre de la SP. Sur les attiques, il compte aussi une façade au niveau TOI (122,6 m²), que le moteur ne produit pas.
 3. **Jardins privatifs** : en SEU dans un logement (MDP Myonaz), sinon en extérieur par défaut.
 4. **SP et locaux hors du contour dessiné** : on ajoute les locaux utiles et de dégagement (La Bâtie : poussettes, buanderie), pas les installations (Myonaz 2 : bassin de rétention en SI hors SP). C'est une règle déduite de deux références seulement.
+
+### Correctif du 28.10.2026 : précision des maillages
+
+Les maillages générés étaient écrits en coordonnées nationales (E ≈ 2 552 777 m) dans le `.siagen.json`, en float32 comme le cache VWR. Avec 24 bits de mantisse, chaque sommet était arrondi au quart de mètre, d'où des triangles en éventail et un scintillement en 3D (signalés sur Myonaz 2), et des aires de maillage fausses. Le moteur écrit désormais ses maillages par rapport à une origine locale (`siagen.local_origin`, arrondie à 100 m), enregistrée dans l'en-tête (`"origin"`, champ facultatif du contrat v1). Ce repère local est celui de la visionneuse, comme pour Treegram.
+
+La visionneuse pose aussi la dalle SEP sous ses surfaces élémentaires, comme la SP : SEP et balcons étaient coplanaires et se disputaient la profondeur.

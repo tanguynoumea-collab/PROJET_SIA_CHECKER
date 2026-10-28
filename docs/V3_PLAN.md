@@ -256,3 +256,17 @@ La façade du benchmark additionnait toutes les lignes de la feuille SurfacesEnv
 - **Coefficient de forme** : plancher bas exclu de l'enveloppe, à confirmer avec l'équipe.
 - **Unités propres aux autres typologies** (chambres, lits, postes de travail…) et fourchette de fiabilité par typologie : à définir quand la base en contiendra.
 
+
+## 13. V3.1 — version 3.1.0 (28.10.2026)
+
+### Livré
+
+- **Métadonnées éditables** dans « Modifier… » : nature (surface élémentaire / total de niveau), sous-type et lot, à côté du type SIA. Métadonnées seules : correction « qualifier » (aire et emprise lues inchangées) ; avec une emprise redessinée : portées par « remodeler ». La fiche montre les valeurs en attente, l'aperçu du bilan et des ratios les prend en compte.
+- **Cages d'escalier** (cage = surface SD de sous-type escalier ; étages de logements = SUP et au moins un lot) :
+  - fiabilisation : ratios « SUP par cage » et « logements par cage », colonne cages au bilan par niveau, étage de logements sans cage signalé ;
+  - benchmark : KPI SUP/CAGE et LOG/CAGE lus dans les MDP (« Nom du local », appartement, étage, bâtiment), détail par bâtiment et par étage dans Comparer. Calculables sur 5 MDP sur 10.
+
+### Reste ouvert
+
+- Une cage découpée en plusieurs surfaces compte plusieurs fois (L'Orée B03 / B04 : 4 cages par étage) : à vérifier dans les modèles.
+- Étages de logements sans cage sur L'Orée (B03·N00, B04·N00, G12·N01) : escaliers typés CirculationH à requalifier.

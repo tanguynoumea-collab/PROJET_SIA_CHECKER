@@ -1,6 +1,6 @@
 # sia-check
 
-Contrôle par sommation des surfaces SIA 416 (2003) produites par Treegram, niveau par niveau, puis par bâtiment et au total.
+Contrôle par sommation des surfaces SIA 416 (2003) produites par Treegram, niveau par niveau, puis par bâtiment et au total. Depuis la V4, génération de ces surfaces depuis une maquette architecte IFC, au modèle Treegram.
 
 ## Installation
 
@@ -29,6 +29,10 @@ sia-check "L OREE.tgm" --siagen generes/   # le projet au contrat .siagen.json (
 sia-check --inventaire maquette.ifc --out inventaires/   # maquette architecte lue par le moteur de génération (V4)
 sia-check --generer maquette.ifc --out generes/ --project "Myonaz 1"   # surfaces SIA générées, au modèle Treegram
 sia-check "generes/Myonaz 1" --comparer-mdp MDP-1712.00_Myonaz.xlsx --batiment-mdp "Bat. 1"   # écarts au MDP
+sia-check --questions-ia "generes/Myonaz 1"   # questions et prompt de l'analyse IA (espaces où les règles hésitent)
+sia-check --reponse-ia "generes/Myonaz 1"     # réponse enregistrée par l'app -> propositions du journal des décisions
+sia-check --accepter-ia "generes/Myonaz 1" --ids <GlobalId>,…   # (ou --rejeter-ia) ; sans --ids : toutes
+sia-check --decider "generes/Myonaz 1" --ids <GlobalId> --code SUS --type Parking   # décision manuelle
 ```
 
 - Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet), projet généré `.siagen.json` (V4, ci-dessous) ou `.ifc` (mapping dans `config.yaml > sources.ifc`). Un dossier désigne son unique `.tgm` ou `.siagen.json`.
@@ -58,7 +62,7 @@ Code de sortie : `1` si un point bloque la génération (pas d'espaces, pas de n
 
 ### Génération des surfaces (`--generer`)
 
-`--generer` produit `<out>/<projet>/<projet>.siagen.json`, que la Fiabilisation ouvre comme un projet Treegram, et `generation/rapport.json`. Il génère les surfaces intérieures (V4 phase 21), puis les extérieurs, les toitures, la façade et les vitrages (phase 22, `exteriors.py`). L'USPI suivra.
+`--generer` produit `<out>/<projet>/<projet>.siagen.json`, que la Fiabilisation ouvre comme un projet Treegram, `generation/rapport.json` (chaque espace : nature, code, sous-type, source, confiance, voisins, surface générée) et `generation/maquette.json` (murs, dalles, toits et poteaux, pour le calque de contexte de l'app). Il génère tout l'arbre Treegram : surfaces intérieures, extérieurs, toitures, façade et vitrages (`exteriors.py`), logements et chaîne USPI (`uspi.py`).
 
 1. **Nature des espaces** (`classify.py`). Un espace qui couvre au moins deux autres espaces est un contour : surface de plancher (`GFA`) ou logement dessiné en entier. Les extérieurs (loggias, balcons, « Surface externe… ») et le terrain sont mis de côté. Le reste, ce sont les pièces.
 2. **Classement des pièces**, de la source la plus sûre à la moins sûre :
@@ -67,9 +71,13 @@ Code de sortie : `1` si un point bloque la génération (pas d'espaces, pas de n
    - préfixe du nom (`SUS_CON`) ;
    - dictionnaire des noms de pièces (`config.yaml > generation.classify.rooms`).
 
-   Le sous-type Treegram vient du dictionnaire. Les parties communes (logement « .99. » ou « .00 ») ne sont pas des logements. Convention Treegram : un dégagement de logement compte en SUP « Distribution ». Chaque décision garde sa source, sa confiance et les sources en désaccord. Une pièce sans source prend le code `NONCLASSE`, que A3 liste.
-3. **SP par niveau** (`interiors.py`). C'est l'union des surfaces de plancher dessinées, moins les extérieurs. À défaut, c'est le contour des pièces, des murs et des poteaux, joints fermés.
-4. **Assemblage** (`assemble.py`). Les noms, les coques, `ApartmentByTgm` et les totaux de niveau suivent ceux de Treegram, ainsi que les codes de niveau (N00, S01, Toiture : le rez est trouvé par son nom, les autres niveaux sont numérotés par altitude). `IfcGlobalId` relie chaque surface à son espace.
+   Le sous-type Treegram vient du dictionnaire, parmi les entrées du code retenu. Les SUS prennent celui de leur affectation MDP (Parking, Cave, Buanderie, LocalVelos…). Les parties communes (logement « .99. » ou « .00 ») ne sont pas des logements. Conventions Treegram : un dégagement de logement compte en SUP « Distribution » ; dans un bâtiment sans logement, la SUP de l'architecte compte en SUT. Chaque décision garde sa source, sa confiance et les sources en désaccord. Une pièce sans source prend le code `NONCLASSE`, que A3 liste.
+3. **SP par niveau** (`interiors.py`). C'est l'union des surfaces de plancher dessinées, moins les extérieurs. À défaut, c'est le contour des pièces, des murs et des poteaux, joints fermés. Toutes les surfaces d'un niveau sont posées au sol de la plupart de ses pièces. Un palier qui contient un IfcStair est coupé en une cage « Escalier » et un palier.
+4. **Extérieurs et enveloppe** (`exteriors.py`). SEU, SED et SEP, toitures SPT, dalle sur sous-sol hors SEP (abords). Façade SFN percée de ses réservations ; SRV = fenêtres et portes vitrées de façade, `IsExternal` de la maquette suivi.
+5. **Logements et USPI** (`uspi.py`). SNH, SHA, SBH, SVN et SVB par logement, avec `Bedrooms`. SBH par le contour du logement dessiné, sinon par croissance des logements dans leurs murs (mitoyens partagés).
+6. **Assemblage** (`assemble.py`). Les noms, les coques, `ApartmentByTgm` et les totaux de niveau suivent ceux de Treegram, ainsi que les codes de niveau (N00, S01, Toiture : le rez est trouvé par son nom, les autres niveaux sont numérotés par altitude). `IfcGlobalId` relie chaque surface à son espace. Les maillages sont écrits en repère local (origine dans l'en-tête), pour garder la précision du float32.
+
+**Analyse IA et décisions.** Seuls les espaces où les règles hésitent partent à l'IA (`ia.py`), avec leurs preuves. Ses réponses deviennent des propositions du journal `generation/decisions.json` (`journal.py`). Une décision acceptée, IA ou manuelle, remplace le classement des règles à chaque génération.
 
 Code de sortie : `1` si l'audit d'entrée bloque, `2` si la maquette est illisible.
 
@@ -180,7 +188,7 @@ Les repères sont **indicatifs, pas normatifs** : un ratio hors repère n'est pa
 
 ## SIA Check Viewer (application WPF)
 
-Visionneuse 3D des surfaces SIA d'un projet Treegram, avec la liste des points d'attention à côté de la 3D. Le design est décrit dans `docs/DESIGN_PLAN.md`.
+Visionneuse 3D des surfaces SIA d'un projet Treegram ou généré, avec la liste des points d'attention à côté de la 3D. L'accueil a trois sections : Génération, Fiabilisation, Benchmark. Le design est décrit dans `docs/DESIGN_PLAN.md`.
 
 ```bash
 powershell -ExecutionPolicy Bypass -File app/build.ps1
@@ -226,10 +234,15 @@ La version vient de `<Version>` dans `SiaCheck.Viewer.csproj` et de `pyproject.t
 - **Statut du projet** : « En traitement » à la première analyse, « Traité » quand la vérification et les corrections sont finies. La pastille à côté du nom du projet bascule le statut ; passer en traité demande confirmation s'il reste des décisions à appliquer, des corrections proposées ou des points à traiter. L'accueil affiche le statut de chaque projet récent.
   Le registre `%APPDATA%\SiaCheckViewer\projets.json` liste tous les projets ouverts (pas seulement les récents), pour les automatisations (n8n) et le suivi :
   `Path`, `Name`, `Status` (`en_traitement` | `traite`), `StatusLabel`, `StatusChanged`, `ChangedBy`, `LastAnalysis`, `IssueCount`, et l'historique des changements (`History`). Supprimer un projet de l'accueil l'en retire.
+- **Génération depuis l'IFC** (V4, `docs/DESIGN_PLAN.md` Évolution 4.0) :
+  - « Générer depuis un IFC… » sur l'accueil : maquette, nom et dossier du projet (par défaut `Documents\SIA Check - projets generes`), puis le projet généré s'ouvre dans l'espace de revue. La liste des projets générés donne l'état de la décision (« 20 à trancher ») et ↻ Régénérer ;
+  - onglet **Espaces** (Ctrl+3) : espaces les plus douteux d'abord, filtre (à trancher, proposés par l'IA, décidés, tous), changement en pastilles SIA `(SUS)→(SUT)`. Le détail donne les règles, l'IA et les voisins ; « Accepter la proposition » (A), « Rejeter » (R), « Enregistrer ce choix » (décision manuelle). « Analyse IA… » estime le coût, demande l'accord, puis appelle l'API (même clé que la revue IA) ;
+  - **Régénérer** (barre de commande) applique les décisions acceptées, puis analyse. Les surfaces en attente prennent déjà leur couleur cible ;
+  - calque **Maquette IFC** (groupe Contexte) : murs, dalles, toits et poteaux en gris translucide.
 - **Limite** : si le projet a été modifié après la dernière ouverture dans le viewer Treegram, le cache 3D est périmé. La visionneuse l'indique.
 
 Développement : `dotnet test app/SiaCheckViewer.sln`.
-`SiaCheck.Viewer.exe <dossier projet> --capture image.png [--focus clé] [--subject S2 [--correction id [--trace]]] [--points] [--report | --ai-panel] [--profile dossier]` produit une capture pour la revue visuelle. `--profile` isole statuts, journal, revues et analyses dans un dossier jetable.
+`SiaCheck.Viewer.exe <dossier projet> --capture image.png [--focus clé] [--subject S2 [--correction id [--trace]]] [--points] [--report | --ai-panel] [--profile dossier]` produit une capture pour la revue visuelle. `--profile` isole statuts, journal, revues et analyses dans un dossier jetable. `--spaces [--context]` ouvre l'onglet Espaces d'un projet généré (et le calque Maquette IFC).
 
 ## Règles
 

@@ -402,3 +402,27 @@ Reste pour la phase 26 (clôture V4.0) :
 | Sous-type « SUS » partout, aucun parking | Les SUS prennent le sous-type de leur affectation MDP : Parking, Cave, Buanderie, LocalVelos, LocalPoussettes, LocalConcierge, Depot, Sanitaires, et LocauxCommuns à défaut (`mdp.affectation` les traduit pour l'export). Les abréviations des maquettes sont reconnues : « VOI », « MOT », « POU », « SUS_VOI ». Une circulation que l'architecte compte en SUS (« CIR ») est la voie du parking. Le sous-type est cherché parmi les entrées du code retenu. Introuvable dans le nom, il part à l'analyse IA. La Bâtie : 53 Parking (1 197 m², comme le MDP : 48 places, 4 motos, la voie), 32 Cave, 2 Buanderie, 2 LocalPoussettes. CGA : 13 558 m² de Parking. Afiro : le garage de 27 places en Parking, les vestiaires en Sanitaires. Une décision IA acceptée avec l'ancien type « SUS » reprend le sous-type déduit du nom. |
 | Paliers contenant l'escalier tous en CirculationH | La part d'un espace SD occupée par un IfcStair devient une surface SD « Escalier », le reste reste palier (`interiors.split_stairs`, `generation.stairs.min_m2`). Myonaz 1 et 2 : 1 ou 2 cages par niveau au lieu d'aucune. La Bâtie : 2 cages au rez (hall « ENT »). La comparaison au MDP compte les deux parts comme un seul local. |
 | Lots et sous-types manquants | Vérifié sur les cinq projets : toutes les SUP sont dans un lot, et toutes les pièces ont un sous-type. La Bâtie : 509 surfaces sur 611 portent un lot dans la visionneuse ; celles sans lot sont les communs (SD, SI, SUS), comme chez Treegram. Les 160 surfaces « sans sous-type » sont les surfaces USPI des 32 logements, qui n'en ont pas chez Treegram non plus. Afiro et CGA n'ont pas de logement. **À préciser avec l'utilisateur** : le projet et les surfaces concernés. |
+
+## 19. Clôture de la V4.0 (28.10.2026)
+
+Version 4.0.0 (`src/sia_check/__init__.py`, `pyproject.toml`, `SiaCheck.Viewer.csproj`), tag local `v4.0.0`. Installeur : `app\dist\SiaCheckViewer-4.0.0-setup.exe`. Le moteur embarqué (220 Mo avec `ifcopenshell`) analyse L'Orée et génère CGA L04 depuis son IFC. Tests : 284 Python, 135 .NET.
+
+**Livré** : tout l'arbre Treegram généré depuis une maquette architecte IFC, au format `.siagen.json`, que la Fiabilisation et le benchmark lisent sans changement.
+- Surfaces intérieures, avec les cages d'escalier séparées des paliers.
+- Extérieurs, toitures, façade percée et vitrages extérieurs.
+- Logements et chaîne USPI.
+- Analyse IA des seuls espaces douteux, avec un journal des décisions (IA et manuelles).
+- Section Génération de l'app : accueil, onglet Espaces, Régénérer, calque Maquette IFC.
+
+**Validation sur les maquettes ARC des projets de la base** (pas de paire IFC ↔ `.tgm` disponible) :
+- Myonaz 1 et 2 : 100 % des locaux au même code que le MDP, SHA et SBH par niveau identiques au MDP ;
+- La Bâtie B : 99 % des locaux au même code ; logements, chambres, SEU, vitrages et parkings conformes au MDP ;
+- Afiro : premier appel IA réel (0,28 $), qui a donné la règle « bâtiment sans logement : SUP → SUT ».
+
+**Reste ouvert** :
+- Façade : le MDP de La Bâtie est 10 % plus long que le périmètre de la SP, et compte une façade au niveau toiture.
+- Myonaz 2, N03 : logements en duplex à confirmer.
+- Lots et sous-types « manquants » signalés par l'utilisateur : rien trouvé dans les données (§18), à préciser sur un cas.
+- SE non pondérées dans SVN / SVB, comme Treegram.
+- Une paire de référence IFC ↔ `.tgm` reste souhaitable pour comparer à Treegram lui-même.
+- Le moteur pèse 220 Mo (`ifcopenshell`).

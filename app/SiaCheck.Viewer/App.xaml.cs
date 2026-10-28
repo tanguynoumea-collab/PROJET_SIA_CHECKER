@@ -139,6 +139,7 @@ public partial class App : Application
             if (Environment.GetCommandLineArgs().Contains("--trace")) window.ViewModel.OpenTraceForCorrectionCommand.Execute(null);
         }
         if (Environment.GetCommandLineArgs().Contains("--points")) window.ViewModel.ShowPointsTabCommand.Execute(null);
+        if (Environment.GetCommandLineArgs().Contains("--ratios")) window.ViewModel.ShowRatios = true;   // onglet Ratios du bilan
         // --spaces : onglet Espaces d'un projet généré, premier espace sélectionné (revue visuelle, Évolution 4.0)
         if (Environment.GetCommandLineArgs().Contains("--spaces"))
         {

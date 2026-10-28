@@ -97,6 +97,7 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--code", help="avec --decider : code SIA décidé (SUP, SUS, SUT, SD, SI, SEU, SED, SEI)")
     ap.add_argument("--type", dest="room_type", help="avec --decider : sous-type Treegram (facultatif)")
     ap.add_argument("--ids", help="avec --accepter-ia / --rejeter-ia : identifiants séparés par des virgules")
+    ap.add_argument("--typologie", help="typologie du projet (liste du MDP : « Logement (100-90%% SU) »…) : repères des ratios")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -198,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         cfg = config_mod.load(args.config or _default_config())
+        cfg.typologie = args.typologie or ""
         models = [_resolve(m) for m in args.models]
         if args.viewer_json and len(models) != 1:
             raise reader.ReadError("--viewer-json attend un seul projet")
@@ -521,6 +523,7 @@ def _preview(args: argparse.Namespace) -> int:
         return 2
     try:
         cfg = config_mod.load(args.config or _default_config())
+        cfg.typologie = args.typologie or ""
         if args.depuis_cache:
             df = pd.read_pickle(args.depuis_cache)
         else:   # pas encore de surfaces gardées : lecture du projet, gardée pour les aperçus suivants

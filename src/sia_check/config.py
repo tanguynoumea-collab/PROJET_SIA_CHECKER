@@ -42,6 +42,7 @@ class Config:
     ratios: list[dict] = field(default_factory=list)   # ratios informatifs (ratios.py)
     mdp: dict = field(default_factory=dict)            # tableau MDP : propositions (propositions.py)
     generation: dict = field(default_factory=dict)     # moteur de génération depuis l'IFC architecte (V4)
+    typologie: str = ""   # typologie du projet (fiche projet, --typologie) : choisit les repères des ratios
 
     def children(self, code: str) -> list[str]:
         return self.categories.get(code, {}).get("children") or []

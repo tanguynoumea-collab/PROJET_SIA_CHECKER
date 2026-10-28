@@ -76,3 +76,27 @@ def test_stairs_per_housing_floor(cfg):
     r = res.ratios.set_index(["building", "id"])
     assert r.at[("*", "SUP/cage"), "value"] == pytest.approx(128.0)
     assert r.at[("*", "log/cage"), "value"] == pytest.approx(1.5)
+
+
+def test_references_follow_the_typology():
+    """Repères tirés des projets de logement : sans typologie, aucun ; pour un parking, aucun ; refs propres sinon."""
+    from sia_check import ratios
+    r = {"id": "SD/SP", "ref": [0.05, 0.12], "refs": {"activites": [0.08, 0.2]}}
+    assert ratios.typology_key("Logement Mixte (>10% autres affectations)") == "mixte"
+    assert ratios.typology_key("Activités (Bureaux, Artisanat, Commerce)") == "activites"
+    assert ratios.typology_key("") is None and ratios.typology_key("Autre") == "autre"
+    assert ratios.reference(r, "logement") == [0.05, 0.12] and ratios.reference(r, "mixte") == [0.05, 0.12]
+    assert ratios.reference(r, "activites") == [0.08, 0.2] and ratios.reference(r, "autre") is None
+    assert ratios.reference(r, None) is None
+    assert ratios._status(0.3, None, None) == "typologie" and ratios._status(0.3, None, "autre") == "info"
+    assert ratios._status(0.3, [0.05, 0.12], "logement") == "haut"
+
+
+def test_typology_is_suggested_from_the_surfaces():
+    from sia_check import ratios
+    park = pd.DataFrame([{"kind": "leaf", "code": "SUS", "area": 980.0, "room_type": "Parking", "lot": None},
+                         {"kind": "leaf", "code": "SUS", "area": 20.0, "room_type": "LocauxCommuns", "lot": None}])
+    assert ratios.suggest(park) == ("Autre", "parking : 98 % de la SU")
+    flats = pd.DataFrame([{"kind": "leaf", "code": "SUP", "area": 95.0, "room_type": "Chambre", "lot": "A"},
+                          {"kind": "leaf", "code": "SUS", "area": 5.0, "room_type": "Cave", "lot": None}])
+    assert ratios.suggest(flats)[0] == "Logement (100-90% SU)"

@@ -13,6 +13,7 @@ DATA = Path(__file__).parent / "data"
 def cfg():
     c = config.load(ROOT / "config.yaml")
     c.technical = ["^LT"]
+    c.typologie = "Logement (100-90% SU)"   # projets de test : du logement (les repères des ratios en dépendent)
     return c
 
 

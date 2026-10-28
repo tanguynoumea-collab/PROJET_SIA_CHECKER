@@ -397,7 +397,8 @@ public sealed partial class MainViewModel
         var name = Document?.Project ?? (ProjectFolder.Sources(projectDir).FirstOrDefault() is { } source ? ProjectFolder.ProjectName(source) : Path.GetFileName(projectDir));
         var review = AiReviewFiles.FindLatest(name, AiReviewFiles.SearchDirs(_paths.AiReviewDir(projectDir), AiSearchBaseDir));
         var journal = _paths.CorrectionsFile(projectDir);
-        return new EngineInputs(review?.VerdictsPath, File.Exists(journal) ? journal : null, _paths.SurfacesCacheFile(projectDir));
+        return new EngineInputs(review?.VerdictsPath, File.Exists(journal) ? journal : null, _paths.SurfacesCacheFile(projectDir),
+                                _settings.FindMdpProject(projectDir)?.Typologie);
     }
 
     /// <summary>Analyse réussie avec le journal : ses décisions sont désormais appliquées.</summary>

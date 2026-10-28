@@ -55,8 +55,9 @@ public sealed partial class MainViewModel
         try
         {
             // Surfaces gardées par une analyse : quelques secondes ; sinon (analyse antérieure) le projet est relu une fois.
-            var run = File.Exists(cache) ? await _engine.PreviewAsync(cache, journal, output, cts.Token)
-                : await _engine.PreviewFromProjectAsync(dir, cache, journal, output, cts.Token);
+            var typologie = _settings.FindMdpProject(dir)?.Typologie;
+            var run = File.Exists(cache) ? await _engine.PreviewAsync(cache, journal, output, cts.Token, typologie)
+                : await _engine.PreviewFromProjectAsync(dir, cache, journal, output, cts.Token, typologie);
             if (cts.IsCancellationRequested || dir != ProjectDir || !run.Succeeded || !File.Exists(output)) return;
             _balancePreview = System.Text.Json.JsonSerializer.Deserialize<BalancePreview>(await File.ReadAllTextAsync(output));
             OnPropertyChanged(nameof(IsBalancePreview));

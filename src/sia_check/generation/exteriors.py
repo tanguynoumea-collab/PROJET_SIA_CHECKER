@@ -106,6 +106,8 @@ def _rings(g: BaseGeometry):
 
 
 GLAZED_DOORS = r"(vitr|fenetre|verre|glass|baie|coulissant|porte fenetre|\bpf\b)"
+# « portes » qui n'en sont pas : garde-corps de rampe modélisés en IfcDoor (CGA L04) ; ni réservation, ni vitrage
+NOT_OPENINGS = r"(garde corps|gardecorps|railing|balustrade|barriere|main courante)"
 
 
 def _external(it) -> bool | None:
@@ -114,17 +116,18 @@ def _external(it) -> bool | None:
     return v if isinstance(v, bool) else None
 
 
-def _openings(level: Level, sp: BaseGeometry, glazed_doors: str = GLAZED_DOORS, band: tuple[float, float] | None = None
-              ) -> tuple[float, float, list, list]:
+def _openings(level: Level, sp: BaseGeometry, glazed_doors: str = GLAZED_DOORS, band: tuple[float, float] | None = None,
+              not_openings: str = NOT_OPENINGS) -> tuple[float, float, list, list]:
     """(réservations m², vitrages m², panneaux des réservations, panneaux des vitrages) de la façade du niveau.
     `band` (z0, z1) : hauteur d'étage ; une ouverture n'y compte que pour sa part comprise (allège sous le sol fini,
     fenêtre à cheval sur deux étages), comme la façade brute qui n'a que cette hauteur."""
     edge = sp.boundary
     glazed = re.compile(glazed_doors)
+    fake = re.compile(not_openings)
     found = []   # (aire, panneau, vitrée, emprise) avant dédoublonnage
     for p in level.plan.of("IfcWindow", "IfcDoor", "IfcOpeningElement"):
         it = p.item
-        if p.shape is None or it.z_min is None or it.z_max is None:
+        if p.shape is None or it.z_min is None or it.z_max is None or fake.search(norm(f"{it.name} {it.type_name}")):
             continue
         external = _external(it)
         if external is False or (external is None and p.shape.distance(edge) > FACADE_REACH_M):
@@ -268,7 +271,8 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
             continue
         perimeter = lv.sp.length
         env_cfg = (cfg_generation or {}).get("envelope") or {}
-        resa, glass, holes, panes = _openings(lv, lv.sp, env_cfg.get("glazed_doors") or GLAZED_DOORS, (lv.z, lv.z + h))
+        resa, glass, holes, panes = _openings(lv, lv.sp, env_cfg.get("glazed_doors") or GLAZED_DOORS, (lv.z, lv.z + h),
+                                              env_cfg.get("not_openings") or NOT_OPENINGS)
         lv.facade = facade_mesh(lv.sp, lv.z, lv.z + h, holes)
         lv.glazing = vertical_mesh(panes)
         gross = perimeter * h

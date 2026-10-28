@@ -1852,3 +1852,16 @@ Captures de référence ajoutées : `docs/ui-baseline/home-v4.png` (accueil en t
 | Le filigrane passe derrière la liste Génération | Accepté | Comme pour la Fiabilisation en V3 : contraste du texte inchangé |
 
 Non-régression : les écrans de la Fiabilisation (barre de commande, calques, bilan, sujets) sont inchangés pour un projet Treegram. Le bouton Régénérer, le groupe Contexte et l'onglet Espaces n'apparaissent que pour un projet généré.
+
+---
+
+## Évolution 4.1 — Typologie du projet et repères des ratios (mode ÉVOLUTION)
+
+> Statut : ☑ Implémenté (28.10.2026), sur demande de l'utilisateur. Delta minimal, sans nouveau composant ni nouveau token.
+
+- **Onglet Ratios** : un bandeau (style `Banner`, liseré VerdictWarning) sous l'en-tête, dans deux cas.
+  - Typologie non renseignée : « Typologie du projet non renseignée : les repères des ratios dépendent du type de bâtiment, ils ne s'appliquent pas. Proposée d'après les surfaces : Autre (parking : 98 % de la SU). » Bouton secondaire « Renseigner la typologie », qui ouvre la fiche projet avec la proposition présélectionnée.
+  - Typologie hors logement : le bandeau dit que les repères (établis sur des projets de logement) ne s'appliquent pas, sans bouton.
+- **Colonne Repère** : « typologie ? » ou « sans repère » à la place de la plage ; l'infobulle l'explique. La jauge n'a pas de bande de repère.
+- **Analyser** : tant que la typologie manque, la fiche projet s'ouvre une fois par projet et par session, avec la typologie proposée. Annuler analyse sans repères.
+- Capture de revue : `--ratios` ouvre l'onglet Ratios.

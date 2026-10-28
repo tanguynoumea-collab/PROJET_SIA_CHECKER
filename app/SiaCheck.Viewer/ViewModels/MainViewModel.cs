@@ -128,9 +128,10 @@ public sealed partial class MainViewModel : ObservableObject
     /// Édite la fiche d'un projet ; un nouveau dossier emporte statuts, commentaires, corrections et revues IA, et le
     /// projet ouvert est rouvert dessus (réanalyse). Renvoie la fiche enregistrée, null si annulée ou refusée.
     /// </summary>
-    internal async Task<ProjectSheet?> EditSheetAsync(string path, string folderName)
+    internal async Task<ProjectSheet?> EditSheetAsync(string path, string folderName, string? typologie = null)
     {
         var known = KnownIdentity(path, folderName);
+        if (typologie is not null && known.Typologie.Length == 0) known.Typologie = typologie;   // proposée d'après les surfaces
         var saved = System.Text.Json.JsonSerializer.Serialize(_settings.FindMdpProject(path));
         var sheet = await _shell.AskProjectSheetAsync(new ProjectSheet(ProjectFolder.Normalize(path), known), IdentityLists,
                                                       creating: false, s => CheckSheet(s, path));
@@ -286,6 +287,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (ProjectDir is null || _engine is null || IsAnalysing) return;
         if (IsTraceOpen) { _shell.Notify("Enregistrez ou annulez le tracé avant d'analyser."); return; }
+        await AskTypologyOnceAsync();
         AnalysisError = null;
         (OverlayTitle, OverlayStepCount, OverlayStepsText) = ($"Analyse de {ProjectDir}", 3, "lecture des surfaces, contrôles SIA 416, géométrie");
         IsAnalysing = true;

@@ -1033,6 +1033,17 @@
                                 <TextBlock DockPanel.Dock="Top" Margin="4,8" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
                                            Visibility="{Binding HasRatios, Converter={StaticResource HiddenWhen}}"
                                            Text="Pas de ratios dans cette analyse : relancez « Analyser » pour les calculer." />
+                                <!-- Typologie du projet : les repères en dépendent (décision du 28.10.2026) -->
+                                <Border DockPanel.Dock="Top" Margin="4,0,18,6" Style="{StaticResource Banner}" Padding="8,4"
+                                        BorderBrush="{DynamicResource BrushVerdictWarning}"
+                                        Visibility="{Binding HasTypologyBanner, Converter={StaticResource BoolToVisibility}}">
+                                    <DockPanel>
+                                        <ui:Button DockPanel.Dock="Right" Margin="8,0,0,0" Appearance="Secondary" Icon="{ui:SymbolIcon Edit20}"
+                                                   Content="Renseigner la typologie" Command="{Binding SetTypologyCommand}" MinHeight="{StaticResource TargetSize}"
+                                                   Visibility="{Binding CanSetTypology, Converter={StaticResource BoolToVisibility}}" />
+                                        <TextBlock Style="{StaticResource TextCaption}" VerticalAlignment="Center" TextWrapping="Wrap" Text="{Binding TypologyBanner}" />
+                                    </DockPanel>
+                                </Border>
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <ItemsControl ItemsSource="{Binding RatioRows}">
                                         <ItemsControl.ItemTemplate>

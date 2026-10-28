@@ -272,7 +272,8 @@ public sealed class RatioRow(Ratio project, Ratio? building)
     public bool IsCount => Project.Unit == "nombre";
     public string ProjectText => Text(Project.Value);
     public string BuildingText => Building is null ? "" : Text(Building.Value);
-    public string ReferenceText => Project.HasReference ? $"{Text(Project.RefMin)}–{Text(Project.RefMax)}" : "indicatif";
+    public string ReferenceText => Project.HasReference ? $"{Text(Project.RefMin)}–{Text(Project.RefMax)}"
+        : Project.Status switch { "typologie" => "typologie ?", "sans repère" => "sans repère", _ => "indicatif" };
     public bool IsOutside => Shown.Status is "bas" or "haut";
     public string StatusText => StatusTextOf(Shown.Status);
 
@@ -288,6 +289,8 @@ public sealed class RatioRow(Ratio project, Ratio? building)
                               + $"{(r.Unit is "m2" or "nombre" ? Count(r.DenM2, DenUnit) : Area(r.DenM2))}) · {StatusTextOf(r.Status)}");
             lines.Add(Project.HasReference
                 ? $"Repère indicatif {ReferenceText}, non normatif : un écart est une question, pas une erreur."
+                : Project.Status == "typologie" ? "Repère selon la typologie du projet : renseignez-la dans la fiche projet."
+                : Project.Status == "sans repère" ? "Repère établi sur des projets de logement : sans objet pour cette typologie."
                 : "Sans repère : valeur informative.");
             if (!string.IsNullOrWhiteSpace(Project.Note)) lines.Add(Project.Note!);
             return string.Join("\n", lines);
@@ -296,7 +299,8 @@ public sealed class RatioRow(Ratio project, Ratio? building)
 
     private static string StatusTextOf(string s) => s switch
     {
-        "bas" => "sous le repère", "haut" => "au-dessus du repère", "ok" => "dans le repère", "info" => "informatif", _ => "non calculé",
+        "bas" => "sous le repère", "haut" => "au-dessus du repère", "ok" => "dans le repère", "info" => "informatif",
+        "typologie" => "typologie à définir", "sans repère" => "sans repère pour cette typologie", _ => "non calculé",
     };
 
     private string Text(double? v) => v is not double d ? "–" : IsArea ? d.ToString("#,##0.0", Format) + " m²"

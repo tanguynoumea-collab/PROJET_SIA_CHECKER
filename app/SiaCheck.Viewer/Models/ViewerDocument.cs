@@ -21,6 +21,8 @@ public sealed class ViewerDocument
     [JsonPropertyName("counts")] public Dictionary<string, int> Counts { get; init; } = [];
     [JsonPropertyName("tolerance")] public Tolerance Tolerance { get; init; } = new();
     [JsonPropertyName("cache")] public CacheInfo Cache { get; init; } = new();
+    /// <summary>Typologie retenue (fiche projet) et proposée d'après les surfaces ; les repères des ratios en dépendent.</summary>
+    [JsonPropertyName("typologie")] public TypologyInfo? Typologie { get; init; }
     [JsonPropertyName("categories")] public List<CategoryInfo> Categories { get; init; } = [];
     [JsonPropertyName("surfaces")] public List<Surface> Surfaces { get; init; } = [];
     [JsonPropertyName("levels")] public List<LevelBalance> Levels { get; init; } = [];
@@ -112,6 +114,15 @@ public sealed class Tolerance
 {
     [JsonPropertyName("abs_m2")] public double AbsM2 { get; init; }
     [JsonPropertyName("rel")] public double Rel { get; init; }
+}
+
+public sealed class TypologyInfo
+{
+    [JsonPropertyName("retenue")] public string? Chosen { get; init; }
+    /// <summary>logement | mixte | activites | autre… ; null sans typologie.</summary>
+    [JsonPropertyName("cle")] public string? Key { get; init; }
+    [JsonPropertyName("proposee")] public string? Proposed { get; init; }
+    [JsonPropertyName("raison")] public string? Reason { get; init; }
 }
 
 public sealed class CacheInfo

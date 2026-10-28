@@ -17,6 +17,12 @@ Jetons spéciaux :
 
 Les repères (`ref`) sont indicatifs : un ratio hors repère n'est pas une erreur du contrôle,
 c'est une question posée à la revue IA et à l'utilisateur.
+
+**Repères et typologie** (décision du 28.10.2026) : un repère ne vaut que pour un type de bâtiment. Ceux de
+config.yaml viennent des projets de logement de la base ; ils valent pour les typologies `typologies` du ratio
+(par défaut logement et logement mixte), `refs` en donne d'autres par typologie. Sans typologie (fiche projet,
+`--typologie`), aucun repère n'est appliqué : le ratio garde sa valeur, son statut est « typologie ». Pour une
+typologie sans repère (parking, activités…), le statut est « info ».
 """
 
 from __future__ import annotations
@@ -78,9 +84,69 @@ def stairs(surf: pd.DataFrame, totals: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _status(value: float | None, ref: list | None) -> str:
-    if value is None or not ref:
-        return "info" if value is not None else "n/a"
+HOUSING = ("logement", "mixte")
+
+
+def _norm(text: str) -> str:
+    return unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().lower().strip()
+
+
+def typology_key(label: str | None) -> str | None:
+    """Libellé de la liste du MDP (« Logement Mixte (>10% autres affectations) ») -> clé des repères."""
+    t = _norm(label or "")
+    if not t:
+        return None
+    for key, rx in (("mixte", r"logement mixte"), ("logement", r"^logement"), ("activites", r"activit"),
+                    ("industriel", r"industri"), ("ecole", r"ecole"), ("hotel", r"hotel"), ("sport", r"sport"),
+                    ("ems", r"\bems\b"), ("sante", r"sante"), ("commercial", r"centre commercial")):
+        if re.search(rx, t):
+            return key
+    return "autre"
+
+
+def reference(r: dict, key: str | None) -> list | None:
+    """Repère d'un ratio pour une typologie : `refs[clé]`, sinon `ref` si la typologie en relève, sinon aucun."""
+    if key is None:
+        return None
+    if key in (r.get("refs") or {}):
+        return r["refs"][key]
+    return r.get("ref") if key in (r.get("typologies") or HOUSING) else None
+
+
+def suggest(surf: pd.DataFrame) -> tuple[str, str] | None:
+    """Typologie proposée d'après les surfaces élémentaires (libellé de la liste du MDP, raison), ou None."""
+    if surf.empty or "kind" not in surf:
+        return None
+    leaves = surf[surf["kind"] == "leaf"]
+    if "ignored" in leaves:
+        leaves = leaves[~leaves["ignored"].astype(bool)]
+    m2 = leaves.groupby("code")["area"].sum()
+    sup, sus, sut = (float(m2.get(c, 0.0)) for c in ("SUP", "SUS", "SUT"))
+    su = sup + sus + sut
+    if su <= 0:
+        return None
+    parking = float(leaves[(leaves["code"] == "SUS") & (leaves.get("room_type") == "Parking")]["area"].sum()) \
+        if "room_type" in leaves else 0.0
+    lots = leaves[leaves["code"].isin(["SUP", "SUT"]) & leaves["lot"].notna()]["lot"].nunique() if "lot" in leaves else 0
+    pct = lambda v: f"{100 * v / su:.0f} %"   # noqa: E731
+    if lots and sup / max(sup + sut, 1e-9) >= 0.9:
+        return "Logement (100-90% SU)", f"{lots} logements, SUP {pct(sup)} de la SU"
+    if lots:
+        return "Logement Mixte (>10% autres affectations)", f"{lots} logements, SUT {pct(sut)} de la SU"
+    if parking >= 0.5 * su:
+        return "Autre", f"parking : {pct(parking)} de la SU"
+    if sut >= 0.5 * su:
+        return "Activités (Bureaux, Artisanat, Commerce)", f"aucun logement, SUT {pct(sut)} de la SU"
+    return "Autre", f"aucun logement (SUP {pct(sup)}, SUS {pct(sus)}, SUT {pct(sut)} de la SU)"
+
+
+def _status(value: float | None, ref: list | None, key: str | None = "logement") -> str:
+    if value is None:
+        return "n/a"
+    if key is None:
+        return "typologie"
+    if not ref:
+        return "info"
     lo, hi = ref
     return "bas" if value < lo else "haut" if value > hi else "ok"
 
@@ -148,6 +214,7 @@ def compute(totals: pd.DataFrame, surf: pd.DataFrame, cfg: Config) -> pd.DataFra
         totals = totals.join(env.groupby(["building", "level", "code"])["area"].sum().unstack("code"), how="left")
     totals = totals.join(stairs(surf, totals), how="left")
     above = [(b, l) for b, l in totals.index if (level_rank(l, cfg) is None or level_rank(l, cfg) >= 0)]
+    key = typology_key(cfg.typologie)
     scopes = [ALL] + sorted(totals.index.get_level_values("building").unique())
 
     for scope in scopes:
@@ -166,11 +233,16 @@ def compute(totals: pd.DataFrame, surf: pd.DataFrame, cfg: Config) -> pd.DataFra
             value = num / den if num is not None and den else None
             if value is not None and not math.isfinite(value):
                 value = None
-            ref = r.get("ref")
+            ref = reference(r, key)
+            status = _status(value, ref, key)
+            if not (r.get("ref") or r.get("refs")) and status == "typologie":
+                status = "info"          # ratio sans repère, quelle que soit la typologie (SNH / lot…)
+            elif status == "info" and (r.get("ref") or r.get("refs")):
+                status = "sans repère"   # repère établi pour d'autres typologies (logement)
             rows.append({
                 "building": scope, "id": r["id"], "family": r.get("family", ""), "label": r.get("label", r["id"]),
                 "value": value, "unit": r.get("unit", "ratio"),
                 "ref_min": ref[0] if ref else None, "ref_max": ref[1] if ref else None,
-                "status": _status(value, ref), "num_m2": num, "den_m2": den, "note": r.get("note", ""),
+                "status": status, "num_m2": num, "den_m2": den, "note": r.get("note", ""),
             })
     return pd.DataFrame(rows, columns=RATIO_COLUMNS)

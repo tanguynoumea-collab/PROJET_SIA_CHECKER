@@ -20,6 +20,10 @@ par un IfcStair (enveloppe convexe de son emprise) devient une surface SD « Esc
 ratios par cage d'escalier en dépendent. En dessous de `stairs.min_m2`, la part reste au palier ; si le palier
 restant est plus petit, l'espace entier devient la cage.
 
+**Poteaux** (SIA 416 : construction, SC) : l'emprise des IfcColumn est retirée de la pièce qui les contient, en
+géométrie et en aire (CGA L04 : 44 poteaux par niveau dans les places de parc, que Revit n'avait pas exclus). Une pièce
+dont Revit exclut déjà les poteaux n'en contient pas : rien ne change.
+
 **Aire d'une pièce** : son emprise en plan (`sp.area_source: plan`, SIA 416 §0.4), ou l'aire déclarée par les
 quantités IFC (`declared`), à défaut l'emprise. Les pièces sans emprise en plan ne sont pas comptées.
 """
@@ -139,6 +143,7 @@ def build(plans: list[Plan], decisions: dict[str, Decision], cfg_generation: dic
             if d.nature != PIECE or p.shape is None:
                 continue
             lv.rooms.append(Room(p, d, area_of(p, declared)))
+        without_columns(lv)
         split_stairs(lv, float(((cfg_generation or {}).get("stairs") or {}).get("min_m2", 2.0)))
         lv.sp, lv.sp_method = surface_de_plancher(plan, decisions, close, min_hole)
         lv.floor_z = floor_z(lv)
@@ -148,6 +153,25 @@ def build(plans: list[Plan], decisions: dict[str, Decision], cfg_generation: dic
 
 
 STAIR_TYPES = ("Escalier", "Ascenseur")
+MIN_COLUMN_M2 = 0.01   # recouvrement plus petit (poteau tangent à la pièce) : ignoré
+
+
+def without_columns(lv: Level) -> float:
+    """Retire l'emprise des poteaux des pièces du niveau ; renvoie les m² retirés."""
+    cols = [p.shape for p in lv.plan.of("IfcColumn") if p.shape is not None and not p.shape.is_empty]
+    if not cols:
+        return 0.0
+    cu = shapely.union_all(cols)
+    out, removed = [], 0.0
+    for r in lv.rooms:
+        hit = r.placed.shape.intersection(cu).area if r.placed.shape is not None else 0.0
+        if hit < MIN_COLUMN_M2:
+            out.append(r)
+            continue
+        out.append(Room(replace(r.placed, shape=r.placed.shape.difference(cu)), r.decision, max(r.area - hit, 0.0)))
+        removed += hit
+    lv.rooms = out
+    return removed
 
 
 def split_stairs(lv: Level, min_m2: float = 2.0) -> int:

@@ -148,3 +148,18 @@ def test_bare_openings_are_deducted_from_the_facade_once():
     env = n00.envelope
     assert env["ReservationsArea"] == pytest.approx(3 * 2.0 + 1.4 + 1.4)
     assert env["SRV"] == pytest.approx(2.8) and env["NetArea"] == pytest.approx(180.0 - 8.8)
+
+
+def test_columns_are_construction_and_railings_are_not_openings():
+    """CGA L04 : poteaux dans une place de parc retirés de la surface nette ; garde-corps modélisés en porte ignorés."""
+    lv = level("S01", 0.0, 3.0, sp=box(0, 0, 20, 10),
+               openings=[("gc", "IfcDoor", box(5, -0.1, 7, 0.1), 1.0)])
+    lv.plan.elements[0].item.type_name = "Type de garde-corps"
+    park = plans.Placed(Item("p", "IfcSpace", "SUS_VOI", "A", "S01"), box(0, 0, 20, 10))
+    lv.rooms.append(interiors.Room(park, classify.Decision("p", "piece", "SUS", "Parking"), 200.0))
+    for k in range(3):
+        lv.plan.elements.append(plans.Placed(Item(f"c{k}", "IfcColumn", "Poteau", "A", "S01"), box(5 * k + 2, 4, 5 * k + 2.3, 4.3)))
+    assert interiors.without_columns(lv) == pytest.approx(0.27)
+    assert lv.rooms[0].area == pytest.approx(200.0 - 0.27) and lv.rooms[0].placed.shape.area == pytest.approx(200.0 - 0.27)
+    exteriors.build([lv], {}, set(), {})
+    assert lv.envelope["ReservationsArea"] == 0.0

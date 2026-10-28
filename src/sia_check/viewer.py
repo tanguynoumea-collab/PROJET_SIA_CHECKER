@@ -346,7 +346,16 @@ def build(result: rules.Result, cfg: Config, cache: Cache, project: str, sources
         },
         "categories": categories, "surfaces": surfaces, "levels": levels, "issues": issues,
         "ratios": ratios_records(result),
+        "typologie": typology(result, cfg),
     }
+
+
+def typology(result: rules.Result, cfg: Config) -> dict:
+    """Typologie retenue (fiche projet) et typologie proposée d'après les surfaces : les repères des ratios en dépendent."""
+    from . import ratios as ratios_mod
+    s = ratios_mod.suggest(result.surfaces)
+    return {"retenue": cfg.typologie or None, "cle": ratios_mod.typology_key(cfg.typologie),
+            "proposee": s[0] if s else None, "raison": s[1] if s else None}
 
 
 def balance(result: rules.Result, cfg: Config, before: rules.Result | None = None) -> dict:

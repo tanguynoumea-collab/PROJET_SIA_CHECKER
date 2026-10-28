@@ -450,3 +450,11 @@ Non-régression :
 - La Bâtie : SRV de 156,65 m² à chaque étage courant, comme le MDP.
 - Myonaz 1 : inchangé.
 - Le maillage de la SFN égale la SFN nette à 1 % près, sauf aux angles (jusqu'à 2 %).
+
+## 21. Retours de l'utilisateur sur CGA L04 (28.10.2026) : typologie, poteaux, rampes
+
+| Remarque | Correction |
+|---|---|
+| Les repères des ratios n'ont de sens que pour un type de bâtiment ; CGA est un parking. Vaut aussi pour les projets Treegram | Les repères de `config.yaml` (établis sur les projets de logement de la base) ne valent que pour les typologies Logement et Logement mixte (`typologies` d'un ratio, `refs` pour d'autres). La typologie de la fiche projet part au moteur (`--typologie`, analyse et aperçu). Sans typologie, le ratio garde sa valeur, et son statut est « typologie » (« typologie ? » dans la colonne Repère) ; pour une autre typologie, il est « sans repère ». Le moteur propose une typologie d'après les surfaces (`ratios.suggest`) : CGA, « Autre (parking : 98 % de la SU) » ; La Bâtie, « Logement ». L'onglet Ratios le dit, avec « Renseigner la typologie » (fiche projet, proposition présélectionnée). « Analyser » la demande une fois par projet et par session tant qu'elle manque. |
+| Les poteaux ne sont pas déduits | Au sens de la SIA 416, un poteau est de la construction (SC) : l'emprise des IfcColumn est retirée de la pièce qui les contient, en géométrie et en aire (`interiors.without_columns`). CGA : −17 m² de parking (44 poteaux par niveau, que Revit n'avait pas exclus). |
+| Percements étranges après les ouvertures des rampes | Les garde-corps des rampes de CGA sont des IfcDoor (« Type de garde-corps »). Ils ne sont plus des ouvertures (`envelope.not_openings`). CGA S01 : réservations de 62,4 à 26,0 m². |

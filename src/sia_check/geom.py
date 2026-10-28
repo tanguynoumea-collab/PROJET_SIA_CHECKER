@@ -165,3 +165,18 @@ def read_cache(project_dir: str | Path) -> Cache:
     for e in cache.errors:
         log.warning("cache VWR : %s", e)
     return cache
+
+
+def for_model(model: Path) -> Cache:
+    """Géométrie d'un fichier source : cache VWR à côté d'un `.tgm`, maillages d'un `.siagen.json`, rien pour un IFC."""
+    from . import siagen
+    if siagen.is_siagen(model):
+        return siagen.cache(model)
+    return read_cache(model.parent) if model.suffix.lower() == ".tgm" else Cache()
+
+
+def source_modified(model: Path) -> dt.datetime:
+    """Date des surfaces d'un fichier source, à comparer à celle de leur géométrie (cache 3D périmé)."""
+    if model.suffix.lower() == ".tgm":
+        return sia_surfaces_modified(model)
+    return dt.datetime.fromtimestamp(model.stat().st_mtime)

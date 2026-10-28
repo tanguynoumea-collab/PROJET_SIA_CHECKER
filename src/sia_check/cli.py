@@ -21,14 +21,15 @@ avec --benchmark, la base des tableaux MDP d'un dossier est lue (sia_check.bench
 avec --benchmark-projet, les totaux et ratios du projet lu (corrections comprises), au format d'un projet du
 benchmark : la visionneuse les envoie au dashboard (« Mon projet ») ;
 avec --identite, la fiche « Identité du projet » (JSON : description InfosProjet -> valeur) part dans le MDP exporté ;
-avec --mdp-identite, elle est écrite dans un MDP existant, sans projet Treegram.
+avec --mdp-identite, elle est écrite dans un MDP existant, sans projet Treegram ;
+avec --siagen, les surfaces lues (avant corrections) et leurs maillages sont écrits au contrat `.siagen.json` (V4) :
+un projet généré se lit comme un `.tgm`, et ce fichier tiré d'un `.tgm` en est la preuve.
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import json
 import logging
 import sys
@@ -38,7 +39,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import config as config_mod
-from . import benchmark, corrections, geom, mdp, propositions, reader, report, rules, sujets, treegram, viewer
+from . import benchmark, corrections, geom, mdp, propositions, reader, report, rules, siagen, sujets, treegram, viewer
 
 log = logging.getLogger("sia_check")
 
@@ -46,7 +47,7 @@ log = logging.getLogger("sia_check")
 def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(prog="sia-check", description=__doc__.splitlines()[0])
     ap.add_argument("models", nargs="*", type=Path,
-                    help="fichiers .tgm ou .ifc Treegram, ou dossier de projet Treegram (sauf avec --depuis-cache)")
+                    help="fichiers .tgm, .siagen.json ou .ifc, ou dossier de projet (sauf avec --depuis-cache)")
     ap.add_argument("--config", type=Path, help="défaut : config.yaml du dossier courant, sinon celle livrée")
     ap.add_argument("--out", type=Path, help="dossier des rapports xlsx, html et json")
     ap.add_argument("--viewer-json", type=Path, help="fichier JSON pour SIA Check Viewer (un seul projet)")
@@ -69,6 +70,7 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--identite", type=Path, help="fiche « Identité du projet » (JSON) écrite dans InfosProjet du MDP")
     ap.add_argument("--mdp-identite", type=Path, help="MDP existant dont l'identité est remplacée par --identite")
     ap.add_argument("--benchmark-projet", type=Path, help="totaux et ratios du projet lu, au format du benchmark (JSON)")
+    ap.add_argument("--siagen", type=Path, help="projet au contrat .siagen.json à écrire (surfaces lues et maillages)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -85,13 +87,14 @@ def _default_config() -> Path:
 
 
 def _resolve(model: Path) -> Path:
-    """Un dossier de projet Treegram désigne son unique fichier .tgm."""
+    """Un dossier de projet désigne son unique fichier source : .tgm (Treegram) ou .siagen.json (projet généré)."""
     if not model.is_dir():
         return model
-    tgms = sorted(model.glob("*.tgm"))
-    if len(tgms) != 1:
-        raise reader.ReadError(f"{model} : {len(tgms)} fichiers .tgm trouvés, 1 attendu (dossier du projet Treegram)")
-    return tgms[0]
+    sources = sorted([*model.glob("*.tgm"), *model.glob(f"*{siagen.SUFFIX}")])
+    if len(sources) != 1:
+        raise reader.ReadError(f"{model} : {len(sources)} fichiers .tgm ou {siagen.SUFFIX} trouvés, 1 attendu "
+                               "(dossier du projet)")
+    return sources[0]
 
 
 def _print(result: rules.Result, show_all: bool) -> None:
@@ -181,8 +184,9 @@ def main(argv: list[str] | None = None) -> int:
     if journal is not None:
         try:
             geometry = None
-            if any(c.get("polygone") for c in journal["corrections"]) and models[0].suffix.lower() == ".tgm":
-                cache = geom.read_cache(models[0].parent)
+            if any(c.get("polygone") for c in journal["corrections"]) and (
+                    models[0].suffix.lower() == ".tgm" or siagen.is_siagen(models[0])):
+                cache = geom.for_model(models[0])
                 geometry = _geometry_of(cache)
             applied, before, result = corrections.run(df, journal, cfg, geometry)
         except corrections.JournalError as ex:
@@ -194,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
         _print(result, args.all)
     if applied is not None:
         _print_corrections(applied, before, result)
-    project = args.project or models[0].stem
+    project = args.project or siagen.project_name(models[0])
     try:
         if args.out:
             rep = report.build(result, cfg, project, models)
@@ -221,6 +225,11 @@ def main(argv: list[str] | None = None) -> int:
             p.nom = args.project_name or project
             benchmark.ecrire({"version": benchmark.VERSION, "projet": benchmark.projet_json(p)}, args.benchmark_projet)
             log.info("projet pour le benchmark écrit : %s", args.benchmark_projet)
+        if args.siagen:
+            if len(models) != 1 or models[0].suffix.lower() != ".tgm":
+                log.error("--siagen s'écrit depuis un seul projet .tgm")
+                return 2
+            log.info("projet .siagen écrit : %s", _write_siagen(models[0], cfg, args.siagen, project))
         if args.corrections_xlsx:
             if applied is None:
                 log.error("--corrections-xlsx demande un journal (--corrections)")
@@ -229,8 +238,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.viewer_json or args.sujets:
             log.info("ÉTAPE 3/%d géométrie (cache VWR)", steps)
             if cache is None:
-                cache = geom.read_cache(models[0].parent) if models[0].suffix.lower() == ".tgm" else geom.Cache()
-            modified = geom.sia_surfaces_modified(models[0]) if models[0].suffix.lower() == ".tgm"                 else dt.datetime.fromtimestamp(models[0].stat().st_mtime)
+                cache = geom.for_model(models[0])
+            modified = geom.source_modified(models[0])
             excluded = applied.surfaces[applied.surfaces.excluded] if applied is not None else None
             doc = viewer.build(result, cfg, cache, project, [str(m) for m in models], modified, before=before,
                                excluded=excluded)
@@ -270,6 +279,17 @@ def main(argv: list[str] | None = None) -> int:
         log.error("écriture impossible : %s", ex)
         return 2
     return result.exit_code
+
+
+def _write_siagen(model: Path, cfg, out: Path, project: str) -> Path:
+    """Surfaces du `.tgm` et maillages de son cache VWR au contrat `.siagen.json` (siagen.py)."""
+    if out.is_dir() or not siagen.is_siagen(out):
+        out = (out if out.is_dir() or not out.suffix else out.parent) / f"{project}{siagen.SUFFIX}"
+    elements = reader.tgm_elements(model, cfg)
+    meshes = geom.read_cache(model.parent).meshes
+    for e in elements:   # un identifiant porté par deux éléments : ses maillages ne sont écrits qu'une fois
+        e.meshes = meshes.pop(e.element_id, []) if e.element_id is not None else []
+    return siagen.write(elements, out, project, source=str(model))
 
 
 def _lire_identite(path: Path | None) -> dict | None:

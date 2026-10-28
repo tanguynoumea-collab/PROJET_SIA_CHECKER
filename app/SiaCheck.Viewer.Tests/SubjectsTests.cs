@@ -426,6 +426,13 @@ public class SubjectPointsTests
         File.WriteAllText(Path.Combine(sans, "b.tgm"), "");
         Assert.Contains("2 fichiers .tgm", ProjectFolder.Check(sans).FolderMessage);
         Assert.True(ProjectFolder.Check(TreegramFolder(tmp, "OK")) is { FolderOk: true, FolderWarning: false });
+        // projet généré depuis un IFC (V4) : sa géométrie est dans le fichier, pas de VWR attendu
+        var gen = Directory.CreateDirectory(Path.Combine(tmp.Path, "GEN")).FullName;
+        File.WriteAllText(Path.Combine(gen, "L OREE.siagen.json"), "{}");
+        Assert.True(ProjectFolder.Check(gen) is { FolderOk: true, FolderWarning: false });
+        Assert.Equal("L OREE", ProjectFolder.ProjectName(ProjectFolder.Sources(gen).Single()));
+        File.WriteAllText(Path.Combine(gen, "L OREE.tgm"), "");
+        Assert.Contains("2 fichiers .tgm", ProjectFolder.Check(gen).FolderMessage);
     }
 
     [Fact]

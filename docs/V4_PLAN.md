@@ -1,0 +1,175 @@
+# V4_PLAN — Génération des surfaces SIA depuis l'IFC architecte
+
+> Statut : ☑ Brouillon · ☐ Validé par l'utilisateur
+> Version : 0.2 — 28.10.2026 · décisions prises (§9), phase 19 livrée (§10)
+
+## 1. Objectif
+
+La V1 à la V3 **contrôlent, corrigent et exploitent** les surfaces SIA produites par Treegram. La V4 les **produit** : un moteur lit une maquette architecte IFC (avec ses `IfcSpace`) et génère les surfaces SIA 416 / USPI **au format et selon les classifications de Treegram**.
+
+Contrainte majeure : la Fiabilisation et le Dashboard ne doivent **pas être retravaillés**. Les surfaces générées entrent dans le pipeline au même point que celles de Treegram.
+
+Le moteur devient une **troisième section de l'accueil**, à côté de la Fiabilisation et du Benchmark : *Génération*. Elle a sa vue 3D (IFC + surfaces), permet d'ajuster à la main ce que sort le moteur, et combine un **moteur algorithmique** et une **analyse IA** (même clé API, chiffrée DPAPI) pour ce qui demande du jugement.
+
+## 2. Ce que l'exploration a montré (28.10.2026)
+
+### 2.1 Le point d'entrée du pipeline n'est pas le `.tgm`, c'est le DataFrame normalisé
+
+Tout le pipeline (règles, corrections, sujets, MDP, exports Treegram, viewer, benchmark) ne voit que :
+
+- le **DataFrame de `reader.py`** (`SURFACE_COLUMNS` : `id`, `building`, `level`, `category`, `area`, `kind` leaf/node, `room_type`, `lot`, `element_id`, `tgm_id`, `perimeter`, `gross_height`, `dx`, `dy`, `bedrooms`, `gross_area`, `net_area`, `reservations_area`) ;
+- les **maillages par `element_id`** (`geom.Cache`).
+
+Seuls `tgm.py` et `geom.py` connaissent les formats binaires Treegram. Ce sont deux formats **non documentés, rétro-ingéniés en lecture**. Écrire un vrai `.tgm` serait fragile et sans intérêt : Treegram n'a pas à le relire.
+
+**Décision proposée : le moteur écrit son propre fichier projet, qui reproduit à l'identique le modèle Treegram** (mêmes noms d'éléments, mêmes propriétés, mêmes totaux de niveau, mêmes `Type`, mêmes ID), et `reader.py` gagne un troisième backend. Tout ce qui est en aval reste tel quel.
+
+### 2.2 Le modèle Treegram à reproduire (relevé sur L'Orée, `docs/ifc-schema.md` §2.2)
+
+| Étage de l'arbre | Contenu | Nom des éléments |
+|---|---|---|
+| Totaux de niveau (nœuds) | 17 codes par niveau, ordre fixe : `SFN, SRV, SUP, SUS, SD, SED, SI, SUT, SEU, SNH, SHA, SBH, SVN, SVB, SP, SEP, SPT`. **SP et SEP n'existent qu'ici.** `SFN` porte `GrossArea`, `NetArea`, `ReservationsArea`, `Perimeter`, `GrossHeight` | le code seul |
+| Espaces intérieurs | SUP, SUS, SD, SI, SUT | `Bât_Niv_ShellByTgm-n_SpaceByTgm-m_CODE` |
+| Espaces extérieurs | SEU, SED, SPT | `Bât_Niv_ExtShellByTgm-n_CODE` |
+| Chaîne USPI par lot | SNH, SHA, SBH, SVN, SVB (+ `Bedrooms` sur SNH) | `Bât_Niv_Apart-n_CODE` |
+
+`Type` (sous-type) : SUP `PieceDeVie`, `Chambre`, `PieceSecondaire_{2,3,4}PointsEau`, `Distribution` ; SD `Ascenseur`, `CirculationH`, `Escalier` ; SI `Gaine`, `Local` ; SEU `Balcon`, `Terrasse` ; SED `CirculationExt` ; SUT `Commerce` ; SPT `Toiture`. Lot : `ApartmentByTgm`.
+
+### 2.3 Comment Treegram y arrive (journal des actions, `DB/*.db3` de L'Orée)
+
+Les surfaces SIA **ne sont pas une copie des `IfcSpace`**. Treegram reconstruit ses propres objets à partir des murs, dalles et ouvertures, puis classe :
+
+1. **BAAMER** : niveaux, dalles, murs, espaces, ouvertures par niveau ; nettoyage des doublons, fusion des murs superposés (tolérance de joint 0,07 m).
+2. **DATCHA** : enveloppes et coques (`Shell` = logement ou unité ; prolongation des axes 0,15 m, épaisseur des murs de loggia 0,29 m), espaces reconstruits (`SpaceByTgm`), gaines (0,0025–1,5 m²), circulations, escaliers, réservations, toitures, extérieurs (balcons, terrasses, porte-à-faux depuis dalles, toitures et espaces architecte), façades.
+3. **APARTMENT** : logements, appartenance des objets aux coques, ouvertures vers les espaces, forme.
+4. **BOOMER :: Create : SIA Surfaces** : l'arbre SIA final.
+
+C'est la feuille de route du moteur : mêmes étapes, mêmes paramètres, réglables dans `config.yaml`.
+
+### 2.4 Un jeu de référence existe déjà, presque
+
+Le `.tgm` de L'Orée contient **la maquette importée** (638 `Space3d`, 6 834 murs, 2 051 portes, 1 644 fenêtres), **tous les intermédiaires** (coques, espaces reconstruits avec leur profil horizontal) et **le résultat SIA** (6 090 surfaces). Il manque l'IFC source lui-même : les `Audits/2D3D-*.ifc` ne contiennent que leurs réglages (maquettes issues de plans 2D via Wisebim).
+
+→ Avec l'IFC source de L'Orée (ou un autre projet Treegram dont on a l'IFC architecte), on mesure le moteur **surface par surface et niveau par niveau** contre Treegram. Sans paire IFC ↔ Treegram, « identique à Treegram » ne peut pas être vérifié (§9, question 1).
+
+## 3. Architecture
+
+```
+IFC architecte ──► [1 Ingestion] ──► [2 Géométrie] ──► [3 Classification règles] ──► [4 Analyse IA] ──► [5 Ajustements manuels]
+                    ifcopenshell      shapely, plans     dictionnaire, score         Claude Opus 5.5       journal (comme V2)
+                                      par niveau         de confiance                propositions
+                                                                                              │
+                                     <Nom>.siagen  ◄── [6 Assemblage au modèle Treegram] ◄────┘
+                                          │
+                      reader.read_siagen ─┴─► DataFrame normalisé + maillages ─► Fiabilisation, MDP, Benchmark (inchangés)
+```
+
+### 3.1 Moteur (Python, `src/sia_check/generation/`)
+
+| Module | Rôle |
+|---|---|
+| `ingest.py` | IFC → bâtiments, niveaux (altitudes, hauteurs), `IfcSpace` (contour, psets, `Name`/`LongName`, zones `IfcZone`), murs, dalles, toitures, ouvertures, escaliers, garde-corps. Seul module à toucher à l'IFC |
+| `plans.py` | Coupe de chaque niveau : contours 2D (shapely), contour extérieur brut du niveau (SP), emprise du niveau inférieur, rattachement des éléments |
+| `envelope.py` | Enveloppes et coques (logements, unités), extérieurs (balcons, terrasses, coursives, toitures), façades (SFN brute / nette, réservations) et vitrages (SRV) |
+| `classify.py` | Règles : nom de pièce → (code, `Type`), avec un score de confiance ; dictionnaire FR/DE/IT dans `config.yaml > generation` |
+| `uspi.py` | Chaîne USPI par lot (SNH, SHA, SBH, SVN, SVB), chambres |
+| `assemble.py` | Arbre Treegram : noms, propriétés, ID, totaux de niveau dans l'ordre, maillages |
+| `compare.py` | Moteur vs Treegram (même projet) : écarts par code, niveau, surface ; sert aux tests et au réglage |
+
+CLI : `sia-check --generer maquette.ifc --out dossier/` écrit le projet généré ; `--comparer-treegram projet.tgm` donne le rapport d'écarts.
+
+### 3.2 Format de sortie `.siagen` (contrat, version 1)
+
+Un dossier projet, ouvrable par la Fiabilisation comme un dossier Treegram :
+
+```
+<Nom>/
+  <Nom>.siagen.json     éléments au modèle Treegram : name, props (Catégorie SIA, Area, Type, ApartmentByTgm,
+                        Bedrooms, Perimeter, GrossHeight, DeltaX, DeltaY, GrossArea, NetArea, ReservationsArea),
+                        element_id, container_id, kind (leaf | node), building, level, mesh
+  <Nom>.ifc             copie (ou lien) de la maquette source, pour la 3D
+  generation/           journal des décisions (règles, IA, manuel), rapport du moteur
+```
+
+`reader.py` lit `.siagen.json` et rend exactement le même DataFrame que pour un `.tgm` ; `geom` y lit les maillages au lieu du cache VWR. Les ID gardent la forme `H<conteneur>::H<élément>` (exports Excel, Excel de correction).
+
+### 3.3 Algorithme d'abord, IA ensuite
+
+L'algorithme fait tout ce qui est mesurable : contours, aires, SP, extérieurs, façades, sommes, et la classification des noms clairs. L'IA ne reçoit **que ce qui demande du jugement**, sous forme de preuves compactes (pas l'IFC) :
+
+| Question pour l'IA | Exemple |
+|---|---|
+| Pièce au nom ambigu ou absent | « Dégag. », « Raum 12 », « Local » sans usage → SUP Distribution, SD CirculationH, SI Local ? |
+| SUP, SUS ou SUT selon la destination | une buanderie commune, un local vélos, un commerce en pied d'immeuble |
+| Regroupement en logements quand l'IFC n'a pas de zones | pièces reliées par des portes, derrière une porte palière |
+| Nombre de chambres, typologie | 3 chambres dont une de 8 m² |
+| Extérieur : SEU, SED, SA ou toiture | terrasse de plain-pied avec le terrain (SA, SIA 416 §3), toiture accessible ou non |
+| Cohérence d'ensemble | niveau sans SD, logement sans pièce d'eau, ratio SUP/SP hors repère |
+
+Chaque réponse est une **proposition** au format du journal existant (origine « ia », statut « proposée », raison), jamais une écriture directe. Même mécanique que la revue IA : estimation du coût, accord, appel, rapport. Les appels partent de l'app (C#, `AiReviewService`), avec la clé DPAPI existante.
+
+### 3.4 Section *Génération* de l'app
+
+- **Accueil** : troisième carte, « Générer depuis un IFC… », projets générés récents.
+- **Vue 3D** (HelixToolkit, déjà en place) : maquette IFC en gris translucide, surfaces générées aux couleurs SIA, mêmes calques, filtres et éclatement des niveaux que la Fiabilisation.
+- **Liste des surfaces** : code, `Type`, lot, aire, origine (règle / IA / manuel), confiance. Les surfaces à faible confiance d'abord.
+- **Ajustements** : changer code, `Type`, lot ; fusionner / découper (module de tracé V2 réutilisé) ; affecter une pièce à un logement. Tout passe par le journal, la génération se rejoue.
+- **« Envoyer en fiabilisation »** : écrit le projet `.siagen` et l'ouvre dans la Fiabilisation. Le statut, le MDP et la base du benchmark suivent comme pour un projet Treegram, avec la source « IFC » dans la fiche projet.
+
+## 4. Mesure de la qualité
+
+1. **Paire de référence** IFC ↔ Treegram (§9, q. 1) : écart par code et par niveau, surfaces appariées par contour (recouvrement ≥ 90 %), taux de classification identique.
+2. **Cibles V4.0** (à valider) : SP et SUP à ±1 % par niveau ; ≥ 95 % des surfaces intérieures au même code que Treegram ; aucun écart de classification sans explication dans le rapport.
+3. **La Fiabilisation comme juge** : un projet généré passe par les règles R1–R5, A1–A3, U1–U4. Il ne doit pas en sortir plus de points d'attention qu'un projet Treegram.
+4. Tests : jeu IFC synthétique (un niveau, deux logements, un balcon, une cage) dans `tests/data/`, plus l'intégration sur la paire de référence (ignorée si absente, comme L'Orée aujourd'hui).
+
+## 5. Phases proposées
+
+Numérotation à la suite de la V3 (phase 18).
+
+| Phase | Livrable | Vérification |
+|---|---|---|
+| **19** Contrat et lecteur | Format `.siagen` v1, `reader.read_siagen`, maillages ; un `.siagen` produit **depuis le `.tgm` de L'Orée** doit donner exactement la même analyse que le `.tgm` | rapports identiques, tests |
+| **20** Ingestion IFC | `ingest.py`, `plans.py` : niveaux, espaces, murs, dalles, ouvertures, contours 2D | inventaire de la paire de référence |
+| **21** Intérieurs | SP par niveau, SpaceByTgm depuis les `IfcSpace`, classification par règles (SUP/SUS/SUT/SD/SI + `Type`) | `compare.py` vs Treegram |
+| **22** Extérieurs et enveloppe | SEP, SEU, SED, SPT, SFN, SRV | idem |
+| **23** Logements et USPI | coques, lots, chambres, SNH…SVB | idem, règles U1–U4 |
+| **24** Analyse IA | preuves, prompt, propositions, coût, rapport | jeu de cas ambigus |
+| **25** Section Génération (app) | accueil, 3D IFC + surfaces, liste, ajustements, envoi en fiabilisation | revue visuelle (Daedalus) |
+| **26** Clôture V4.0 | doc, README, version 4.0.0 | pipeline complet sur un projet réel |
+
+La phase 19 est sans risque et débloque tout : elle prouve que le pipeline accepte une source non Treegram sans retouche.
+
+## 6. Ce qui ne change pas
+
+Règles, corrections, sujets, propositions MDP, exports Treegram et MDP, revue IA, benchmark, dashboard. Le seul fichier modifié en aval est `reader.py` (un backend de plus) et la lecture des maillages.
+
+## 7. Risques
+
+| Risque | Parade |
+|---|---|
+| Pas de paire IFC ↔ Treegram : on ne peut pas prouver la conformité | l'obtenir avant la phase 21 (§9) |
+| Qualité très variable des IFC architecte (espaces manquants, mal nommés, ouverts, hors niveau) | audit d'entrée bloquant avec liste des défauts ; l'IA et l'ajustement manuel comblent le reste |
+| Règles de Treegram implicites (déductions forfaitaires, escaliers, 95 % SHAB, épaisseurs) | paramètres relevés dans le `.tgm` repris dans `config.yaml`, réglés sur la paire de référence |
+| Maquettes lourdes (100 Mo – 1 Go dans `Analyse parametrique des projets`) | ingestion par classes utiles seulement, cache de géométrie, calcul hors du thread UI |
+| Coût IA | seules les décisions ambiguës partent, estimation et accord avant chaque appel |
+
+## 8. Mise en ligne
+
+Comme la V3 : rien en ligne avant la fin de la validation.
+
+## 9. Décisions (28.10.2026)
+
+1. **Paire de référence : aucune pour l'instant.** On avance sur un jeu IFC synthétique et sur les maquettes architecte du dossier `Analyse parametrique des projets` (ingestion, robustesse). La conformité à Treegram reste **non prouvée** tant qu'aucune paire IFC ↔ `.tgm` n'est disponible ; `compare.py` est prêt à la mesurer dès qu'elle arrive. La phase 19 prouve déjà le format (`.siagen` tiré du `.tgm` de L'Orée).
+2. **Format de sortie : `.siagen.json`** (§3.2), lu par un troisième backend de `reader.py`.
+3. **Périmètre V4.0 : tout l'arbre Treegram**, USPI par logement et enveloppe (SFN, SRV) compris.
+4. **Logements : marqués par une propriété des `IfcSpace`.** Le nom du pset et de la propriété se règle dans `config.yaml > generation` ; sans elle, l'algorithme puis l'IA regroupent les pièces (§3.3).
+
+## 10. Phase 19 livrée (28.10.2026)
+
+- **Contrat `.siagen.json` v1** dans `src/sia_check/siagen.py`. Un élément porte son nom Treegram, `kind` (leaf ou node), son bâtiment et son niveau explicites, ses identifiants, ses propriétés Treegram telles quelles et ses maillages (float32 et uint32 en base64). Le contrat diffère sur un point du §3.2 : la maquette IFC n'est pas encore copiée dans le dossier, elle viendra avec la phase 20.
+- **Lecteur** : `reader.read` reconnaît `.siagen.json`. La lecture du `.tgm` est coupée en deux : les éléments situés (`tgm_elements`), puis les lignes du DataFrame (`_rows`). Les deux formats partagent la seconde étape, ce qui garantit des colonnes identiques. `geom.for_model` et `geom.source_modified` choisissent la géométrie selon la source.
+- **CLI** : un dossier contenant un seul `.tgm` ou un seul `.siagen.json` est un projet ; `--siagen` écrit le contrat depuis un `.tgm`.
+- **App** : la fiche projet et l'ouverture acceptent un dossier `.siagen.json`, où la géométrie est comprise, sans exiger de VWR.
+- **Preuve sur L'Orée**, avec le journal d'exemple : rapports xlsx, html et json, bilan des corrections, sujets, fichier visionneuse (5 173 maillages), MDP et exports Treegram sont identiques à ceux du `.tgm`. Seul le chemin du fichier source change. Le fichier pèse 5,3 Mo et s'écrit en 10 s.
+- Tests : `tests/test_siagen.py` (aller-retour, maillages au bit près, contrat violé, projet écrit à la main comme le fera le moteur, intégration L'Orée) et le contrôle du dossier dans l'app.

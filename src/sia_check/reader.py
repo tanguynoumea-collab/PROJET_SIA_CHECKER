@@ -1,4 +1,4 @@
-"""Source Treegram (`.tgm` ou `.ifc`) -> DataFrame normalisé des surfaces.
+"""Source Treegram (`.tgm` ou `.ifc`) ou projet généré (`.siagen.json`, V4) -> DataFrame normalisé des surfaces.
 
 Colonnes produites (SURFACE_COLUMNS) :
     id         identifiant stable (GlobalId IFC, nom d'élément Treegram)
@@ -17,7 +17,7 @@ Colonnes produites (SURFACE_COLUMNS) :
                propriétés Treegram reprises telles quelles (sources.tgm.extra_properties) ;
                vides pour l'IFC
 
-Seul ce module touche à IfcOpenShell et au format `.tgm`.
+Seul ce module touche à IfcOpenShell et au format `.tgm` ; le `.siagen.json` suit le contrat de siagen.py.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import tgm
+from . import siagen, tgm
 from .config import Config
 
 log = logging.getLogger(__name__)
@@ -51,12 +51,14 @@ def read(path: str | Path, cfg: Config) -> pd.DataFrame:
         raise ReadError(f"fichier introuvable : {path}")
     ext = path.suffix.lower()
     try:
-        if ext == ".tgm":
+        if siagen.is_siagen(path):
+            df = read_siagen(path, cfg)
+        elif ext == ".tgm":
             df = read_tgm(path, cfg)
         elif ext == ".ifc":
             df = read_ifc(path, cfg)
         else:
-            raise ReadError(f"extension non prise en charge : {ext} (attendu .tgm ou .ifc)")
+            raise ReadError(f"extension non prise en charge : {ext} (attendu .tgm, .siagen.json ou .ifc)")
     except ReadError:
         raise
     except Exception as ex:  # noqa: BLE001 — toute erreur de lecture devient un code de sortie 2
@@ -79,7 +81,11 @@ def _frame(rows: list[dict], path: Path) -> pd.DataFrame:
 # --------------------------------------------------------------------------- .tgm
 
 def read_tgm(path: Path, cfg: Config) -> pd.DataFrame:
-    """Surfaces SIA d'un projet Treegram.
+    return _frame(_rows(tgm_elements(path, cfg), cfg), path)
+
+
+def tgm_elements(path: Path, cfg: Config) -> list[siagen.Element]:
+    """Surfaces SIA d'un projet Treegram, au modèle du contrat `.siagen` (bâtiment et niveau explicites).
 
     Totaux sans propriété de catégorie : sources.tgm.uncategorized_nodes associe un nom d'élément à une propriété
     qui l'identifie (SFN : NetArea, pour la façade du niveau, qui ouvre chaque bloc de niveau) ; le nom sert de code.
@@ -94,12 +100,7 @@ def read_tgm(path: Path, cfg: Config) -> pd.DataFrame:
     """
     src = cfg.sources.get("tgm") or {}
     cat_p = src.get("category_property", "Catégorie SIA")
-    area_p = src.get("area_property", "Area")
-    type_p = src.get("room_type_property", "Type")
-    lot_p = src.get("lot_property", "ApartmentByTgm")
     name_re = re.compile(src.get("name_pattern", r"^(?P<building>[^_]+)_(?P<level>[^_]+)_"))
-    lot_re = re.compile(src["lot_pattern"]) if src.get("lot_pattern") else None
-    extra = EXTRA_COLUMNS | (src.get("extra_properties") or {})
 
     uncategorized = src.get("uncategorized_nodes") or {}
     following = src.get("following_nodes") or {}
@@ -114,40 +115,70 @@ def read_tgm(path: Path, cfg: Config) -> pd.DataFrame:
     if not any(cat_p in g.props for g in bags):
         raise ReadError(f"aucun élément portant la propriété « {cat_p} » : surfaces SIA non créées dans ce projet ?")
 
-    rows, block, block_codes, block_loc = [], -1, set(), {}
+    located, block, block_codes, block_loc = [], -1, set(), {}
     for g in bags:
         code = str(g.props.get(cat_p, g.name)).strip()
         m = name_re.match(g.name)
-        # Totaux sans catégorie (façade SFN) : pas d'« Area », leur aire est la surface brute.
-        area = g.props.get(area_p) if cat_p in g.props else g.props.get(area_p, g.props.get("GrossArea"))
-        row = {"category": code, "area": area, "room_type": g.props.get(type_p),
-               "element_id": g.element_id, "tgm_id": g.tgm_id} | {c: g.props.get(p) for c, p in extra.items()}
         if m is None:
             if block < 0 or code in block_codes:
                 block, block_codes = block + 1, set()
             block_codes.add(code)
-            rows.append(row | {"kind": "node", "_block": block})
+            located.append((g, "node", block))
             continue
         block_loc.setdefault(block, (m["building"], m["level"]))
-        lot = g.props.get(lot_p)
-        if lot_re and (lm := lot_re.match(g.name)):
-            lot = lm["lot"]
-        rows.append(row | {"kind": "leaf", "id": g.name, "building": m["building"], "level": m["level"], "lot": lot})
+        located.append((g, "leaf", (m["building"], m["level"])))
 
-    orphans = 0
-    for row in rows:
-        if row["kind"] != "node":
-            continue
-        loc = block_loc.get(row.pop("_block"))
+    elements, orphans = [], 0
+    for g, kind, where in located:
+        loc = block_loc.get(where) if kind == "node" else where
         if loc is None:
             orphans += 1
             continue
-        row["building"], row["level"] = loc
-        row["id"] = f"{loc[0]}_{loc[1]}_{row['category']}#total"
+        elements.append(siagen.Element(g.name, kind, loc[0], loc[1], g.props, g.element_id, g.container_id))
     if orphans:
         log.warning("%d totaux de niveau sans surface élémentaire pour situer leur niveau : ignorés", orphans)
-    rows = [r for r in rows if r.get("building") is not None]
-    return _frame(rows, path)
+    return elements
+
+
+def read_siagen(path: Path, cfg: Config) -> pd.DataFrame:
+    """Projet `.siagen.json` (moteur de génération V4) : mêmes surfaces et mêmes colonnes qu'un `.tgm`."""
+    try:
+        _, elements = siagen.load(path)
+    except siagen.FormatError as ex:
+        raise ReadError(f"{path.name} : {ex}") from ex
+    cat_p = (cfg.sources.get("tgm") or {}).get("category_property", "Catégorie SIA")
+    if not any(cat_p in e.props for e in elements):
+        raise ReadError(f"{path.name} : aucun élément portant la propriété « {cat_p} »")
+    return _frame(_rows(elements, cfg), path)
+
+
+def _rows(elements: list[siagen.Element], cfg: Config) -> list[dict]:
+    """Lignes du DataFrame normalisé, communes au `.tgm` et au `.siagen.json`."""
+    src = cfg.sources.get("tgm") or {}
+    cat_p = src.get("category_property", "Catégorie SIA")
+    area_p = src.get("area_property", "Area")
+    type_p = src.get("room_type_property", "Type")
+    lot_p = src.get("lot_property", "ApartmentByTgm")
+    lot_re = re.compile(src["lot_pattern"]) if src.get("lot_pattern") else None
+    extra = EXTRA_COLUMNS | (src.get("extra_properties") or {})
+
+    rows = []
+    for e in elements:
+        code = str(e.props.get(cat_p, e.name)).strip()
+        # Totaux sans catégorie (façade SFN) : pas d'« Area », leur aire est la surface brute.
+        area = e.props.get(area_p) if cat_p in e.props else e.props.get(area_p, e.props.get("GrossArea"))
+        row = {"category": code, "area": area, "room_type": e.props.get(type_p), "kind": e.kind,
+               "building": e.building, "level": e.level, "element_id": e.element_id, "tgm_id": e.tgm_id}
+        row |= {c: e.props.get(p) for c, p in extra.items()}
+        if e.kind == "node":
+            row["id"] = f"{e.building}_{e.level}_{code}#total"
+        else:
+            lot = e.props.get(lot_p)
+            if lot_re and (lm := lot_re.match(e.name)):
+                lot = lm["lot"]
+            row |= {"id": e.name, "lot": lot}
+        rows.append(row)
+    return rows
 
 
 # --------------------------------------------------------------------------- .ifc

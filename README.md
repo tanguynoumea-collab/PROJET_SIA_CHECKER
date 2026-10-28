@@ -25,10 +25,23 @@ sia-check --benchmark 03-DataBase-DonneesProjets --benchmark-json dashboard/benc
 sia-check "L OREE.tgm" --corrections journal.json --benchmark-projet mon-projet.json   # le projet au format du benchmark (« Mon projet »)
 sia-check "L OREE.tgm" --mdp MDP-1778-Loree.xlsx --identite identite.json   # MDP avec sa fiche d'identité (typologie, canton…)
 sia-check --mdp-identite MDP-1746.00-Avallons.xlsx --identite identite.json   # identité écrite dans un MDP existant
+sia-check "L OREE.tgm" --siagen generes/   # le projet au contrat .siagen.json (V4), surfaces et maillages
 ```
 
-- Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet) ou `.ifc` (mapping dans `config.yaml > sources.ifc`).
+- Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet), projet généré `.siagen.json` (V4, ci-dessous) ou `.ifc` (mapping dans `config.yaml > sources.ifc`). Un dossier désigne son unique `.tgm` ou `.siagen.json`.
 - Codes de sortie : `0` aucun écart au-delà de la tolérance, `1` écarts (verdict ALERTE ou ERREUR), `2` erreur de lecture, de configuration ou d'écriture des rapports.
+
+## Projets générés (`.siagen.json`, V4)
+
+Le moteur de génération de la V4 (`docs/V4_PLAN.md`) produit les surfaces SIA depuis un IFC architecte, au modèle Treegram. Il les écrit dans `<Nom>.siagen.json`, dont le contrat est décrit dans `src/sia_check/siagen.py` :
+
+- mêmes éléments que dans le `.tgm` : noms Treegram, propriétés telles quelles (`Catégorie SIA`, `Area`, `Type`, `ApartmentByTgm`…), totaux de niveau, ID `H<conteneur>::H<élément>` ;
+- bâtiment et niveau donnés explicitement pour chaque élément ;
+- maillages en float32 (base64), dans le fichier lui-même : pas de cache VWR, jamais périmé.
+
+`reader.py` lit ce fichier comme un `.tgm`, et la visionneuse ouvre son dossier comme un dossier Treegram. Le reste du pipeline (contrôles, corrections, sujets, MDP, exports, benchmark) ne change pas.
+
+`--siagen` écrit ce fichier depuis un `.tgm` et son cache VWR, à partir des surfaces lues, avant corrections. Sur L'Orée (5,3 Mo), l'analyse du `.siagen.json` est identique à celle du `.tgm`, avec le journal d'exemple : rapports, sujets, fichier visionneuse, MDP, exports Treegram et bilan des corrections. Seul le chemin du fichier source change.
 
 ## Rapports (`--out`)
 
@@ -206,7 +219,8 @@ Toitures : Treegram compte les toitures classées SPT dans le total SEP du nivea
 src/sia_check/
   config.py   chargement de config.yaml
   tgm.py      décodeur du format binaire Treegram (non documenté, voir docs/ifc-schema.md §2.2)
-  reader.py   .tgm / .ifc -> DataFrame normalisé (seul module à lire les fichiers)
+  reader.py   .tgm / .siagen.json / .ifc -> DataFrame normalisé (seul module à lire les surfaces)
+  siagen.py   contrat .siagen.json : projet au modèle Treegram produit hors Treegram (V4)
   rules.py    règles, fonctions pures sur le DataFrame
   ratios.py   ratios informatifs SIA 416 / USPI
   viewer.py   fichier pour SIA Check Viewer (--viewer-json)

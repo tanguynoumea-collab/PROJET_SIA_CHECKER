@@ -14,19 +14,33 @@ public sealed record SheetCheck(string FolderMessage, bool FolderOk, bool Folder
     public bool CanSave => FolderOk;
 }
 
-/// <summary>Contrôle d'un dossier de projet Treegram : un seul .tgm, cache VWR facultatif.</summary>
+/// <summary>
+/// Contrôle d'un dossier de projet : un seul fichier source, .tgm (Treegram, cache VWR facultatif) ou .siagen.json
+/// (projet généré depuis un IFC, géométrie comprise ; docs/V4_PLAN.md §3.2).
+/// </summary>
 public static class ProjectFolder
 {
-    public static string[] Tgms(string dir) => Directory.Exists(dir) ? Directory.GetFiles(dir, "*.tgm") : [];
+    public const string SiagenSuffix = ".siagen.json";
+
+    public static string[] Sources(string dir) => Directory.Exists(dir)
+        ? [.. Directory.GetFiles(dir, "*.tgm"), .. Directory.GetFiles(dir, "*" + SiagenSuffix)]
+        : [];
+
+    public static bool IsSiagen(string path) => path.EndsWith(SiagenSuffix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Nom du projet d'un fichier source : « L OREE » pour « L OREE.tgm » comme pour « L OREE.siagen.json ».</summary>
+    public static string ProjectName(string path) =>
+        IsSiagen(path) ? Path.GetFileName(path)[..^SiagenSuffix.Length] : Path.GetFileNameWithoutExtension(path);
 
     public static SheetCheck Check(string dir)
     {
         if (string.IsNullOrWhiteSpace(dir)) return new("Choisissez le dossier du projet Treegram.", false, false, null);
         if (!Directory.Exists(dir)) return new("Dossier introuvable.", false, false, null);
-        var tgms = Tgms(dir);
-        if (tgms.Length == 0) return new("Aucun fichier .tgm dans ce dossier.", false, false, null);
-        if (tgms.Length > 1) return new($"{tgms.Length} fichiers .tgm : un seul attendu.", false, false, null);
-        var tgm = Path.GetFileName(tgms[0]);
+        var sources = Sources(dir);
+        if (sources.Length == 0) return new("Aucun fichier .tgm (ni .siagen.json) dans ce dossier.", false, false, null);
+        if (sources.Length > 1) return new($"{sources.Length} fichiers .tgm ou .siagen.json : un seul attendu.", false, false, null);
+        var tgm = Path.GetFileName(sources[0]);
+        if (IsSiagen(tgm)) return new($"✓ {tgm} · projet généré, géométrie comprise", true, false, null);
         return Directory.Exists(Path.Combine(dir, "VWR"))
             ? new($"✓ {tgm} · cache VWR présent", true, false, null)
             : new($"{tgm} · pas de cache VWR : l'analyse se fera sans 3D.", true, true, null);

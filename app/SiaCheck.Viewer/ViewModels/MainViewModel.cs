@@ -243,12 +243,12 @@ public sealed partial class MainViewModel : ObservableObject
             HomeError = $"Dossier introuvable : {dir}. Repointez le projet sur son dossier avec ✎ (fiche projet).";
             return;
         }
-        var tgms = ProjectFolder.Tgms(dir);
+        var tgms = ProjectFolder.Sources(dir);
         if (tgms.Length != 1)
         {
             HomeError = tgms.Length == 0
-                ? $"Ce dossier ne contient pas de fichier .tgm. Choisissez le dossier du projet Treegram (celui qui contient Nom.tgm et VWR\\)."
-                : $"Ce dossier contient {tgms.Length} fichiers .tgm. Choisissez le dossier d'un seul projet Treegram.";
+                ? $"Ce dossier ne contient pas de fichier .tgm. Choisissez le dossier du projet Treegram (celui qui contient Nom.tgm et VWR\\), ou celui d'un projet généré (Nom.siagen.json)."
+                : $"Ce dossier contient {tgms.Length} fichiers .tgm ou .siagen.json. Choisissez le dossier d'un seul projet.";
             return;
         }
         ProjectDir = dir;

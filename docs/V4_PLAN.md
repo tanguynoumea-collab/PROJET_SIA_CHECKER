@@ -1,7 +1,7 @@
 # V4_PLAN — Génération des surfaces SIA depuis l'IFC architecte
 
 > Statut : ☑ Brouillon · ☐ Validé par l'utilisateur
-> Version : 0.2 — 28.10.2026 · décisions prises (§9), phase 19 livrée (§10)
+> Version : 0.3 — 28.10.2026 · décisions prises (§9), phases 19 et 20 livrées (§10, §11)
 
 ## 1. Objectif
 
@@ -173,3 +173,41 @@ Comme la V3 : rien en ligne avant la fin de la validation.
 - **App** : la fiche projet et l'ouverture acceptent un dossier `.siagen.json`, où la géométrie est comprise, sans exiger de VWR.
 - **Preuve sur L'Orée**, avec le journal d'exemple : rapports xlsx, html et json, bilan des corrections, sujets, fichier visionneuse (5 173 maillages), MDP et exports Treegram sont identiques à ceux du `.tgm`. Seul le chemin du fichier source change. Le fichier pèse 5,3 Mo et s'écrit en 10 s.
 - Tests : `tests/test_siagen.py` (aller-retour, maillages au bit près, contrat violé, projet écrit à la main comme le fera le moteur, intégration L'Orée) et le contrôle du dossier dans l'app.
+
+## 11. Phase 20 livrée (28.10.2026)
+
+### Ce que disent les maquettes HRS
+
+Sondage de quatre maquettes du dossier `Analyse parametrique des projets` et de Gare-Casino (`10.03.05.01.1-Audit IFC`).
+
+- **Logement** : `Pset_HRS.NumeroPiece` vaut par exemple « 1A.01.02.01 » (bâtiment, étage, logement, pièce). Les parties communes sont numérotées « .99. ». C'est la propriété retenue (§9, décision 4).
+- **Indices de classification déjà présents** :
+  - `Pset_SpaceCommon.Category` en toutes lettres SIA (« Surface utile principal », « Surface de dégagement », « Surface d'installation »…) sur les Myonaz ;
+  - un `SIA416` explicite sur Afiro ;
+  - un préfixe de code dans le nom long sur CGA (`SUS_CON`, `SD_ASC_1`, `SI_VEN`).
+
+  La phase 21 les lira avant le dictionnaire de noms.
+- **Espaces de nature différente** : en plus des pièces, on trouve des espaces « Surface de plancher » (type prédéfini `GFA`, donc une SP), des contours de logement (`LOG`, nom long « SBH »), des places de parc (`PARKING`), et des surfaces de terrain et d'abords. Ils se superposent aux pièces : la phase 21 doit d'abord dire ce qu'est chaque espace, avant de compter.
+- **Géométrie** : les murs en couches n'ont de géométrie que dans leurs `IfcBuildingElementPart`, et les toitures que dans leurs dalles. Ces objets reçoivent la géométrie de leurs composants.
+- **Altitudes** : elles sont souvent absolues (≈ 609 m sur les Myonaz, géoréférencées). Les espaces Revit commencent parfois sous leur niveau (−0,5 m au rez des Myonaz), et l'audit le signale (G7).
+- **Aires déclarées et aires en plan** : sous les toitures en pente (E03 des Myonaz), l'aire Revit est plus petite que l'aire en plan, de 8 à 15 %. La phase 21 tranchera laquelle fait foi au sens SIA 416 (§0.4 : projection horizontale).
+
+### Livré
+
+- `generation/ingest.py` : modèle `Model` / `Storey` / `Item`, triangulation multi-cœurs, géométrie des composants, niveau par la structure sinon par l'altitude, logement par propriété.
+- `generation/plans.py` : emprise en plan (union vectorisée des triangles non verticaux) et `Plan` par niveau.
+- `generation/audit.py` : audit G1 à G10, inventaire JSON, résumé console ; CLI `--inventaire` (code 1 si bloquant).
+- `config.yaml > generation` : classes lues, motif du logement, tolérances de l'audit. `shapely` passe dans les dépendances principales.
+- Tests : `tests/ifc_synth.py`, une maquette IFC synthétique avec géométrie (deux niveaux, un logement, un couloir commun, un local hors structure, mur, porte, dalle), réutilisable par les phases suivantes ; `tests/test_generation_ingest.py`.
+
+| Maquette | Schéma | Niveaux | Espaces | Éléments | Durée | Audit |
+|---|---|---|---|---|---|---|
+| La Myonaz 1 (22 Mo) | IFC4 | 7 | 137 | 508 | 16 s | G6 ×9 (toiture en pente), G7 ×2 |
+| Afiro pièces (12 Mo) | IFC2X3 | 5 | 138 | 0 | 5 s | G7 ×33 (niveaux « I », « S02 » mal placés), sans logements |
+| CGA L04 (36 Mo) | IFC2X3 | 5 | 31 | 775 | 28 s | aucun logement (parking, technique) |
+| Gare-Casino (217 Mo) | IFC2X3 | 9 | 0 | 7 744 | 18 s | **G1 bloquant** : aucun espace (273 s avant de sauter la triangulation inutile) |
+
+### À reprendre plus tard
+
+- Le moteur embarqué dans l'app exclut aujourd'hui ifcopenshell (`app/build.ps1`). La section Génération (phase 25) devra l'embarquer, ce qui alourdira l'exécutable.
+- Pas encore de cache de triangulation : sur les maquettes de plus de 200 Mo, chaque lecture la refait.

@@ -218,3 +218,17 @@ sources:
     category: {attribute: Name}            # ou {pset: ..., property: ...}
     area: {pset: Treegram, property: Area}
     lot: null                              # ex. {pset: ..., property: ...}
+
+# Moteur de génération depuis l'IFC architecte (V4, docs/V4_PLAN.md) : sia-check --inventaire maquette.ifc
+generation:
+  ingest:
+    # éléments lus avec leur géométrie, en plus des IfcSpace (sous-classes comprises)
+    classes: [IfcWall, IfcCurtainWall, IfcSlab, IfcRoof, IfcDoor, IfcWindow, IfcStair, IfcRamp, IfcRailing, IfcColumn]
+    threads: 0                 # 0 : tous les cœurs
+  # Logement d'une pièce : propriété des IfcSpace (décision du 28.10.2026). Le motif garde la partie qui désigne
+  # le logement : « 1A.01.02.01 » (bâtiment, étage, logement, pièce) -> « 1A.01.02 ».
+  lot: {pset: Pset_HRS, property: NumeroPiece, pattern: '^(?P<lot>[^.]+\.[^.]+\.[^.]+)\.'}
+  audit:
+    area_rel: 0.02             # aire déclarée (Qto) vs aire en plan : écart signalé au-delà de 2 %…
+    area_abs: 0.5              # … et de 0,5 m²
+    storey_gap_m: 1.0          # plancher d'un espace à plus de 1 m de l'altitude de son niveau : signalé

@@ -41,6 +41,7 @@ class Config:
     custom_rules: list[CustomRule] = field(default_factory=list)
     ratios: list[dict] = field(default_factory=list)   # ratios informatifs (ratios.py)
     mdp: dict = field(default_factory=dict)            # tableau MDP : propositions (propositions.py)
+    generation: dict = field(default_factory=dict)     # moteur de génération depuis l'IFC architecte (V4)
 
     def children(self, code: str) -> list[str]:
         return self.categories.get(code, {}).get("children") or []
@@ -120,4 +121,5 @@ def from_dict(raw: dict) -> Config:
         custom_rules=custom,
         ratios=_ratios(raw.get("ratios"), cats),
         mdp=raw.get("mdp") or {},
+        generation=raw.get("generation") or {},
     )

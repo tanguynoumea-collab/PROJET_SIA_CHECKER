@@ -13,6 +13,7 @@ dependencies = [
     "openpyxl",
     "pyyaml",
     "jinja2",
+    "shapely",
 ]
 
 [project.optional-dependencies]

@@ -26,6 +26,7 @@ sia-check "L OREE.tgm" --corrections journal.json --benchmark-projet mon-projet.
 sia-check "L OREE.tgm" --mdp MDP-1778-Loree.xlsx --identite identite.json   # MDP avec sa fiche d'identité (typologie, canton…)
 sia-check --mdp-identite MDP-1746.00-Avallons.xlsx --identite identite.json   # identité écrite dans un MDP existant
 sia-check "L OREE.tgm" --siagen generes/   # le projet au contrat .siagen.json (V4), surfaces et maillages
+sia-check --inventaire maquette.ifc --out inventaires/   # maquette architecte lue par le moteur de génération (V4)
 ```
 
 - Sources acceptées : projet Treegram `.tgm` (surfaces SIA lues dans le fichier projet), projet généré `.siagen.json` (V4, ci-dessous) ou `.ifc` (mapping dans `config.yaml > sources.ifc`). Un dossier désigne son unique `.tgm` ou `.siagen.json`.
@@ -42,6 +43,16 @@ Le moteur de génération de la V4 (`docs/V4_PLAN.md`) produit les surfaces SIA 
 `reader.py` lit ce fichier comme un `.tgm`, et la visionneuse ouvre son dossier comme un dossier Treegram. Le reste du pipeline (contrôles, corrections, sujets, MDP, exports, benchmark) ne change pas.
 
 `--siagen` écrit ce fichier depuis un `.tgm` et son cache VWR, à partir des surfaces lues, avant corrections. Sur L'Orée (5,3 Mo), l'analyse du `.siagen.json` est identique à celle du `.tgm`, avec le journal d'exemple : rapports, sujets, fichier visionneuse, MDP, exports Treegram et bilan des corrections. Seul le chemin du fichier source change.
+
+### Lecture d'une maquette architecte (`--inventaire`)
+
+Première brique du moteur de génération (`src/sia_check/generation/`).
+
+- `ingest.py` lit l'IFC : bâtiments, niveaux (altitude prise dans le placement), `IfcSpace` avec leurs propriétés aplaties (`Pset.Propriété`) et leur logement (`config.yaml > generation.lot`, par défaut `Pset_HRS.NumeroPiece` : « 1A.01.02.01 » → logement « 1A.01.02 »), et les éléments utiles (murs, dalles, toitures, ouvertures, escaliers…). Tout est triangulé en coordonnées monde. Un objet décomposé (mur en couches, toiture faite de dalles) prend la géométrie de ses composants.
+- `plans.py` projette chaque objet en plan, niveau par niveau.
+- `audit.py` fait l'audit d'entrée (codes G1 à G10 : maquette sans espaces, espace sans niveau ou sans emprise, aire déclarée différente de l'aire en plan, plancher loin de son niveau…) et écrit l'inventaire JSON.
+
+Code de sortie : `1` si un point bloque la génération (pas d'espaces, pas de niveaux), `2` si la maquette est illisible.
 
 ## Rapports (`--out`)
 
@@ -221,6 +232,7 @@ src/sia_check/
   tgm.py      décodeur du format binaire Treegram (non documenté, voir docs/ifc-schema.md §2.2)
   reader.py   .tgm / .siagen.json / .ifc -> DataFrame normalisé (seul module à lire les surfaces)
   siagen.py   contrat .siagen.json : projet au modèle Treegram produit hors Treegram (V4)
+  generation/ moteur de génération depuis l'IFC architecte (V4) : ingest, plans, audit
   rules.py    règles, fonctions pures sur le DataFrame
   ratios.py   ratios informatifs SIA 416 / USPI
   viewer.py   fichier pour SIA Check Viewer (--viewer-json)

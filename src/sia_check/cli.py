@@ -23,7 +23,10 @@ benchmark : la visionneuse les envoie au dashboard (« Mon projet ») ;
 avec --identite, la fiche « Identité du projet » (JSON : description InfosProjet -> valeur) part dans le MDP exporté ;
 avec --mdp-identite, elle est écrite dans un MDP existant, sans projet Treegram ;
 avec --siagen, les surfaces lues (avant corrections) et leurs maillages sont écrits au contrat `.siagen.json` (V4) :
-un projet généré se lit comme un `.tgm`, et ce fichier tiré d'un `.tgm` en est la preuve.
+un projet généré se lit comme un `.tgm`, et ce fichier tiré d'un `.tgm` en est la preuve ;
+avec --inventaire, une maquette architecte IFC est lue par le moteur de génération (V4) : niveaux, espaces,
+éléments, plans, audit d'entrée (sia_check.generation.audit), écrits dans --inventaire-json ; code de sortie 1
+si un point bloque la génération.
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -71,6 +74,9 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--mdp-identite", type=Path, help="MDP existant dont l'identité est remplacée par --identite")
     ap.add_argument("--benchmark-projet", type=Path, help="totaux et ratios du projet lu, au format du benchmark (JSON)")
     ap.add_argument("--siagen", type=Path, help="projet au contrat .siagen.json à écrire (surfaces lues et maillages)")
+    ap.add_argument("--inventaire", type=Path, help="maquette architecte IFC à inventorier (moteur de génération)")
+    ap.add_argument("--inventaire-json", type=Path,
+                    help="inventaire à écrire (défaut : <maquette>.inventaire.json dans --out, sinon à côté)")
     ap.add_argument("--project", help="nom du projet dans les rapports (défaut : nom du premier fichier)")
     ap.add_argument("--all", action="store_true", help="afficher aussi les contrôles OK")
     ap.add_argument("-q", "--quiet", action="store_true", help="ne pas afficher les résidus en console")
@@ -153,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         return _benchmark(args)
     if args.mdp_identite:
         return _mdp_identite(args)
+    if args.inventaire:
+        return _inventaire(args)
     if not args.models:
         log.error("fichier .tgm, .ifc ou dossier de projet attendu")
         return 2
@@ -318,6 +326,29 @@ def _mdp_identite(args: argparse.Namespace) -> int:
         return 2
     log.info("identité écrite dans %s", args.mdp_identite)
     return 0
+
+
+def _inventaire(args: argparse.Namespace) -> int:
+    from .generation import audit, ingest, plans
+    try:
+        cfg = config_mod.load(args.config or _default_config())
+        model = ingest.load(args.inventaire, cfg.generation)
+    except (OSError, config_mod.ConfigError, ingest.IngestError) as ex:
+        log.error("%s", ex)
+        return 2
+    pl = plans.build(model)
+    issues = audit.run(model, pl, cfg.generation)
+    inv = audit.inventory(model, pl, issues)
+    out = args.inventaire_json or (args.out or args.inventaire.parent) / f"{args.inventaire.stem}.inventaire.json"
+    try:
+        audit.write(inv, out)
+    except OSError as ex:
+        log.error("écriture impossible : %s", ex)
+        return 2
+    if not args.quiet:
+        print(audit.summary(inv))
+    log.info("inventaire écrit : %s", out)
+    return 1 if inv["blocking"] else 0
 
 
 def _benchmark(args: argparse.Namespace) -> int:

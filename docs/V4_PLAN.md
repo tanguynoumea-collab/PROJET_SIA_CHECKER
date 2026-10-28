@@ -426,3 +426,27 @@ Version 4.0.0 (`src/sia_check/__init__.py`, `pyproject.toml`, `SiaCheck.Viewer.c
 - SE non pondérées dans SVN / SVB, comme Treegram.
 - Une paire de référence IFC ↔ `.tgm` reste souhaitable pour comparer à Treegram lui-même.
 - Le moteur pèse 220 Mo (`ifcopenshell`).
+
+## 20. Retour de l'utilisateur sur CGA L04 (28.10.2026) : ouvertures sans menuiserie
+
+**Remarque** : la SFN doit déduire toutes les ouvertures, pas seulement les vitrages. Une baie ou une porte percée dans la façade ne compte pas en SFN.
+
+**Constat** : CGA L04 n'a aucune IfcWindow. Ses baies sont 69 percements sans menuiserie (IfcOpeningElement) : 37 dans des murs extérieurs, 32 dans le bardage (« M_Ext-007 »), souvent au même endroit que ceux du mur. Le moteur les ignorait, d'où 0 m² de réservations au N00 et au N01.
+
+**Correction** :
+- `ingest.py` lit les percements sans menuiserie d'un mur, d'un bardage ou d'un mur-rideau (`generation.ingest.voids`). Chacun prend le niveau, le bâtiment et l'`IsExternal` de l'élément percé.
+- `exteriors.py` les compte en réservations de façade : ils sont déduits de la SFN et percés dans son maillage, sans entrer dans la SRV. La largeur d'une ouverture est maintenant mesurée dans le sens de la façade.
+- Une même baie percée deux fois (bardage et mur, garde-corps modélisés deux fois) ne compte qu'une fois. Il faut pour cela que les deux ouvertures soient parallèles, à moins de 0,6 m, et se recouvrent vues de face. Deux fenêtres d'angle restent deux baies.
+
+| CGA L04 | Réservations avant | Réservations après | SFN nette après |
+|---|---|---|---|
+| S02 | 44,4 | 87,3 | 1 013,0 |
+| S01 | 76,9 | 62,4 (doublons retirés) | 1 012,3 |
+| N00 | 0,0 | 21,2 | 1 050,8 |
+| N01 | 0,0 | 31,1 | 1 134,9 |
+| N02 | 2,8 | 8,7 | 1 348,1 |
+
+Non-régression :
+- La Bâtie : SRV de 156,65 m² à chaque étage courant, comme le MDP.
+- Myonaz 1 : inchangé.
+- Le maillage de la SFN égale la SFN nette à 1 % près, sauf aux angles (jusqu'à 2 %).

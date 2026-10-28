@@ -134,3 +134,17 @@ def test_level_altitude_is_the_floor_of_most_rooms():
     interiors.heights([s01, n00])
     assert s01.z == 611.40 and n00.z == 615.0 and s01.height == pytest.approx(3.6)
     assert level("N01", 618.0, 3.0).z == 618.0          # sans pièce : altitude du niveau IFC
+
+
+def test_bare_openings_are_deducted_from_the_facade_once():
+    """CGA L04 : baie sans menuiserie (IfcOpeningElement) déduite de la SFN, hors SRV ; la même baie percée dans le
+    bardage et dans le mur ne compte qu'une fois ; deux fenêtres d'angle, perpendiculaires, comptent deux fois."""
+    n00 = level("N00", 0.0, 3.0, sp=box(0, 0, 20, 10),
+                openings=[("v1", "IfcOpeningElement", box(5, -0.3, 8, -0.1), 2.0),   # bardage
+                          ("v2", "IfcOpeningElement", box(5, -0.1, 8, 0.1), 2.0),    # mur derrière : la même baie
+                          ("w1", "IfcWindow", box(18.5, -0.1, 19.9, 0.1), 1.0),      # angle, façade sud
+                          ("w2", "IfcWindow", box(19.9, 0.1, 20.1, 1.5), 1.0)])      # angle, façade est
+    exteriors.build([n00], {}, set(), {})
+    env = n00.envelope
+    assert env["ReservationsArea"] == pytest.approx(3 * 2.0 + 1.4 + 1.4)
+    assert env["SRV"] == pytest.approx(2.8) and env["NetArea"] == pytest.approx(180.0 - 8.8)

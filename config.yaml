@@ -233,6 +233,9 @@ generation:
   ingest:
     # éléments lus avec leur géométrie, en plus des IfcSpace (sous-classes comprises)
     classes: [IfcWall, IfcCurtainWall, IfcSlab, IfcRoof, IfcDoor, IfcWindow, IfcStair, IfcRamp, IfcRailing, IfcColumn]
+    # percements sans menuiserie d'un mur, d'un bardage ou d'un mur-rideau (baies libres, ouvertures de parking) :
+    # réservations de façade, déduites de la SFN, hors SRV
+    voids: true
     threads: 0                 # 0 : tous les cœurs
   # Logement d'une pièce : propriété des IfcSpace (décision du 28.10.2026). Le motif garde la partie qui désigne
   # le logement : « 1A.01.02.01 » (bâtiment, étage, logement, pièce) -> « 1A.01.02 ».

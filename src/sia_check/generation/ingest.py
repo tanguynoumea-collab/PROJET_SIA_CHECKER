@@ -126,6 +126,9 @@ def _lot(props: dict, spec: dict | list | None, storey: str | None = None) -> st
     return None
 
 
+VOID_HOSTS = ("IfcWall", "IfcCovering", "IfcCurtainWall")   # éléments de façade dont un percement est une réservation
+
+
 def _ancestor(el, cls: str):
     import ifcopenshell.util.element as ue
     c = ue.get_container(el) or ue.get_aggregate(el)
@@ -253,11 +256,25 @@ def load(path: str | Path, cfg_generation: dict | None = None) -> Model:
             continue
     entities = list({e.id(): e for e in entities}.values())
     items = [_item(e, by_id, gen.get("lot")) for e in entities]
+    # Percements sans menuiserie (baie libre, ouverture de parking, CGA L04) dans un mur, un bardage ou un mur-rideau :
+    # une réservation de façade comme une fenêtre. Niveau, bâtiment et IsExternal sont ceux de l'élément percé.
+    voids = []
+    for o in f.by_type("IfcOpeningElement") if ing.get("voids", True) else []:
+        host = o.VoidsElements[0].RelatingBuildingElement if o.VoidsElements else None
+        if o.HasFillings or host is None or not host.is_a().startswith(VOID_HOSTS):
+            continue
+        it, h = _item(o, by_id, None), _item(host, by_id, None)
+        it.storey, it.storey_by, it.building = h.storey, h.storey_by if h.storey else "aucun", h.building
+        external = next((v for k, v in h.props.items() if k.endswith(".IsExternal")), None)
+        if isinstance(external, bool):
+            it.props["Hôte.IsExternal"] = external
+        voids.append(o)
+        items.append(it)
     parts = {e.GlobalId: _parts(e) for e in entities if not e.is_a(SPACE)}
     known = {e.id() for e in entities}
     extra = list({c.id(): c for cs in parts.values() for c in cs if c.id() not in known}.values())
     # Sans espace, la génération est bloquée (audit G1) : la triangulation des éléments serait du temps perdu.
-    todo = entities + extra if f.by_type(SPACE) else []
+    todo = entities + extra + voids if f.by_type(SPACE) else []
     meshes, errors = _tessellate(f, todo, int(ing.get("threads") or 0))
     for it in items:
         it.mesh = meshes.get(it.gid) or _merge([meshes[c.GlobalId] for c in parts.get(it.gid, []) if c.GlobalId in meshes])

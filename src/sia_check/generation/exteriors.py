@@ -12,7 +12,9 @@
   La Bâtie ne la compte pas (SEP du rez 49,8 m², dalle 1 081 m²).
 - **SEP** du niveau : union des extérieurs, des contours et des toitures (Treegram compte les SPT dans la SEP ;
   la Fiabilisation les en retire, rules.COUNTED_IN).
-- **Ouvertures de façade** : fenêtres et portes posées sur le contour de la SP (à `FACADE_REACH_M` près). Une
+- **Ouvertures de façade** : fenêtres, portes et percements sans menuiserie (baies libres, ouvertures de parking :
+  IfcOpeningElement d'un mur, d'un bardage ou d'un mur-rideau) posés sur le contour de la SP (à `FACADE_REACH_M` près).
+  Largeur : côté de l'emprise parallèle à la façade (un percement est souvent plus profond que large). Une
   ouverture que la maquette dit intérieure (`IsExternal` faux, Pset_WindowCommon / Pset_DoorCommon) n'en est
   jamais, même près du contour ; une ouverture dite extérieure en est une. Aire : grand côté de l'emprise × hauteur
   du maillage.
@@ -43,6 +45,7 @@ from .plans import Plan
 SLIVER_M = 0.25        # ouverture morphologique : bandes plus fines (tranches de murs, débords) ignorées
 MIN_ROOF_M2 = 2.0      # morceau de toiture plus petit : ignoré
 FACADE_REACH_M = 0.6   # ouverture à moins de cette distance du contour de la SP : en façade
+DUPLICATE_M = 0.6      # deux ouvertures plus proches qui se recouvrent vues de face : la même baie percée deux fois
 DEFAULT_HEIGHT_M = 3.0  # hauteur d'un niveau sans niveau au-dessus (Treegram L'Orée : niveaux « Toiture »)
 
 
@@ -107,7 +110,7 @@ GLAZED_DOORS = r"(vitr|fenetre|verre|glass|baie|coulissant|porte fenetre|\bpf\b)
 
 def _external(it) -> bool | None:
     """IsExternal de la maquette (Pset_WindowCommon, Pset_DoorCommon), None s'il n'est pas renseigné."""
-    v = next((v for k, v in (it.props or {}).items() if k.endswith(".IsExternal")), None)
+    v = next((v for k, v in (it.props or {}).items() if k.endswith(".IsExternal")), None)   # dont Hôte.IsExternal
     return v if isinstance(v, bool) else None
 
 
@@ -118,9 +121,8 @@ def _openings(level: Level, sp: BaseGeometry, glazed_doors: str = GLAZED_DOORS, 
     fenêtre à cheval sur deux étages), comme la façade brute qui n'a que cette hauteur."""
     edge = sp.boundary
     glazed = re.compile(glazed_doors)
-    resa = glass = 0.0
-    holes, panes = [], []
-    for p in level.plan.of("IfcWindow", "IfcDoor"):
+    found = []   # (aire, panneau, vitrée, emprise) avant dédoublonnage
+    for p in level.plan.of("IfcWindow", "IfcDoor", "IfcOpeningElement"):
         it = p.item
         if p.shape is None or it.z_min is None or it.z_max is None:
             continue
@@ -134,19 +136,65 @@ def _openings(level: Level, sp: BaseGeometry, glazed_doors: str = GLAZED_DOORS, 
         if len(c) < 3:
             continue
         a, b, d = c[0], c[1], c[3] if len(c) > 3 else c[2]
-        side = max(((a, b), (a, d)), key=lambda s: (s[1][0] - s[0][0]) ** 2 + (s[1][1] - s[0][1]) ** 2)
+        side = _along(edge, p.shape, ((a, b), (a, d)))
         width = ((side[1][0] - side[0][0]) ** 2 + (side[1][1] - side[0][1]) ** 2) ** 0.5
         zl, zh = (max(it.z_min, band[0]), min(it.z_max, band[1])) if band else (it.z_min, it.z_max)
         if zh - zl <= 0.01:
             continue
-        m2 = width * (zh - zl)
-        panel = (side[0], side[1], zl, zh)
-        resa += m2
-        holes.append(panel)
-        if it.ifc_class.startswith("IfcWindow") or glazed.search(norm(f"{it.name} {it.type_name} {it.long_name}")):
-            glass += m2
-            panes.append(panel)
-    return resa, glass, holes, panes
+        is_glass = it.ifc_class.startswith("IfcWindow") or not it.ifc_class.startswith("IfcOpeningElement") \
+            and glazed.search(norm(f"{it.name} {it.type_name} {it.long_name}")) is not None
+        found.append((width * (zh - zl), (side[0], side[1], zl, zh), is_glass, p.shape))
+    # Une même baie percée deux fois (bardage et mur derrière, CGA L04) : une seule réservation, la plus grande ;
+    # vitrée si l'une des deux l'est (la fenêtre posée dans le percement du mur)
+    found.sort(key=lambda f: -f[0])
+
+    def span(panel):   # étendue le long de la façade (abscisse curviligne sur le contour de la SP)
+        (ax, ay), (bx, by) = panel[0], panel[1]
+        u = sorted((edge.project(shapely.Point(ax, ay)), edge.project(shapely.Point(bx, by))))
+        return u[0], u[1]
+
+    def twins(k, panel, shape) -> bool:
+        """Même baie : vues de face, elles se recouvrent sur plus de la moitié de la plus petite, à la même hauteur."""
+        if k[3].distance(shape) > DUPLICATE_M:
+            return False
+        # parallèles : deux fenêtres d'angle, sur deux façades perpendiculaires, sont deux baies
+        (p0, p1), (q0, q1) = k[1][:2], panel[:2]
+        ux, uy, vx, vy = p1[0] - p0[0], p1[1] - p0[1], q1[0] - q0[0], q1[1] - q0[1]
+        norms = ((ux * ux + uy * uy) * (vx * vx + vy * vy)) ** 0.5
+        if norms <= 0 or abs(ux * vx + uy * vy) / norms < 0.9:
+            return False
+        (a0, a1), (b0, b1) = span(k[1]), span(panel)
+        width = min(a1 - a0, b1 - b0)
+        height = min(k[1][3] - k[1][2], panel[3] - panel[2])
+        return width > 0 and min(a1, b1) - max(a0, b0) > 0.5 * width \
+            and min(k[1][3], panel[3]) - max(k[1][2], panel[2]) > 0.5 * height
+
+    kept = []
+    for m2, panel, is_glass, shape in found:
+        twin = next((k for k in kept if twins(k, panel, shape)), None)
+        if twin is None:
+            kept.append([m2, panel, is_glass, shape])
+        elif is_glass:
+            twin[2] = True
+    resa = sum(k[0] for k in kept)
+    glass = sum(k[0] for k in kept if k[2])
+    return resa, glass, [k[1] for k in kept], [k[1] for k in kept if k[2]]
+
+
+def _along(edge: BaseGeometry, shape: BaseGeometry, sides) -> tuple:
+    """Côté du rectangle de l'ouverture le plus parallèle à la façade voisine ; à défaut de façade, le plus long."""
+    def length(s):
+        return ((s[1][0] - s[0][0]) ** 2 + (s[1][1] - s[0][1]) ** 2) ** 0.5
+    try:
+        at = edge.project(shape.centroid)
+        p, q = edge.interpolate(max(at - 0.05, 0.0)), edge.interpolate(at + 0.05)
+        fx, fy = q.x - p.x, q.y - p.y
+        fl = (fx * fx + fy * fy) ** 0.5
+    except (AttributeError, ValueError):
+        fl = 0.0
+    if fl < 1e-9:
+        return max(sides, key=length)
+    return max(sides, key=lambda s: abs((s[1][0] - s[0][0]) * fx + (s[1][1] - s[0][1]) * fy) / (fl * max(length(s), 1e-9)))
 
 
 def facade_mesh(sp: BaseGeometry, z0: float, z1: float, holes: list) -> Mesh | None:

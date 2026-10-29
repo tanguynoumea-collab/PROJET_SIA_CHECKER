@@ -69,7 +69,7 @@ def test_facade_and_glazing():
     exteriors.build([n00], {}, set(), {})
     # SRV : vitrages extérieurs ; la porte de façade (pleine) est une réservation sans vitrage
     assert n00.envelope == {"GrossArea": 180.0, "NetArea": 175.0, "ReservationsArea": 5.0, "Perimeter": 60.0,
-                            "GrossHeight": 3.0, "SRV": 3.0}
+                            "GrossHeight": 3.0, "StoreyHeight": 3.0, "SRV": 3.0}
 
 
 def test_interior_glazing_and_glazed_doors():
@@ -215,6 +215,9 @@ def test_pitched_roof_spt_facade_and_roof_window():
     gable = 10 * 1.0 + 0.5 * 10 * (ridge - 1.0)
     assert n00.envelope["GrossArea"] == pytest.approx(2 * 20 * 1.0 + 2 * gable, rel=1e-3)
     assert n00.envelope["ReservationsArea"] == 0.0 and n00.envelope["SRV"] == pytest.approx(1.2, rel=1e-3)
+    # contrôle E3 : la SFN porte la hauteur moyenne de la façade, l'étage garde la sienne
+    assert n00.envelope["GrossHeight"] * 60 == pytest.approx(n00.envelope["GrossArea"], abs=0.1)
+    assert n00.envelope["StoreyHeight"] == 3.0
     # la SEP compte la toiture à son aire développée (la Fiabilisation l'en retire)
     from sia_check.generation import assemble
     seps = [e for e in assemble.elements([n00, ttr]) if e.name == "SEP" and e.kind == "node"]

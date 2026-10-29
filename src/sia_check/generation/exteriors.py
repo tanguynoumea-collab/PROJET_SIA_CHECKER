@@ -382,9 +382,12 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
             taken |= used
             lv.facade, gross = _facade(lv.sp, lv.z, lv.z + h, holes, top)
             lv.glazing = vertical_mesh(panes)
+            # sous une toiture en pente, la façade n'est plus périmètre × hauteur d'étage : la SFN porte sa hauteur
+            # moyenne (contrôle E3 de la Fiabilisation), les totaux SP, SEP et SPT la hauteur d'étage
+            mean = gross / lv.sp.length if top is not None and lv.sp.length > 0 else h
             lv.envelope = {"GrossArea": round(gross, 2), "NetArea": round(max(gross - resa, 0.0), 2),
                            "ReservationsArea": round(resa, 2), "Perimeter": round(lv.sp.length, 2),
-                           "GrossHeight": round(h, 3), "SRV": round(glass, 2)}
+                           "GrossHeight": round(mean, 3), "StoreyHeight": round(h, 3), "SRV": round(glass, 2)}
         _roof_windows(own, roofs[b], windows, tilted, taken)
 
 

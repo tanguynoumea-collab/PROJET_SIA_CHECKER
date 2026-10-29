@@ -150,7 +150,7 @@ def elements(levels: list[Level], codes: dict[str, str] | None = None) -> list[E
                 totals[code] += lot.areas[code]
         totals["SNH"] = totals["SUP"] + totals["SUS"]     # Treegram : SUP + SUS du niveau, logement ou non
         env = level.envelope or {}
-        height = env.get("GrossHeight", 0.0)
+        height = env.get("StoreyHeight", env.get("GrossHeight", 0.0))   # hauteur d'étage ; SFN : moyenne de la façade
         shapes = {"SP": level.sp, "SEP": level.sep, "SPT": level.spt}
         for code in NODE_ORDER:
             if code == "SFN":

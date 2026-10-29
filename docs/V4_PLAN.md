@@ -510,6 +510,10 @@ C'est la première publication de la V4 : release GitHub « SIA Check Viewer 4.0
      - Myonaz 1, N00 : 32,3 m² de SP dans la « Surface de plancher » dessinée, sans pièce.
      - Myonaz 2, N00 : 13,3 m² de SEP sans extérieur.
    - Avant, elles se perdaient dans 30 à 140 m² de résidu « construction implicite » par niveau.
+   - **Les deux zones vues avec l'utilisateur (29.10.2026)** :
+     - **Myonaz 1, N00** : un local fermé à l'angle, desservi par une porte de garage et sans IfcSpace, absent aussi du MDP. C'est la règle générale des **espaces déduits** (`construction.deduce`) : une zone de SP non classée de plus de 2 m² devient un espace « Zone sans espace », en SUS (Parking si une porte de garage la dessert, sinon LocauxCommuns). Une zone de SEP devient une SEU Terrasse. La confiance est de 0,5, donc l'espace est toujours à trancher dans l'onglet Espaces. Son identifiant (`deduit-…`) ne dépend que de sa position : une décision du journal le suit d'une génération à l'autre.
+     - **Myonaz 2, N00** : la « Surface externe de plancher » de l'architecte recouvre les deux entrées d'immeuble (SD). Désormais, un extérieur couvert à plus de moitié par des pièces ne sort pas de la SP, et un contour SEP ne compte que hors de la SP (`interiors.ROOM_WINS`). L'entrée reste en SD, comme le « Hall immeuble » du MDP.
+   - Après ces deux règles, R1 et R3 sont équilibrés sur les cinq projets.
    - **SC (surface de construction, SIA 416 §2.2) :** la SP moins la SN. Elle comprend les murs porteurs et non porteurs, les poteaux, les gaines non accessibles et les parties de murs dans les embrasures. Le moteur la calcule aujourd'hui par différence.
    - **SEC (surface de construction externe) :** l'équivalent pour les surfaces externes, c'est-à-dire la SEP moins la SEN. On y trouve les garde-corps maçonnés, les murs de loggia et les acrotères.
    - **Calcul :** les identifier et les modéliser comme des surfaces à part entière, avec leur propre géométrie. Les sources sont les emprises des IfcWall, IfcColumn, IfcCurtainWall et IfcRailing pleins, et les dalles de balcon hors espaces.

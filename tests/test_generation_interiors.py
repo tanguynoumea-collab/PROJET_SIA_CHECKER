@@ -235,9 +235,14 @@ def test_myonaz_matches_its_mdp(tmp_path, gen_cfg, cfg):
     g = engine.generate(MYONAZ, gen_cfg, tmp_path, "Myonaz-1")
     c = compare.compare(g.folder, MDP_1712, cfg, "Bat. 1")
     assert c["apparies"] == c["meme_code"] == c["locaux_mdp"] == 111
+    deduced = [s for s in g.data["spaces"] if s["gid"].startswith("deduit-")]
     for row in c["etages"]:
         for code in ("SP", "SUP", "SUS", "SD", "SI", "SEU"):
-            assert abs(row[code]["ecart"]) < 0.5, (row["level"], code, row[code])
+            extra = sum(s["area"] for s in deduced if s["level"] == row["level"] and s["code"] == code)
+            assert abs(row[code]["ecart"] - extra) < 0.5, (row["level"], code, row[code])
+    # V4.1 : le local fermé de 32 m² du rez, sans IfcSpace (et absent du MDP), devient un espace déduit à trancher
+    assert [(s["level"], s["code"], s["type"]) for s in deduced] == [("N00", "SUS", "Parking")]
+    assert deduced[0]["confidence"] < 0.8 and 31 < deduced[0]["area"] < 33
 
 
 def test_building_without_flats_counts_sup_as_sut():
@@ -294,3 +299,17 @@ def test_exterior_stair_is_a_circulation(k):
     """La Bâtie S01 : « ESC » extérieur, un escalier extérieur (SED), plus une terrasse par défaut."""
     d = k.decide(Item("e", "IfcSpace", "ESC", "A", "S01", props={"Pset_SpaceCommon.Category": "416-SN-Surface externe nette"}), False)
     assert (d.nature, d.code, d.type) == ("exterieur", "SED", "CirculationExt")
+
+
+def test_exterior_drawn_over_an_interior_room_does_not_cut_the_floor_area():
+    """Myonaz 2 (29.10.2026) : une « Surface externe de plancher » posée sur l'entrée d'immeuble ne la sort pas de la
+    SP ; le MDP la compte en SD « Hall immeuble »."""
+    plan = plans.Plan(Storey("st", "N00", "A", 0.0))
+    floor = space("f", "LOG", "Surface de plancher", predefined="GFA")
+    hall, porch, loggia = space("h", "ENT", "Entrée"), space("p", "SEP", "Surface externe"), space("l", "LOG", "Loggia")
+    plan.spaces = [plans.Placed(floor, box(0, 0, 10, 10)), plans.Placed(hall, box(0, 0, 2, 2.2)),
+                   plans.Placed(porch, box(0, 0, 2.2, 2.5)), plans.Placed(loggia, box(6, 0, 10, 2))]
+    decisions = {"f": classify.Decision("f", "plancher"), "h": classify.Decision("h", "piece", "SD"),
+                 "p": classify.Decision("p", "exterieur", "SEP"), "l": classify.Decision("l", "exterieur", "SEU")}
+    sp, why = interiors.surface_de_plancher(plan, decisions, 0.3, 4.0)
+    assert sp.area == pytest.approx(100 - 8) and "moins 8.00 m² d'extérieurs" in why   # la loggia seule en sort

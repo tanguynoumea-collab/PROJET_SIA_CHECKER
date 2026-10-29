@@ -181,6 +181,12 @@ def generate(ifc: Path, cfg_generation: dict, out_dir: Path, project: str | None
     codes = assemble.level_codes(storeys, occupied, cfg_generation)
     exteriors.build(levels, decisions, {g for g, c in codes.items() if c.startswith("S")}, cfg_generation)
     construction.build(levels)   # SC et SEC modélisées : le résidu R1 / R3 ne garde que le non classé
+    # zones non classées : espaces déduits, à trancher (journal compris), puis construction recalculée autour
+    deduced = construction.deduce(levels, decisions, lambda ds: journal.apply(
+        journal.load(folder), ds, cfg_generation, classify.type_for(model, ds, cfg_generation)))
+    if deduced:
+        model.spaces.extend(deduced)
+        construction.build(levels)
     for lv in levels:
         lv.lots = uspi.build(lv, decisions, cfg_generation)
     els = assemble.elements(levels, codes)

@@ -29,11 +29,20 @@ import shapely
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
 
-from .interiors import Level, bays
+import hashlib
+import re
+
+from .classify import EXTERIEUR, PIECE, Decision, norm
+from .ingest import Item
+from .interiors import Level, Room, bays
+from .plans import Placed
 
 THIN_M = 0.6        # bande plus étroite : construction non modélisée (mur le plus épais, uspi.wall_max_m)
 MIN_PART_M2 = 0.05  # morceau plus petit : ignoré (arrondis des contours)
 MIN_GAP_M2 = 0.5    # zone non classée plus petite : non signalée
+DEDUCED_M2 = 2.0    # zone non classée plus grande : un espace déduit, proposé à la classification
+DEDUCED_CONFIDENCE = 0.5   # toujours à trancher (onglet Espaces, IA ou manuel)
+GARAGE = re.compile(r"\b(garage|parking|portail)\b")
 GRID_M = 0.001      # grille des opérations : sans elle, GEOS échoue sur des contours presque confondus (Myonaz 2)
 
 
@@ -153,6 +162,48 @@ def build(levels: list[Level]) -> None:
             if target not in lv.construction and abs(delta) > 0:
                 lv.construction[target] = (None, delta)   # écart sans géométrie : l'aire seule, pour le bilan
             lv.construction[f"ecart_{target}"] = (None, delta)
+
+
+def _gid(lv: Level, g: BaseGeometry, kind: str) -> str:
+    """Identifiant stable d'un espace déduit : niveau, nature et centre arrondi au demi-mètre."""
+    c = g.centroid
+    key = f"{lv.plan.storey.gid}|{kind}|{round(c.x * 2) / 2}|{round(c.y * 2) / 2}"
+    return "deduit-" + hashlib.sha1(key.encode()).hexdigest()[:16]
+
+
+def deduce(levels: list[Level], decisions: dict, apply=None) -> list[Item]:
+    """Zones non classées de plus de `DEDUCED_M2` -> espaces déduits, à trancher (décision du 29.10.2026, Myonaz 1 :
+    local fermé de 32 m² sans IfcSpace). SP : une SUS, Parking si une porte de garage la dessert, sinon LocauxCommuns ;
+    SEP : une SEU Terrasse. `apply(decisions)` applique le journal (une décision manuelle ou IA sur l'espace déduit
+    vaut aux générations suivantes : son identifiant ne dépend que de sa position). Renvoie les nouveaux items."""
+    items = []
+    for lv in levels:
+        st = lv.plan.storey
+        for kind, gaps in (lv.unclassified or {}).items():
+            for g in getattr(gaps, "geoms", [gaps]) if gaps is not None else []:
+                if g.area < DEDUCED_M2:
+                    continue
+                gid = _gid(lv, g, kind)
+                if kind == "SP":
+                    doors = [p for p in lv.plan.of("IfcDoor") if p.shape is not None and p.shape.distance(g) < 0.5]
+                    garage = any(GARAGE.search(norm(f"{p.item.name} {p.item.type_name}")) for p in doors)
+                    nature, code, typ = PIECE, "SUS", "Parking" if garage else "LocauxCommuns"
+                    why = "porte de garage" if garage else "aucun indice"
+                else:
+                    nature, code, typ, why = EXTERIEUR, "SEU", "Terrasse", "aucun indice"
+                item = Item(gid, "IfcSpace", "Zone sans espace", st.building, st.gid, storey_by="aucun",
+                            long_name=f"Zone sans espace ({kind}, {g.area:.1f} m²)")
+                decisions[gid] = Decision(gid, nature, code, typ, "construction", DEDUCED_CONFIDENCE,
+                                          f"zone de {kind} qu'aucun espace de la maquette ne couvre : espace déduit "
+                                          f"({why}), à confirmer")
+                items.append((lv, item, g))
+    if apply is not None:
+        apply(decisions)
+    for lv, item, g in items:
+        d = decisions[item.gid]
+        room = Room(Placed(item, g), d, g.area)
+        (lv.rooms if d.nature == PIECE else lv.exteriors).append(room)
+    return [it for _, it, _ in items]
 
 
 def summary(lv: Level) -> dict:

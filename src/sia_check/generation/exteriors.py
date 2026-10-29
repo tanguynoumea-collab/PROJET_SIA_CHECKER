@@ -325,8 +325,8 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
             d = decisions[p.item.gid]
             if d.nature != EXTERIEUR or p.shape is None:
                 continue
-            if d.code == "SEP":
-                contours.append(p.shape)
+            if d.code == "SEP":   # hors de la SP : un contour dessiné sur une pièce intérieure ne la compte pas deux fois
+                contours.append(p.shape.difference(lv.sp) if lv.sp is not None else p.shape)
             else:
                 lv.exteriors.append(Room(p, d, area_of(p, declared)))
         lv.sep = shapely.union_all(contours + [r.placed.shape for r in lv.exteriors]) if (contours or lv.exteriors) else None

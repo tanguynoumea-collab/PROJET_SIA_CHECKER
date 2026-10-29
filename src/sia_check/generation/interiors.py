@@ -47,6 +47,7 @@ from .plans import Placed, Plan
 
 ENVELOPE_CLASSES = ("IfcWall", "IfcCurtainWall", "IfcColumn")
 INSIDE = 0.8        # part d'un extérieur dans la surface de plancher au-delà de laquelle il en est retiré
+ROOM_WINS = 0.5     # part d'un extérieur couverte par des pièces au-delà de laquelle il ne sort pas de la SP
 OUTSIDE_M2 = 0.5    # part d'une pièce hors de la surface de plancher dessinée au-delà de laquelle elle y est ajoutée
 WALL_REACH = 0.5    # murs pris autour de ces pièces (m)
 OUTSIDE_EXCLUDED = {"SI"}   # installations hors du contour dessiné : gardées en SI, hors SP
@@ -155,8 +156,12 @@ def surface_de_plancher(plan: Plan, decisions: dict[str, Decision], close: float
             why += f", plus {g.area - before:.2f} m² de {len(outside)} pièce(s) hors de ce contour"
         # seuls les extérieurs dessinés dans la surface de plancher (loggia oubliée par l'architecte) en sortent ;
         # un balcon qui la touche de quelques centimètres la laisse intacte (Myonaz : SP du MDP = espace dessiné)
+        # sauf un extérieur dessiné sur une pièce intérieure : la pièce l'emporte (Myonaz 2 : « Surface externe de
+        # plancher » sur les entrées d'immeuble, comptées en SD « Hall immeuble » par le MDP ; décision du 29.10.2026)
+        rooms = shapely.union_all(pieces) if pieces else None
         ext = [p.shape for p in plan.spaces if p.shape is not None and decisions[p.item.gid].nature == EXTERIEUR
-               and p.shape.intersection(g).area >= INSIDE * p.shape.area]
+               and p.shape.intersection(g).area >= INSIDE * p.shape.area
+               and (rooms is None or p.shape.intersection(rooms).area < ROOM_WINS * p.shape.area)]
         cut = g.intersection(shapely.union_all(ext)).area if ext else 0.0
         if cut > 0.01:
             g = g.difference(shapely.union_all(ext))

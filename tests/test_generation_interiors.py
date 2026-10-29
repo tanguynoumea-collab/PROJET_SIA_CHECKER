@@ -251,6 +251,16 @@ def test_building_without_flats_counts_sup_as_sut():
     assert d["c"].code == d["s"].code == "SUP"                       # bâtiment avec logements : inchangé
 
 
+def test_without_flats_sanitary_named_without_subtype():
+    """CGA L04 N02 : « SUP_WC » sans sous-type (préfixe), catégorie « WC handicapés » : sanitaire, pas commerce."""
+    from types import SimpleNamespace
+    wc = Item("w", "IfcSpace", "L04_A_WCH", "L04", "N02", long_name="SUP_WC",
+              props={"Pset_SpaceCommon.Category": "WC handicapés"})
+    d = {"w": classify.Decision("w", "piece", "SUP", None, "prefixe", 0.9, "préfixe du nom « SUP_WC »")}
+    classify.without_flats(SimpleNamespace(spaces=[wc]), d)
+    assert (d["w"].code, d["w"].type) == ("SUS", "Sanitaires")
+
+
 @pytest.mark.parametrize("item, typ", [
     (space("p1", "38", "VOI", **{"Pset_SpaceCommon.Category": "416-SN-Surface utile secondaire"}), "Parking"),   # La Bâtie
     (space("p2", None, "CIR", **{"Pset_SpaceCommon.Category": "416-SN-Surface utile secondaire"}), "Parking"),   # voie du parking

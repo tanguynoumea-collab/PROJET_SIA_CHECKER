@@ -266,12 +266,16 @@ def type_for(model: Model, decisions: dict[str, Decision], cfg_generation: dict 
     return f
 
 
+SANITARY = re.compile(r"\b(wc|wch|toilettes?|sanitaires?|lavabos?|douches?|salle de bains?|sdb|vestiaires?)\b")
+
+
 def without_flats(model: Model, decisions: dict[str, Decision]) -> dict[str, int]:
     """Bâtiment sans logement (aucune pièce dans un lot) : la SUP de l'architecte, au sens de la SIA 416, est de
     la SUT chez Treegram, dont les sous-types SUP sont ceux du logement (décision du 28.10.2026, sur la
     proposition de l'analyse IA d'Afiro). Les sanitaires passent en SUS, comme des sanitaires communs.
     Renvoie, par bâtiment touché, le nombre de pièces reclassées."""
     building = {s.gid: s.building for s in model.spaces}
+    words = {s.gid: norm(" ".join(str(v) for v in (s.name, s.long_name, *s.props.values()) if v)) for s in model.spaces}
     flats = {building[g] for g, d in decisions.items() if d.nature == PIECE and d.in_lot}
     out: dict[str, int] = {}
     for g, d in decisions.items():
@@ -279,7 +283,8 @@ def without_flats(model: Model, decisions: dict[str, Decision]) -> dict[str, int
         if d.nature != PIECE or d.code != "SUP" or b in flats:
             continue
         # décision approuvée : pas un désaccord, l'espace ne repart pas à l'analyse IA pour cette seule raison
-        sanitary = (d.type or "").startswith("PieceSecondaire")
+        # sanitaire : sous-type à points d'eau, ou le nom le dit sans sous-type (CGA L04 : « SUP_WC », « WC handicapés »)
+        sanitary = (d.type or "").startswith("PieceSecondaire") or bool(SANITARY.search(words.get(g, "")))
         d.code, d.type = ("SUS", "Sanitaires") if sanitary else ("SUT", "Commerce")
         d.reason = f"convention Treegram : bâtiment sans logement, SUP ({d.source} : {d.reason}) comptée en {d.code}"
         d.source = "convention"

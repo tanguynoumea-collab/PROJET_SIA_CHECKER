@@ -467,3 +467,32 @@ Non-régression :
 | La SPT est calculée à plat sous une toiture à deux pans | La SPT est la surface développée : chaque morceau de toiture (IfcRoof, IfcSlab ROOF, plus de 5 m² en plan) compte son emprise au rapport de ses faces de dessus à leur projection, quel que soit le nombre de couches. Elle est drapée sur la couverture dans la vue 3D, et la SEP la compte de même. Myonaz 2 : 469,9 → 546,1 m² (pente de 32°) ; Myonaz 1 : 247,7 → 275,7 m². |
 | La SFN ignore la toiture : murets de rive plus bas, pignons | Au dernier niveau occupé, la façade monte jusqu'à la sous-face de la toiture, là où aucun niveau ne la recouvre : plus bas aux rives, en pointe dans les pignons, et jusqu'au haut des fenêtres de lucarne. La sous-face est cherchée jusqu'à 1,2 m à l'intérieur quand la toiture repose sur les murets sans déborder. Les pignons ne suivent que des sous-faces en pente (plus de 10°) : les toits plats ne changent pas. Myonaz 2 N03 : façade brute 288,8 → 261,5 m² ; Myonaz 1 N03 : 218,1 → 168,2 m². |
 | Les fenêtres de toit sont projetées à la verticale ou ignorées | Une fenêtre inclinée de plus de 15° sur la verticale (velux), ou hors façade et au-dessus d'elle sous la toiture (fenêtres hautes des lucarnes), à moins de 2,5 m sous la couverture, n'est ni une réservation ni de la façade. C'est un vitrage SRV du dernier niveau, à son aire vraie, dessiné dans son plan. Les fenêtres de lucarne que la maquette range dans le niveau de toiture comptent dans la façade du niveau dont elles percent la hauteur. Myonaz 2 N03 : SRV 108,1 → 120,6 m², dont 7,8 m² de fenêtres de toit. Une fenêtre déclarée intérieure (`IsExternal` faux, MOB-0010) reste écartée. |
+
+
+## 23. Publication de la 4.0.0 (29.10.2026)
+
+Le tag `v4.0.0` est posé sur l'état final, avec les retours des §20 à §22 :
+- ouvertures sans menuiserie déduites de la SFN ;
+- repères des ratios selon la typologie, poteaux déduits, garde-corps écartés ;
+- baies des portes et fenêtres comprises dans la SP ;
+- sanitaires reconnus au nom dans un bâtiment sans logement ;
+- toitures en pente.
+
+C'est la première publication de la V4 : release GitHub « SIA Check Viewer 4.0.0 », avec l'installeur. Tests : 291 Python.
+
+## 24. Feuille de route V4.1 (demandes de l'utilisateur du 29.10.2026)
+
+1. **Couleurs des surfaces USPI.** SNH, SH, SBH, SVN et SVB sont aujourd'hui toutes grises dans la vue 3D et les calques. On ne peut donc pas les contrôler. Il faut une teinte par code, distincte des codes SIA 416, lisible en clair et en sombre, et la même dans la légende, les infobulles et les exports. Le travail passe par une évolution du DESIGN_PLAN, sur les tokens de la famille USPI.
+2. **Ratios du Dashboard : séparer SIA 416 et USPI.**
+   - Dans l'onglet Ratios du bilan, puis dans le benchmark, les ratios SIA 416 et les ratios USPI sont aujourd'hui mêlés.
+   - Il faut deux groupes visuellement distincts, chacun avec un titre et une courte définition, dans le même ordre partout.
+   - Les ratios d'enveloppe (SFN, SRV, SPT) forment un troisième groupe, ou restent avec les ratios SIA. C'est à trancher dans le plan de design.
+3. **Compléter les classifications manquantes des projets générés.**
+   - Il faut relever, projet par projet, les espaces encore douteux ou sans sous-type : la liste « À trancher » de l'onglet Espaces, les SUS sans affectation et les lots incomplets.
+   - On les tranche avec l'utilisateur, en séance si besoin. Chaque décision passe par le journal (`decisions.json`), et les règles générales vont dans `config.yaml`.
+4. **Le gros morceau : calculer les surfaces déduites, SC et SEC, depuis l'IFC.**
+   - **SC (surface de construction, SIA 416 §2.2) :** la SP moins la SN. Elle comprend les murs porteurs et non porteurs, les poteaux, les gaines non accessibles et les parties de murs dans les embrasures. Le moteur la calcule aujourd'hui par différence.
+   - **SEC (surface de construction externe) :** l'équivalent pour les surfaces externes, c'est-à-dire la SEP moins la SEN. On y trouve les garde-corps maçonnés, les murs de loggia et les acrotères.
+   - **Calcul :** les identifier et les modéliser comme des surfaces à part entière, avec leur propre géométrie. Les sources sont les emprises des IfcWall, IfcColumn, IfcCurtainWall et IfcRailing pleins, et les dalles de balcon hors espaces.
+   - **Objectif :** que SN + SC recolle à la SP, et SEN + SEC à la SEP. Ce qui reste non couvert révèle les vraies zones de SP ou de SEP non catégorisées : un espace oublié par l'architecte, une loggia non dessinée, une trémie. Ces zones deviennent des surfaces « à classer », visibles en 3D et proposées à la classification (règles, IA ou manuel).
+   - **Vérification :** comparer aux SC et SEC des MDP de la base (Myonaz, La Bâtie) et vérifier qu'aucune surface n'est comptée deux fois.

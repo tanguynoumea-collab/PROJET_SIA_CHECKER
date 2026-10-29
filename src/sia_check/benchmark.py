@@ -67,7 +67,7 @@ class Kpi:
 KPIS = [
     Kpi("SUP/SP_HS", "Rendement", "SUP hors-sol / SP hors-sol", ("SUP_HS",), ("SP_HS",),
         note="Le m² qui rapporte par m² construit au-dessus du sol.", sens=1, objet="de SUP hors-sol"),
-    Kpi("SVN/SP_HS", "Rendement", "SVN / SP hors-sol", ("SVN",), ("SP_HS",), note="Rendement commercial (USPI).",
+    Kpi("SVN/SP_HS", "USPI 2014", "SVN / SP hors-sol", ("SVN",), ("SP_HS",), note="Rendement commercial (USPI).",
         sens=1, objet="de surface de vente nette"),
     Kpi("SN/SP", "Rendement", "SN / SP", ("SN",), ("SP",), sens=1, objet="de surface nette"),
     Kpi("SC/SP", "Pertes", "Construction : SC / SP", ("SC",), ("SP",), note="SC = SP − SN.",

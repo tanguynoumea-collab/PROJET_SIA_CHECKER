@@ -865,6 +865,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Second onglet de la zone bilan : ratios informatifs du projet et du bâtiment choisi.</summary>
     public ObservableCollection<RatioRow> RatioRows { get; } = [];
+    /// <summary>Les mêmes lignes rangées par famille (SIA 416, USPI 2014, Enveloppe, Programme), pour l'affichage.</summary>
+    public ObservableCollection<RatioGroup> RatioGroups { get; } = [];
     [ObservableProperty] private bool _showRatios;
     public bool HasRatios => RatioRows.Count > 0;
 
@@ -936,6 +938,8 @@ public sealed partial class MainViewModel : ObservableObject
             foreach (var p in BalanceRatios.Where(r => r.Building == Ratio.AllBuildings))
                 RatioRows.Add(new RatioRow(p, IsAllBuildings ? null
                     : BalanceRatios.FirstOrDefault(r => r.Id == p.Id && r.Building == BalanceBuilding)));
+        RatioGroups.Clear();
+        foreach (var g in RatioGroup.Of(RatioRows, code => Palette?.ColorOf(code) ?? SiaPalette.Fallback)) RatioGroups.Add(g);
         OnPropertyChanged(nameof(HasRatios));
     }
 

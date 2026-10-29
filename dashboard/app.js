@@ -100,6 +100,15 @@ const CLE_SELECTION = "benchmark.selection";
 const CRITERES = [["typologie", "categorie", "Toutes"], ["canton", "canton", "Tous"], ["intervention", "intervention", "Toutes"]];
 const NON_IDENTIFIEE = "__non_identifiee";
 const KPI_CLES = [["SUP/SP_HS", ""], ["VITRE/PLEINE", ""], ["FORME", ""]];
+/** Groupes de ratios (DESIGN_PLAN, Évolution 4.3), dans l'ordre de l'onglet Ratios de l'application. La pastille
+ *  reprend la couleur des surfaces mesurées (SP, SH, façade) ; le titre dit toujours le groupe. */
+const GROUPES = [
+  { titre: "SIA 416", definition: "surfaces de plancher : utile, dégagement, installations, construction", couleur: "#B1005D",
+    familles: ["Rendement", "Pertes", "Sous-sol"] },
+  { titre: "USPI 2014", definition: "surfaces habitables et de vente", couleur: "#22A08C", familles: ["USPI 2014"] },
+  { titre: "Enveloppe", definition: "façades, vitrages et toitures", couleur: "#A8A29E", familles: ["Enveloppe"] },
+  { titre: "Programme", definition: "cages d'escalier et logements", couleur: "#6B7280", familles: ["Programme"] },
+];
 const sel = { typologie: "", canton: "", intervention: "" };
 
 /** Le projet passe la sélection ; `sauf` ignore un critère (comptes des listes, suggestions d'élargissement). */
@@ -222,20 +231,38 @@ function dessinerRatios() {
     return el("div", { class: "cle" }, tete, chiffres, c.n ? regleGroupe(kpi, c) : null);
   }));
 
-  const familles = document.getElementById("ratios-familles");
-  familles.replaceChildren();
   const autres = kpisSelection().filter((k) => !KPI_CLES.some(([id]) => id === k.id));
-  for (const famille of [...new Set(autres.map((k) => k.famille))]) {
-    const bloc = el("section", { class: "famille" }, el("h2", { text: famille }));
-    for (const kpi of autres.filter((k) => k.famille === famille)) {
-      const c = combiner(fiables, kpi);
-      const libelle = el("div", { class: "libelle", text: kpi.label, title: kpi.note || kpi.label });
-      libelle.append(el("br"), el("span", { class: "valeurs", text: c.n ? `${valeur(kpi, c.combine)} · n = ${c.n}` : "—" }));
-      bloc.append(el("div", { class: "kpi compact" }, libelle, c.n ? regleGroupe(kpi, c) : el("div", { class: "absent", text: "Aucune donnée" }), el("div")));
-    }
-    familles.append(bloc);
-  }
+  document.getElementById("ratios-familles").replaceChildren(...blocsParGroupe(autres, (kpi) => {
+    const c = combiner(fiables, kpi);
+    const libelle = el("div", { class: "libelle", text: kpi.label, title: kpi.note || kpi.label });
+    libelle.append(el("br"), el("span", { class: "valeurs", text: c.n ? `${valeur(kpi, c.combine)} · n = ${c.n}` : "—" }));
+    return el("div", { class: "kpi compact" }, libelle, c.n ? regleGroupe(kpi, c) : el("div", { class: "absent", text: "Aucune donnée" }), el("div"));
+  }));
   dessinerProjetsSelection(tous, fiables);
+}
+
+/** KPI rangés par groupe (SIA 416, USPI 2014, Enveloppe, Programme), puis par famille sous-titrée quand le groupe en
+ *  compte plusieurs. Une famille inconnue forme son propre groupe, à la fin. */
+function blocsParGroupe(kpis, ligne) {
+  const connues = GROUPES.flatMap((g) => g.familles);
+  const groupes = [...GROUPES, ...[...new Set(kpis.map((k) => k.famille))].filter((f) => !connues.includes(f))
+    .map((f) => ({ titre: f, definition: "", couleur: "#6B7280", familles: [f] }))];
+  const blocs = [];
+  for (const g of groupes) {
+    const dans = kpis.filter((k) => g.familles.includes(k.famille));
+    if (!dans.length) continue;
+    const bloc = el("section", { class: "famille" },
+      el("h2", {}, el("span", { class: "pastille", style: `background:${g.couleur}`, "aria-hidden": "true" }), g.titre,
+         g.definition ? el("span", { class: "definition", text: g.definition }) : null));
+    for (const famille of g.familles) {
+      const ks = dans.filter((k) => k.famille === famille);
+      if (!ks.length) continue;
+      if (famille !== g.titre && g.familles.length > 1) bloc.append(el("h3", { text: famille }));
+      for (const kpi of ks) bloc.append(ligne(kpi));
+    }
+    blocs.push(bloc);
+  }
+  return blocs;
 }
 
 /** Règle d'une sélection : chaque projet en point (clic : le comparer), quartiles et ratio combiné. */
@@ -367,14 +394,7 @@ function dessinerComparer() {
       (ref.id !== MIEN && !dansSelection(ref) ? " · ce projet est hors sélection" : "")
     : liste.length ? "Aucune référence : cochez au moins un projet similaire." : "Aucune référence : aucun projet similaire.";
 
-  const regles = document.getElementById("regles");
-  regles.replaceChildren();
-  const kpis = kpisSelection();
-  for (const famille of [...new Set(kpis.map((k) => k.famille))]) {
-    const bloc = el("section", { class: "famille" }, el("h2", { text: famille }));
-    for (const kpi of kpis.filter((k) => k.famille === famille)) bloc.append(ligneKpi(kpi, ref, groupe));
-    regles.append(bloc);
-  }
+  document.getElementById("regles").replaceChildren(...blocsParGroupe(kpisSelection(), (kpi) => ligneKpi(kpi, ref, groupe)));
   dessinerCages(ref);
 }
 

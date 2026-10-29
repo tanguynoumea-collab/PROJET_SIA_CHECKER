@@ -401,6 +401,19 @@ public class RatioTests
     }
 
     [Fact]
+    public void Ratios_are_grouped_sia_then_uspi_envelope_programme()
+    {
+        static RatioRow Row(string id, string family) => new(new Ratio { Building = Ratio.AllBuildings, Id = id, Label = id, Family = family }, null);
+        var rows = new[] { Row("SNH/SP", "uspi"), Row("SRV/SFN", "enveloppe"), Row("SN/SP", "sia"), Row("SUP/cage", "programme"),
+                           Row("X", "maison"), Row("SVN/SP", "uspi") };
+        var groups = RatioGroup.Of(rows, code => code == "SH" ? Colors.Teal : Colors.Magenta);
+        Assert.Equal(["SIA 416", "USPI 2014", "Enveloppe", "Programme", "maison"], groups.Select(g => g.Title));
+        Assert.Equal(["SNH/SP", "SVN/SP"], groups[1].Rows.Select(r => r.Id));   // ordre du moteur gardé dans la famille
+        Assert.Equal(Colors.Teal, ((SolidColorBrush)groups[1].Swatch).Color);
+        Assert.Equal(SiaPalette.Fallback, ((SolidColorBrush)groups[3].Swatch).Color);
+    }
+
+    [Fact]
     public void Area_per_lot_is_informative()
     {
         var doc = Fixture.Synth();

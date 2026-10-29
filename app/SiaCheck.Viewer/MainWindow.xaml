@@ -1045,31 +1045,49 @@
                                     </DockPanel>
                                 </Border>
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                    <ItemsControl ItemsSource="{Binding RatioRows}">
+                                    <!-- Familles de ratios (Évolution 4.3) : SIA 416, USPI 2014, Enveloppe, Programme -->
+                                    <ItemsControl ItemsSource="{Binding RatioGroups}">
                                         <ItemsControl.ItemTemplate>
-                                            <DataTemplate DataType="vm:RatioRow">
-                                                <Grid Height="{StaticResource BalanceRowHeight}" Margin="4,0,18,0" Background="Transparent" ToolTip="{Binding Tooltip}"
-                                                      ToolTipService.ShowDuration="30000" AutomationProperties.Name="{Binding Label}">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="96" /><ColumnDefinition Width="*" /><ColumnDefinition Width="150" />
-                                                        <ColumnDefinition Width="72" /><ColumnDefinition Width="72" /><ColumnDefinition Width="112" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding Id}" />
-                                                    <TextBlock Grid.Column="1" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
-                                                               TextTrimming="CharacterEllipsis" Text="{Binding Label}" />
-                                                    <c:RatioGauge Grid.Column="2" Margin="8,0" Row="{Binding}" Track="{DynamicResource BrushTextSecondary}"
-                                                                  Accent="{DynamicResource BrushAccent}" Warning="{DynamicResource BrushVerdictWarning}" />
-                                                    <TextBlock Grid.Column="3" Style="{StaticResource TextNumber}" VerticalAlignment="Center" Text="{Binding ProjectText}" />
-                                                    <TextBlock x:Name="Bld" Grid.Column="4" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
-                                                               Text="{Binding BuildingText}" />
-                                                    <TextBlock Grid.Column="5" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
-                                                               Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding ReferenceText}" />
-                                                </Grid>
-                                                <DataTemplate.Triggers>
-                                                    <DataTrigger Binding="{Binding IsOutside}" Value="True">
-                                                        <Setter TargetName="Bld" Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
-                                                    </DataTrigger>
-                                                </DataTemplate.Triggers>
+                                            <DataTemplate DataType="vm:RatioGroup">
+                                                <StackPanel Margin="0,0,0,8">
+                                                    <Border Margin="4,4,18,2" Padding="0,0,0,4" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BrushDivider}"
+                                                            AutomationProperties.Name="{Binding Title}">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Border Width="10" Height="10" CornerRadius="3" Background="{Binding Swatch}" VerticalAlignment="Center" />
+                                                            <TextBlock Margin="8,0,0,0" Style="{StaticResource TextSubtitle}" VerticalAlignment="Center" Text="{Binding Title}" />
+                                                            <TextBlock Margin="10,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding Definition}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <ItemsControl ItemsSource="{Binding Rows}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate DataType="vm:RatioRow">
+                                                                <Grid Height="{StaticResource BalanceRowHeight}" Margin="4,0,18,0" Background="Transparent" ToolTip="{Binding Tooltip}"
+                                                                      ToolTipService.ShowDuration="30000" AutomationProperties.Name="{Binding Label}">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="96" /><ColumnDefinition Width="*" /><ColumnDefinition Width="150" />
+                                                                        <ColumnDefinition Width="72" /><ColumnDefinition Width="72" /><ColumnDefinition Width="112" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding Id}" />
+                                                                    <TextBlock Grid.Column="1" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
+                                                                               TextTrimming="CharacterEllipsis" Text="{Binding Label}" />
+                                                                    <c:RatioGauge Grid.Column="2" Margin="8,0" Row="{Binding}" Track="{DynamicResource BrushTextSecondary}"
+                                                                                  Accent="{DynamicResource BrushAccent}" Warning="{DynamicResource BrushVerdictWarning}" />
+                                                                    <TextBlock Grid.Column="3" Style="{StaticResource TextNumber}" VerticalAlignment="Center" Text="{Binding ProjectText}" />
+                                                                    <TextBlock x:Name="Bld" Grid.Column="4" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
+                                                                               Text="{Binding BuildingText}" />
+                                                                    <TextBlock Grid.Column="5" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
+                                                                               Foreground="{DynamicResource BrushTextSecondary}" Text="{Binding ReferenceText}" />
+                                                                </Grid>
+                                                                <DataTemplate.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsOutside}" Value="True">
+                                                                        <Setter TargetName="Bld" Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
+                                                                    </DataTrigger>
+                                                                </DataTemplate.Triggers>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>

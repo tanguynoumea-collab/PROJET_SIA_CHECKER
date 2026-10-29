@@ -255,6 +255,45 @@ public sealed class SurfaceInfo(Surface surface, IReadOnlyList<IssueItem> issues
 
 public sealed record ChoiceItem(string Label, string Value);
 
+/// <summary>
+/// Famille de ratios de l'onglet Ratios (Évolution 4.3) : titre, définition et pastille de la couleur des surfaces
+/// qu'elle mesure (SP pour la SIA 416, SH pour l'USPI, SFN pour l'enveloppe), comme dans les calques.
+/// </summary>
+public sealed record RatioGroup(string Family, string Title, string Definition, Brush Swatch, IReadOnlyList<RatioRow> Rows)
+{
+    /// <summary>Familles du moteur (config.yaml, ratios.family), dans l'ordre d'affichage, et le code de leur pastille.</summary>
+    public static readonly (string Family, string Title, string Definition, string? Code)[] Order =
+    [
+        ("sia", "SIA 416", "surfaces de plancher : utile, dégagement, installations, construction", "SP"),
+        ("uspi", "USPI 2014", "surfaces habitables et de vente, par logement", "SH"),
+        ("enveloppe", "Enveloppe", "façades, vitrages et toitures", "SFN"),
+        ("programme", "Programme", "cages d'escalier et logements", null),
+    ];
+
+    /// <summary>Lignes rangées par famille ; une famille inconnue vient à la fin, sous son propre nom.</summary>
+    public static List<RatioGroup> Of(IEnumerable<RatioRow> rows, Func<string, Color> colorOf)
+    {
+        var list = rows.ToList();
+        var known = Order.Select(o => o.Family).ToHashSet(StringComparer.Ordinal);
+        var families = Order.Select(o => (o.Family, o.Title, o.Definition, o.Code))
+            .Concat(list.Select(r => r.Family).Where(f => !known.Contains(f)).Distinct()
+                        .Select(f => (Family: f, Title: f.Length > 0 ? f : "Autres", Definition: "", Code: (string?)null)));
+        return families
+            .Select(f => (f, rows: list.Where(r => r.Family == f.Family).ToList()))
+            .Where(x => x.rows.Count > 0)
+            .Select(x => new RatioGroup(x.f.Family, x.f.Title, x.f.Definition,
+                                        Frozen(x.f.Code is { } c ? colorOf(c) : Scene.SiaPalette.Fallback), x.rows))
+            .ToList();
+    }
+
+    private static Brush Frozen(Color c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
+    }
+}
+
 /// <summary>Une ligne de l'onglet Ratios : valeur du projet et, si un bâtiment est choisi, celle du bâtiment.</summary>
 public sealed class RatioRow(Ratio project, Ratio? building)
 {
@@ -267,6 +306,7 @@ public sealed class RatioRow(Ratio project, Ratio? building)
 
     public string Id => Project.Id;
     public string Label => Project.Label;
+    public string Family => Project.Family;
     public bool IsArea => Project.Unit == "m2";
     /// <summary>Nombre moyen (logements par cage) : une décimale, numérateur et dénominateur comptés.</summary>
     public bool IsCount => Project.Unit == "nombre";

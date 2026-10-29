@@ -1885,3 +1885,21 @@ Non-régression : les écrans de la Fiabilisation (barre de commande, calques, b
   - ✅ légende lisible dans les deux thèmes.
   - Point faible restant : le liseré SH est mince (cloisons de 10 à 20 cm) et se lit mieux de près.
   - Le SNH clair reste proche des vitrages SRV (`#9ED8E6`), mais les uns sont verticaux et l'autre en plan : ils ne se superposent pas.
+
+---
+
+## Évolution 4.3 — Ratios rangés par groupe : SIA 416, USPI 2014, Enveloppe, Programme (mode ÉVOLUTION)
+
+> Statut : ☑ Validé par l'utilisateur et implémenté (29.10.2026). Demande : « sépare bien les ratios en rapport avec les surfaces SIA des ratios USPI, visuellement plus facile à interpréter ».
+
+- **Quatre groupes, toujours dans cet ordre** : SIA 416, USPI 2014, Enveloppe, Programme. On les retrouve dans l'onglet Ratios de l'application et dans le Dashboard (Ratios et Comparer).
+- **En-tête de groupe** : une pastille de 10 px, le titre et une définition d'une ligne en texte secondaire, souligné d'un filet.
+  - La pastille reprend la couleur des surfaces mesurées, comme dans les calques : SP (magenta) pour la SIA 416, SH (pétrole, Évolution 4.2) pour l'USPI, SFN (gris façade) pour l'enveloppe, gris neutre pour le programme.
+  - Le titre dit toujours le groupe : la couleur n'est jamais seule.
+- **Enveloppe à part** : façades, vitrages et toitures ne sont pas des surfaces de plancher. Les mêler à la SIA 416 brouillerait la lecture.
+- **Dashboard** :
+  - SVN / SP hors-sol quitte « Rendement » pour le groupe USPI 2014 ;
+  - Rendement, Pertes et Sous-sol deviennent des sous-titres du groupe SIA 416 ;
+  - les KPI clés en tête de page restent inchangés.
+- **Revue visuelle** : onglet Ratios de Myonaz 2 (sombre) et Dashboard de la base (10 MDP), avec ✅ groupes, pastilles et définitions lisibles, et aucune erreur de console.
+  - Accessoire retiré : pas de compteur de ratios par groupe, qui ne sert pas la lecture.

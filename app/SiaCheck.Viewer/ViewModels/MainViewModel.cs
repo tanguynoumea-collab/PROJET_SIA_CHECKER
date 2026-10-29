@@ -129,7 +129,7 @@ public sealed partial class MainViewModel : ObservableObject
         await OpenAsync(sheet.Folder);
     }
 
-    /// <summary>Fiche d'un projet actif (✎) ou, sans paramètre, du projet ouvert (clic sur son nom).</summary>
+    /// <summary>Fiche d'un projet de la liste (clic droit) ou, sans paramètre, du projet ouvert (clic sur son nom).</summary>
     [RelayCommand]
     private Task EditProjectSheetAsync(RecentItem? recent) =>
         recent is not null ? EditSheetAsync(recent.Path, recent.Name, ifc: recent.Generated?.Source)
@@ -272,7 +272,7 @@ public sealed partial class MainViewModel : ObservableObject
         HomeError = null;
         if (!Directory.Exists(dir))
         {
-            HomeError = $"Dossier introuvable : {dir}. Repointez le projet sur son dossier avec ✎ (fiche projet).";
+            HomeError = $"Dossier introuvable : {dir}. Repointez le projet sur son dossier : clic droit sur le projet, Fiche projet.";
             return;
         }
         var tgms = ProjectFolder.Sources(dir);
@@ -422,7 +422,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (ProjectIdentity.Missing(hrs, forBase) is { Count: > 0 } missing)
         {
             _shell.Notify($"Identité incomplète ({string.Join(", ", missing)}) : le MDP n'a pas été exporté. " +
-                          "Complétez la fiche projet (✎).", isError: true);
+                          "Complétez la fiche projet (clic droit sur le projet, dans la liste).", isError: true);
             return null;
         }
         return hrs;

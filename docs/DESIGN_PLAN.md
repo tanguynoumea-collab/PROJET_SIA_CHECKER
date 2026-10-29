@@ -2069,3 +2069,18 @@ Non-régression : les écrans de la Fiabilisation (barre de commande, calques, b
 - Aucune nouvelle couleur.
 - Revue : `docs/ui-baseline/accueil-minage-light.png`. Le survol n'a pas pu être vérifié à la souris, la session Windows étant verrouillée pendant la revue.
 - **Choix rejeté** : un bouton « ⋯ » avec menu par ligne. Il cache tout, et ⇥ doit rester visible.
+
+## Évolution 4.7 — Limite au milieu, actions au clic droit (mode ÉVOLUTION)
+
+> Statut : ☑ Demandé par l'utilisateur et implémenté (29.10.2026)
+
+- **Accueil** : Minage de données et Benchmark ont des colonnes égales (1* | 1*), donc la limite est au milieu de la fenêtre.
+- **Actions d'un projet** : Régénérer, Fiche projet et Supprimer quittent la ligne. Elles passent dans un **menu contextuel** :
+  - il s'ouvre au clic droit, ou avec la touche Menu ou Maj+F10 au clavier ;
+  - Régénérer n'y apparaît que pour un projet IFC ;
+  - un séparateur isole Supprimer.
+  - ⇥ Ajouter à la base reste le seul bouton de la ligne, sur un projet traité.
+  - Les textes qui citaient ✎ ou ↻ renvoient maintenant au clic droit.
+- **Revue** :
+  - `docs/ui-baseline/accueil-minage-light.png` : la limite est à 968 px sur 1 936 ;
+  - `docs/ui-baseline/accueil-menu-projet-light.jpg` : le menu s'affiche sur Myonaz-1, et « Fiche projet… » ouvre bien la fiche du projet.

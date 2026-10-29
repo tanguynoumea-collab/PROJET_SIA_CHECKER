@@ -90,7 +90,7 @@ public sealed partial class MainViewModel
         if (project.Length == 0) return new("Donnez un nom au projet.", false, false, null);
         var target = Path.Combine(s.OutDir ?? GenerationFolder, project);
         return Directory.Exists(target)
-            ? new($"Un projet généré s'appelle déjà « {project} » : changez le nom, ou régénérez-le depuis la liste (↻).", false, false, null)
+            ? new($"Un projet généré s'appelle déjà « {project} » : changez le nom, ou régénérez-le depuis la liste (clic droit).", false, false, null)
             : new($"✓ {Path.GetFileName(s.Ifc)} · le projet sera créé dans {target}", true, false, null);
     }
 

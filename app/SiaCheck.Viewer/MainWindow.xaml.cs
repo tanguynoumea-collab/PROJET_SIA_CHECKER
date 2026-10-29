@@ -253,7 +253,7 @@ public partial class MainWindow : FluentWindow, IShell
             ifcPanel.Children.Add(Caption("La maquette doit contenir ses IfcSpace. La génération prend de 30 s à quelques minutes."));
         }
         else if (ifcProject)
-            ifcPanel.Children.Add(Caption("↻ Régénérer, dans la liste des projets, relit cette maquette ; elle est redemandée si elle a été déplacée."));
+            ifcPanel.Children.Add(Caption("Régénérer (clic droit sur le projet, dans la liste) relit cette maquette ; elle est redemandée si elle a été déplacée."));
         if (creating || !ifcProject) panel.Children.Add(folderRow);
         if (creating || ifcProject) panel.Children.Add(ifcPanel);
         panel.Children.Add(state);

@@ -13,10 +13,10 @@ public sealed class RecentItem(RecentProject project, ProjectStatus status, MdpP
 {
     public RecentProject Project { get; } = project;
     public GeneratedInfo? Generated { get; } = generated;
-    /// <summary>Généré depuis un IFC : glyphe cube, état des espaces, ↻ Régénérer, ouverture sur l'onglet Espaces.</summary>
+    /// <summary>Généré depuis un IFC : glyphe cube, état des espaces, Régénérer (clic droit), ouverture sur l'onglet Espaces.</summary>
     public bool IsIfc => Generated is not null;
     public string SourceTooltip => IsIfc ? $"Généré depuis un IFC : {Generated!.Source}" : "Projet Treegram";
-    /// <summary>Maquette dont le projet est tiré (infobulle de ↻).</summary>
+    /// <summary>Maquette dont le projet est tiré (infobulle de Régénérer).</summary>
     public string Source => Generated?.Source ?? "";
     /// <summary>Tous les espaces tranchés (coche) : projet IFC seulement.</summary>
     public bool IsSettled => Generated?.State.ToDecide == 0;

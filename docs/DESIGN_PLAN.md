@@ -2084,3 +2084,8 @@ Non-régression : les écrans de la Fiabilisation (barre de commande, calques, b
 - **Revue** :
   - `docs/ui-baseline/accueil-minage-light.png` : la limite est à 968 px sur 1 936 ;
   - `docs/ui-baseline/accueil-menu-projet-light.jpg` : le menu s'affiche sur Myonaz-1, et « Fiche projet… » ouvre bien la fiche du projet.
+- **Retouche du 29.10.2026 (place mal utilisée)** :
+  - la liste occupe toute la largeur de sa colonne, avec des colonnes proportionnelles (ID 1, Projet 3, Typologie 2, Canton 1, Activité 1, Modifié 1,2) ;
+  - les données sont centrées sous leur en-tête, sauf le nom du projet, aligné à gauche ;
+  - les icônes ⚠ suivent le nom ;
+  - il n'y a plus de vide entre « Modifié » et la limite centrale.

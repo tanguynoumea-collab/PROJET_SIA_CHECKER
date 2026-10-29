@@ -129,7 +129,10 @@ def test_generated_project_is_checked_like_a_treegram_project(generated, cfg):
     df = reader.read(generated.siagen, cfg)
     res = rules.run(df, cfg)
     r1 = res.residuals[(res.residuals.rule == "R1") & (res.residuals.level == "N00")].iloc[0]
-    assert r1.expected == pytest.approx(45.6) and r1.diff_m2 == pytest.approx(3.6) and r1.verdict == "INFO"
+    # V4.1 : le mur de façade est une SC modélisée (1,6 m²), l'écart d'aire déclarée de la chambre (12 − 10 m²) y est
+    # reporté ; aucune zone non classée, le résidu est nul
+    assert r1.expected == pytest.approx(45.6) and r1.diff_m2 == pytest.approx(0.0, abs=0.01) and r1.verdict == "OK"
+    assert df[(df.kind == "leaf") & (df.category == "SCN")].area.sum() == pytest.approx(1.6 + 2.0, abs=0.01)
     assert set(df[df.kind == "leaf"].lot.dropna()) == {"A_N00_Apart-01"}
 
 

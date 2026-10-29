@@ -222,3 +222,35 @@ def test_pitched_roof_spt_facade_and_roof_window():
     from sia_check.generation import assemble
     seps = [e for e in assemble.elements([n00, ttr]) if e.name == "SEP" and e.kind == "node"]
     assert seps[-1].props["Area"] == pytest.approx(200 / math.cos(s), rel=1e-3)
+
+
+def test_construction_scp_scn_thin_bands_and_true_gaps():
+    """V4.1 : murs porteurs et poteaux en SCP, autres murs en SCN, bandes minces restantes en SC (non modélisée),
+    le reste est la SP non classée ; garde-corps d'un balcon en SECN."""
+    from sia_check.generation import construction
+    lv = level("N00", 0.0, 3.0, sp=box(0, 0, 20, 10))
+    room = plans.Placed(Item("r", "IfcSpace", "SEJ", "A", "N00"), box(0.3, 0.3, 12, 9.7))   # 12..20 : rien dessiné
+    lv.rooms.append(interiors.Room(room, classify.Decision("r", "piece", "SUP", "PieceDeVie"), room.area))
+    walls = [("p", box(0, 0, 20, 0.2), True), ("n", box(0, 9.8, 20, 10), False)]
+    for gid, shape, bearing in walls:
+        lv.plan.elements.append(plans.Placed(Item(gid, "IfcWall", "Mur", "A", "N00",
+                                                  props={"Pset_WallCommon.LoadBearing": bearing}), shape))
+    lv.plan.elements.append(plans.Placed(Item("c", "IfcColumn", "Pot", "A", "N00"), box(15, 4, 15.3, 4.3)))
+    lv.sep = box(0, 10, 20, 12)
+    bal = plans.Placed(Item("b", "IfcSpace", "BAL", "A", "N00"), box(0, 10, 20, 11.9))
+    lv.exteriors.append(interiors.Room(bal, classify.Decision("b", "exterieur", "SEU", "Balcon"), bal.area))
+    lv.plan.elements.append(plans.Placed(Item("g", "IfcRailing", "GC", "A", "N00"), box(0, 11.9, 20, 12)))
+    lv.rooms[0].area -= 1.5   # aire déclarée plus petite que l'emprise (rampant) : reportée sur la SCN
+    construction.build([lv])
+    c = {k: a for k, (_, a) in lv.construction.items()}
+    bands = 0.1 * 11.7 * 2 + 0.3 * 9.6   # jeu espace / mur le long de la pièce : construction, avec les murs en SCN
+    assert c["SCP"] == pytest.approx(20 * 0.2 + 0.09) and c["SCN"] == pytest.approx(20 * 0.2 + bands + 1.5, abs=0.05)
+    assert "SC" not in c and c["ecart_SCN"] == pytest.approx(1.5)
+    assert lv.unclassified["SP"].area == pytest.approx(8 * 9.6 - 0.09, abs=0.05)   # la moitié est non dessinée
+    assert c["SECN"] == pytest.approx(2.0) and lv.unclassified["SEP"] is None
+    # niveau sans aucun mur dans la maquette (Afiro) : les bandes sont une SC non modélisée
+    bare = level("N01", 3.0, 3.0, sp=box(0, 0, 10, 10))
+    r2 = plans.Placed(Item("r2", "IfcSpace", "BUR", "A", "N01"), box(0.2, 0.2, 9.8, 9.8))
+    bare.rooms.append(interiors.Room(r2, classify.Decision("r2", "piece", "SUT", "Commerce"), r2.area))
+    construction.build([bare])
+    assert bare.construction["SC"][1] == pytest.approx(100 - 9.6 * 9.6) and bare.unclassified["SP"] is None

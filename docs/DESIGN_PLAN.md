@@ -1903,3 +1903,23 @@ Non-régression : les écrans de la Fiabilisation (barre de commande, calques, b
   - les KPI clés en tête de page restent inchangés.
 - **Revue visuelle** : onglet Ratios de Myonaz 2 (sombre) et Dashboard de la base (10 MDP), avec ✅ groupes, pastilles et définitions lisibles, et aucune erreur de console.
   - Accessoire retiré : pas de compteur de ratios par groupe, qui ne sert pas la lecture.
+
+---
+
+## Évolution 4.4 — Surfaces de construction SC et SEC (mode ÉVOLUTION)
+
+> Statut : ☑ Validé par l'utilisateur et implémenté (29.10.2026). Objectif : modéliser la construction pour que le résidu R1 / R3 ne montre plus que les vraies zones de SP et de SEP non classées.
+
+- **Couleurs** (`report.SIA_COLORS`), un fond neutre qui laisse ressortir les pièces et la plaque SP :
+  - SCP (porteuse) anthracite `#3F4652` ;
+  - SCN (non porteuse) gris `#7E8796` ;
+  - SC (non modélisée : niveau sans mur dans la maquette) gris pâle `#A3AAB6`, en aplat. Le hachuré reste réservé aux surfaces externes.
+  - SECP et SECN dans les mêmes gris, hachurés comme toute surface externe.
+- **Calques** : SC, SCP et SCN dans le groupe Intérieur ; SECP et SECN dans le groupe Extérieur. Ils sont visibles d'emblée.
+- **Zones non classées** : aucune nouvelle surface. La plaque SP magenta, posée sous les pièces, transparaît là où ni pièce ni construction ne la couvre. Le sujet « Plancher non entièrement classé (SP) » (R1) ne contient plus que ces zones.
+- **Revue visuelle** (Myonaz 1, sombre, `docs/ui-baseline/construction-myonaz1-dark.png`) :
+  - ✅ murs en gris sous les pièces ;
+  - ✅ trou de 32 m² au rez visible en magenta ;
+  - ✅ sujet SP à 32 m² ;
+  - ✅ SECP et SECN hachurés.
+  - Point faible restant : en thème sombre, la SCP anthracite contraste peu avec le fond, mais les pièces et le trou restent bien lisibles.

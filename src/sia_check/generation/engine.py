@@ -24,7 +24,7 @@ from pathlib import Path
 import shapely
 
 from .. import __version__, siagen
-from . import assemble, audit, classify, exteriors, ingest, interiors, journal, plans, uspi
+from . import assemble, audit, classify, construction, exteriors, ingest, interiors, journal, plans, uspi
 
 FORMAT, VERSION = "sia-check-generation", 1
 MAQUETTE = Path("generation") / "maquette.json"
@@ -126,6 +126,7 @@ def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, l
                        "spt_m2": _r(sum(a for _, a, _ in lv.roof_parts), 2),
                        "slab_m2": _r(lv.slab.area if lv.slab is not None else 0.0, 2), "envelope": lv.envelope,
                        "totals": {k: _r(v, 2) for k, v in sorted(totals.items())},
+                       "construction": construction.summary(lv),
                        "lots": [{"lot": x.key, "bedrooms": x.bedrooms, "sbh_source": x.sbh_source,
                                  **{k: _r(v, 2) for k, v in x.areas.items()}} for x in lv.lots]})
     pieces = [x for x in spaces if x["nature"] == classify.PIECE]
@@ -179,6 +180,7 @@ def generate(ifc: Path, cfg_generation: dict, out_dir: Path, project: str | None
     occupied = {lv.plan.storey.gid for lv in levels if lv.rooms}
     codes = assemble.level_codes(storeys, occupied, cfg_generation)
     exteriors.build(levels, decisions, {g for g, c in codes.items() if c.startswith("S")}, cfg_generation)
+    construction.build(levels)   # SC et SEC modélisées : le résidu R1 / R3 ne garde que le non classé
     for lv in levels:
         lv.lots = uspi.build(lv, decisions, cfg_generation)
     els = assemble.elements(levels, codes)

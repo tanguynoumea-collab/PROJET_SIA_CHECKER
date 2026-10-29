@@ -44,6 +44,9 @@ def gross_codes(cfg: Config) -> list[str]:
     return roots + [c for c in ("SA",) if c in cfg.categories and c not in roots]
 
 
+CONSTRUCTION = {"SC", "SCP", "SCN", "SEC", "SECP", "SECN"}
+
+
 def net_codes(cfg: Config) -> set[str]:
     """Codes SIA 416 sous les racines (SUP, SD, SEU…), plus les codes rattachés par une règle personnalisée.
 
@@ -51,7 +54,8 @@ def net_codes(cfg: Config) -> set[str]:
     source le porte sur une surface élémentaire.
     """
     sia = {c for c, d in cfg.categories.items() if d.get("family") == "sia" and not d.get("alias_of")}
-    return (sia - set(_roots(cfg))) | {c for r in cfg.custom_rules for c in r.adds}
+    # construction modélisée par le moteur IFC (V4.1) : ni Treegram ni les MDP n'en ont, elle reste au bilan
+    return (sia - set(_roots(cfg)) - CONSTRUCTION) | {c for r in cfg.custom_rules for c in r.adds}
 
 
 def _sorted(df: pd.DataFrame, order: list[str]) -> pd.DataFrame:

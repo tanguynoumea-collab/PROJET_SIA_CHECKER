@@ -80,6 +80,8 @@ class Level:
     floor_z: float | None = None   # sol des pièces ; None : altitude du niveau IFC
     height: float | None = None    # jusqu'au niveau suivant du bâtiment ; None : hauteur IFC
     lots: list = field(default_factory=list)   # phase 23 (uspi.py) : logements et chaîne USPI
+    construction: dict = field(default_factory=dict)   # V4.1 (construction.py) : SCP, SCN, SC, SECP, SECN
+    unclassified: dict = field(default_factory=dict)   # V4.1 : SP et SEP qu'aucune surface ne couvre
 
     @property
     def z(self) -> float:

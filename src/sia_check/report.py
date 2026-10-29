@@ -31,8 +31,12 @@ SIA_COLORS = {"SP": "#B1005D", "SUP": "#D5003B", "SUT": "#E8601C", "SUS": "#F0A9
               # USPI 2014 (Évolution 4.2) : rampe pétrole, du net au brut, comme la chaîne SNH ⊂ SH ⊂ SBH ; la vente
               # (habitable + surfaces externes) reprend la teinte de sa base, hachurée comme toute surface externe
               "SNH": "#5CCFB8", "SH": "#22A08C", "SHA": "#22A08C", "SBH": "#0F6E62",
-              "SVN": "#22A08C", "SVB": "#0F6E62"}
-HATCHED = {"SEP", "SEU", "SED", "SEI", "SEN", "SEC", "SVN", "SVB"}
+              "SVN": "#22A08C", "SVB": "#0F6E62",
+              # construction (Évolution 4.4) : fond neutre, porteuse anthracite, non porteuse grise, non modélisée pâle ;
+              # externe (SEC) hachurée comme toute surface externe
+              "SC": "#A3AAB6", "SCP": "#3F4652", "SCN": "#7E8796",
+              "SEC": "#7E8796", "SECP": "#3F4652", "SECN": "#7E8796"}
+HATCHED = {"SEP", "SEU", "SED", "SEI", "SEN", "SEC", "SECP", "SECN", "SVN", "SVB"}
 LEVEL_COLUMNS = ["SP", "SUP", "SUT", "SUS", "SD", "SI", "SEP", "SEU", "SED"]
 
 RESIDUAL_LABELS = {

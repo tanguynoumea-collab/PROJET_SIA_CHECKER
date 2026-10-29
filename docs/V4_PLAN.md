@@ -500,7 +500,16 @@ C'est la première publication de la V4 : release GitHub « SIA Check Viewer 4.0
    - Le conflit périmé « sous-type SUS par défaut » des réduits en SUP est retiré.
    - Il faut relever, projet par projet, les espaces encore douteux ou sans sous-type : la liste « À trancher » de l'onglet Espaces, les SUS sans affectation et les lots incomplets.
    - On les tranche avec l'utilisateur, en séance si besoin. Chaque décision passe par le journal (`decisions.json`), et les règles générales vont dans `config.yaml`.
-4. **Le gros morceau : calculer les surfaces déduites, SC et SEC, depuis l'IFC.**
+4. ☑ **Le gros morceau : calculer les surfaces déduites, SC et SEC, depuis l'IFC** (livré le 29.10.2026, `generation/construction.py`, DESIGN_PLAN Évolution 4.4).
+   - **SCP** : murs porteurs (`LoadBearing`) et poteaux. **SCN** : autres murs et murs-rideaux, plus les bandes de moins de 0,6 m entre les pièces et les murs. Les baies vont avec le mur qu'elles percent.
+   - **SC** : sur un niveau sans aucun mur modélisé, toutes les bandes (Afiro).
+   - **SECP / SECN** : garde-corps, murets et bandes minces autour des extérieurs.
+   - L'écart entre emprise et aire déclarée des pièces est reporté sur la SCN, comme dans les MDP où il tombe dans la SC implicite. Par exemple, Myonaz N03 compte 18 et 28 m² sous les rampants.
+   - La construction n'est pas exportée vers les MDP ni vers le format Treegram (`treegram.CONSTRUCTION`).
+   - **Résultat sur les cinq projets** : R1 et R3 sont équilibrés à quelques centièmes près, sauf deux vraies zones non classées, aujourd'hui seules en erreur.
+     - Myonaz 1, N00 : 32,3 m² de SP dans la « Surface de plancher » dessinée, sans pièce.
+     - Myonaz 2, N00 : 13,3 m² de SEP sans extérieur.
+   - Avant, elles se perdaient dans 30 à 140 m² de résidu « construction implicite » par niveau.
    - **SC (surface de construction, SIA 416 §2.2) :** la SP moins la SN. Elle comprend les murs porteurs et non porteurs, les poteaux, les gaines non accessibles et les parties de murs dans les embrasures. Le moteur la calcule aujourd'hui par différence.
    - **SEC (surface de construction externe) :** l'équivalent pour les surfaces externes, c'est-à-dire la SEP moins la SEN. On y trouve les garde-corps maçonnés, les murs de loggia et les acrotères.
    - **Calcul :** les identifier et les modéliser comme des surfaces à part entière, avec leur propre géométrie. Les sources sont les emprises des IfcWall, IfcColumn, IfcCurtainWall et IfcRailing pleins, et les dalles de balcon hors espaces.

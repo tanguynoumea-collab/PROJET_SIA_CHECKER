@@ -141,6 +141,21 @@ def elements(levels: list[Level], codes: dict[str, str] | None = None) -> list[E
             ext += 1
             leaves.append((f"{b}_{lv}_ExtShellByTgm-{ext}_SPT", {CATEGORY: "SPT", "Area": round(area, 3),
                                                                  "Type": "Toiture"}, draped or mesh_of(part, level.z)))
+        # construction modélisée (V4.1, construction.py) : une surface élémentaire par code, dans les parties communes
+        # aire : emprise, plus l'écart d'aire déclarée des pièces sur SCN / SC / SECN (construction.py)
+        construction = level.construction or {}
+        for code in ("SCP", "SCN", "SC"):
+            if code in construction and construction[code][1] > 0:
+                g, area = construction[code]
+                counter[common_shell] = counter.get(common_shell, 0) + 1
+                leaves.append((f"{b}_{lv}_ShellByTgm-{common_shell:02d}_SpaceByTgm-{counter[common_shell]}_{code}",
+                               {CATEGORY: code, "Area": round(area, 3)}, mesh_of(g, level.z)))
+        for code in ("SECP", "SECN"):
+            if code in construction and construction[code][1] > 0:
+                g, area = construction[code]
+                ext += 1
+                leaves.append((f"{b}_{lv}_ExtShellByTgm-{ext}_{code}", {CATEGORY: code, "Area": round(area, 3)},
+                               mesh_of(g, level.z)))
         for lot in level.lots:
             for code in USPI_NODES:
                 props = {CATEGORY: code, "Area": round(lot.areas[code], 3), "ApartmentByTgm": apart[lot.key]}

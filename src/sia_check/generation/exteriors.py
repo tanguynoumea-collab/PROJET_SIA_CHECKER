@@ -386,7 +386,14 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
             lv.envelope = {"GrossArea": round(gross, 2), "NetArea": round(max(gross - resa, 0.0), 2),
                            "ReservationsArea": round(resa, 2), "Perimeter": round(lv.sp.length, 2),
                            "GrossHeight": round(mean, 3), "StoreyHeight": round(h, 3), "SRV": round(glass, 2)}
-        _roof_windows(own, roofs[b], windows, tilted, taken, tops)
+        holes = _roof_windows(own, roofs[b], windows, tilted, taken, tops)
+        # la SPT est percée au droit des fenêtres de toit (comme la façade de ses ouvertures) ; son aire reste brute
+        if holes and roofs[b]:
+            cut = shapely.union_all([shapely.Polygon([q[:2] for q in quad]).buffer(0) for quad in holes])
+            for lv in own:
+                if lv.spt_parts:
+                    lv.spt_parts = [(part, dev, roofs[b].drape(part.difference(cut), lv.z) if mesh is not None else None)
+                                    for part, dev, mesh in lv.spt_parts]
 
 
 def _under_roof(roofs: Roofs | None, p: Placed) -> bool:
@@ -401,12 +408,13 @@ def _under_roof(roofs: Roofs | None, p: Placed) -> bool:
 
 
 def _roof_windows(own: list[Level], roofs: Roofs, windows: dict, tilted: set[str], taken: set[str],
-                  tops: dict | None = None) -> None:
+                  tops: dict | None = None) -> list:
     """Fenêtres de toit du bâtiment : inclinées, ou hors façade sous la toiture et au-dessus de la façade (de
     l'étage, ou de la rive pour plus de moitié : lucarne). Vitrages SRV du dernier niveau occupé sous elles, à leur
-    aire vraie et dans leur plan."""
+    aire vraie et dans leur plan. Renvoie leurs quadrilatères (trous de la SPT)."""
     if not roofs:
-        return
+        return []
+    quads = []
     cover = shapely.union_all([r.shape for r in roofs.parts])
     gids = {p.item.gid for lv in own for p in lv.plan.of("IfcWindow")}
     for g in gids:
@@ -425,5 +433,7 @@ def _roof_windows(own: list[Level], roofs: Roofs, windows: dict, tilted: set[str
         if g not in tilted and 0.5 * (p.item.z_min + p.item.z_max) < wall - 0.01:
             continue   # verticale sous le haut de la façade, hors façade : fenêtre intérieure
         host.glazing = _merge([host.glazing, quads_mesh([quad])])
+        quads.append(quad)
         host.envelope["SRV"] = round(host.envelope.get("SRV", 0.0) + area, 2)
         host.envelope["RoofWindowsArea"] = round(host.envelope.get("RoofWindowsArea", 0.0) + area, 2)
+    return quads

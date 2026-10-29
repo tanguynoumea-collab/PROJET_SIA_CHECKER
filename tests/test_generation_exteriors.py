@@ -284,7 +284,11 @@ def test_roof_window_in_its_lining_lies_in_the_roof_plane():
     for y in (y0, y1):
         q = [(x0, y, z(x0) - 1.5), (x1, y, z(x1) - 1.5), (x1, y, z(x1)), (x0, y, z(x0))]
         cheeks += [(q[0], q[1], q[2]), (q[0], q[2], q[3]), (q[0], q[2], q[1]), (q[0], q[3], q[2])]
-    win = _mesh(glass + cheeks)
+    # fond de l'ébrasement : parallèle au pan, 0,5 m plus bas, plus long que la vitre (Myonaz 2 FT02)
+    nz, nx = math.cos(s), -math.sin(s)
+    low = lambda x, y: (x + 0.5 * -nx, y, z(x) - 0.5 * nz)
+    fond = [(low(x0 - 0.8, y0), low(x1 + 0.8, y0), low(x1 + 0.8, y0 + 0.05))]
+    win = _mesh(glass + cheeks + fond)
     zs = np.asarray(win.vertices).reshape(-1, 3)[:, 2]
     luc = Item("w", "IfcWindow", "Luc", "A", "TTR", mesh=win, z_min=float(zs.min()), z_max=float(zs.max()))
     ttr.plan.elements.append(plans.Placed(luc, plans.footprint(win)))
@@ -292,7 +296,14 @@ def test_roof_window_in_its_lining_lies_in_the_roof_plane():
     assert n00.envelope["RoofWindowsArea"] == pytest.approx(1.2, rel=1e-3)        # la vitre, pas les joues
     assert n00.envelope["ReservationsArea"] == 0.0
     v = np.asarray(n00.glazing.vertices).reshape(-1, 3)
-    assert np.ptp(v[:, 2]) == pytest.approx(1.2 * math.sin(s), abs=1e-6)          # dessinée dans le pan
+    assert np.ptp(v[:, 2]) == pytest.approx(1.2 * math.sin(s), abs=1e-6)          # dans le pan, sans le fond
+    # la SPT est percée au droit de la vitre ; son aire reste brute
+    part, developed, mesh = ttr.spt_parts[0]
+    t = np.asarray(mesh.vertices).reshape(-1, 3, 3)
+    e1, e2 = t[:, 1, :2] - t[:, 0, :2], t[:, 2, :2] - t[:, 0, :2]
+    plan = 0.5 * np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]).sum()
+    assert plan == pytest.approx(200 - 1.2 * math.cos(s) * 1.0, abs=0.01)
+    assert developed == pytest.approx(200 / math.cos(s), rel=1e-3)
 
 
 def test_construction_scp_scn_thin_bands_and_true_gaps():

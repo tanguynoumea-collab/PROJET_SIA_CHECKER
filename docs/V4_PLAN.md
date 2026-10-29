@@ -511,6 +511,16 @@ Non-régression :
 - **La Bâtie** : inchangée.
 - **Test** : fenêtre de toit entourée de joues plus grandes que sa vitre.
 
+**Taille et trou des fenêtres de toit (retour du 29.10.2026)** : des vasistas étaient plus grands que dans l'IFC et débordaient sur le côté ; la toiture n'était pas percée au droit des vasistas.
+
+- **Cause** : la vitre réunissait toutes les faces parallèles au pan, dont le fond de l'ébrasement. Ce fond est 0,57 m plus bas et plus long que la fenêtre : FT02 était dessinée sur 2,83 m pour une fenêtre de 1,44 m.
+- **Correction** :
+  - la vitre est la couche de faces parallèles la plus chargée en aire, avec son cadre (5 cm) ;
+  - son rectangle donne l'aire et le dessin : FT02 1,20 m², FT01 1,01 m², ST01 0,27 m² (minimum ramené à 0,15 m²) ;
+  - la SPT drapée est percée au droit de chaque fenêtre de toit, comme la façade de ses ouvertures. Son aire reste brute (546,1 m²).
+- **Myonaz 2 N03** : fenêtres de toit 34,8 m², SRV 119,9 m².
+- **Test** : fond d'ébrasement plus long que la vitre, trou dans la SPT.
+
 ## 23. Publication de la 4.0.0 (29.10.2026)
 
 Le tag `v4.0.0` est posé sur l'état final, avec les retours des §20 à §22 :

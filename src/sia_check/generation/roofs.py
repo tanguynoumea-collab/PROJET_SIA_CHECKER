@@ -25,7 +25,9 @@ pente). Inclinée de plus de `ROOF_WINDOW_DEG` sur la verticale, c'est une fenê
 toiture, pas la façade. Une fenêtre de toit que la maquette entoure de son ébrasement (joues verticales jusqu'au
 plafond, Myonaz 2 « Luc ») a plus d'aire verticale que vitrée : sous la toiture, une fenêtre dont des faces sont
 parallèles au pan (à `PAN_DEG` près, au moins `ROOF_GLASS_M2` et `ROOF_GLASS_SHARE` de sa silhouette verticale)
-est une fenêtre de toit, sa vitre est ces faces. Une porte-fenêtre de pignon dont le linteau suit la pente n'en est pas
+est une fenêtre de toit. Sa vitre est la couche de ces faces la plus chargée en aire, avec son cadre (`PANE_M`) : pas
+le fond de l'ébrasement, parallèle lui aussi et plus long (Myonaz 2 FT02 : 2,83 m pour une fenêtre de 1,44 m). Elle
+perce la SPT. Une porte-fenêtre de pignon dont le linteau suit la pente n'en est pas
 une : ce chant ne fait qu'une petite part de sa silhouette.
 """
 
@@ -52,7 +54,8 @@ FLAT_RATIO = 1.01       # surface développée à moins de 1 % de l'emprise : to
 MAIN_SHARE = 0.10       # orientation de faces portant moins de cette part de l'aire : lucarne, souche, pas un pan
 PAN_DEG = 10.0          # faces d'un même pan : normales à moins de cet angle
 EXTEND_M = 3.0          # plan d'un pan prolongé jusqu'à cette distance (lucarne, rive) ; au-delà, pas de toiture
-ROOF_GLASS_M2 = 0.3     # vitre parallèle au pan plus petite : cadre ou tablette, pas une fenêtre de toit
+ROOF_GLASS_M2 = 0.15    # vitre parallèle au pan plus petite : cadre ou tablette, pas une fenêtre de toit
+PANE_M = 0.05           # vitre d'une fenêtre de toit : la couche de faces parallèles la plus chargée, à ± cette épaisseur
 ROOF_GLASS_SHARE = 0.3  # vitre parallèle au pan plus petite par rapport à la silhouette verticale : linteau en pente
 LAYER_M = 0.8           # couches d'un même pan (tuiles, isolant, chevrons) : à moins de cette distance l'une de l'autre
 
@@ -272,10 +275,16 @@ def window_panel(mesh: Mesh, pan: np.ndarray | None = None) -> tuple[float, floa
     if not len(a):
         return None
     if pan is not None:
-        glass = np.abs(n @ pan) >= np.cos(np.radians(PAN_DEG))
-        if 0.5 * a[glass].sum() < ROOF_GLASS_M2:
+        d = np.asarray(pan, float)
+        glass = np.abs(n @ d) >= np.cos(np.radians(PAN_DEG))
+        if not glass.any():
             return None
-        t, a, n, d = t[glass], a[glass], n[glass], np.asarray(pan, float)
+        # couches parallèles au pan (vitre, cadre, fond de l'ébrasement) : la vitre est la plus chargée en aire
+        off = t[glass].mean(axis=1) @ d
+        bins = np.round(off / 0.01).astype(int)
+        load = {b: a[glass][bins == b].sum() for b in np.unique(bins)}
+        pane = np.abs(off - 0.01 * max(load, key=load.get)) <= PANE_M
+        t, a, n = t[glass][pane], a[glass][pane], n[glass][pane]
     else:
         w, vec = np.linalg.eigh((n * a[:, None]).T @ n)
         d = vec[:, -1]
@@ -289,6 +298,10 @@ def window_panel(mesh: Mesh, pan: np.ndarray | None = None) -> tuple[float, floa
     c = pts.mean(axis=0)
     pu, pv = (pts - c) @ u, (pts - c) @ v
     quad = [c + u * x + v * y for x, y in ((pu.min(), pv.min()), (pu.max(), pv.min()), (pu.max(), pv.max()), (pu.min(), pv.max()))]
+    if pan is not None:   # fenêtre de toit : l'aire de sa vitre et de son cadre, le rectangle dessiné
+        area = float(np.ptp(pu) * np.ptp(pv))
+        if area < ROOF_GLASS_M2:
+            return None
     return tilt, area, [q.tolist() for q in quad]
 
 

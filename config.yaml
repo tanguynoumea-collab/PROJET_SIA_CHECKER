@@ -309,12 +309,15 @@ generation:
       - {match: '\b(poussettes?|pou)\b', code: SUS, type: LocalPoussettes}
       - {match: '\b(concierge|conciergerie)\b', code: SUS, type: LocalConcierge}
       - {match: '\b(depots?|stock|stockage|archives|containers|conteneurs|dechets|ordures)\b', code: SUS, type: Depot}
+      # abréviations des parties communes (décisions du 29.10.2026, CGA L04 et La Bâtie) : CON = conteneurs, G = garage à vélos
+      - {match: '\bcon\b', where: commun, code: SUS, type: Depot}
+      - {match: '^g$', where: commun, code: SUS, type: LocalVelos}
       - {match: '\b(wc|toilettes?|sanitaires?|vestiaires?)\b', where: commun, code: SUS, type: Sanitaires}
       - {match: '\b(couloir|degagement|palier|hall|corridor|circulation|sas|deg|pal|hal|cir|entree)\b', where: commun, code: SD, type: CirculationH}
       # une circulation que l'architecte compte en SUS est la voie d'un parking (sous-type seulement : après le SD)
       - {match: '\b(circulation|cir|voie|voies)\b', code: SUS, type: Parking}
       - {match: '\b(gaines?|gtc|gt|gaine technique|shaft|vide)\b', code: SI, type: Gaine}
-      - {match: '\b(local technique|technique|chaufferie|electricite|ventilation|sprinkler|tableau|cvse|ltc|lte|ltv|lts|tec|ven|ele|machinerie|sous-station)\b', code: SI, type: Local}
+      - {match: '\b(local technique|technique|chaufferie|electricite|ventilation|sprinkler|tableau|cvse|ltc|lte|ltv|lts|tec|ven|ele|cvc|machinerie|sous-station)\b', code: SI, type: Local}
       - {match: '\b(commerce|arcade|magasin|boutique|restaurant|cafe|bureau|bureaux|administration|atelier|salle|cabinet|creche|uape|ecole)\b', where: commun, code: SUT, type: Commerce}
     default_types: {SUP: PieceDeVie, SUS: LocauxCommuns, SD: CirculationH, SI: Local, SUT: Commerce}
     # code d'une pièce qui en fait autre chose qu'une pièce intérieure
@@ -329,11 +332,17 @@ generation:
       # entrées couvertes : SEU comme le MDP de La Bâtie (Treegram L'Orée : SED), choix du 28.10.2026
       - {match: '\b(entree|ent|porche|perron)\b', code: SEU, type: Terrasse}
       - {match: '\b(coursives?|passage|couvert|circulation|galerie|preau)\b', code: SED, type: CirculationExt}
+      - {match: '\b(escaliers?|esc|rampes?)\b', code: SED, type: CirculationExt}   # La Bâtie S01, 29.10.2026
       - {match: '\b(terrasses?|ter|toiture accessible)\b', code: SEU, type: Terrasse}
     exterior_default: {code: SEU, type: Terrasse}
     exterior_default_types: {SEU: Terrasse, SED: CirculationExt}
     # Bâtiment sans logement : la SUP de l'architecte devient SUT (sanitaires : SUS), décision du 28.10.2026
     sut_without_flats: true
+    # Sans logement, le nom l'emporte sur la SUP de l'architecte quand il dit SUS, SD ou SI (stockage, circulation,
+    # local technique : Afiro, décision du 29.10.2026) ; un local technique préfixé ou catégorisé SUS est une SI
+    # (CGA L04 : SUS_ELE_*, La Bâtie : CVC)
+    name_wins_without_flats: [SUS, SD, SI]
+    technical_over_sus: true
     # Conventions de Treegram, appliquées après les sources : dans un logement, un dégagement est de la SUP
     # « Distribution » (L'Orée : SD réservée aux circulations communes, escaliers et ascenseurs), et un réduit
     # ou un rangement classé SUS par l'architecte reste de la SUP (MDP Myonaz)

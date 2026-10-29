@@ -25,6 +25,7 @@ from .plans import Plan
 
 PIECE, PLANCHER, LOGEMENT, EXTERIEUR, SITE, CONSTRUCTION = "piece", "plancher", "logement", "exterieur", "site", "construction"
 CONFIDENCE = {"propriete": 0.95, "categorie": 0.9, "prefixe": 0.9, "dictionnaire": 0.7}
+DECIDED = 0.85   # règle tranchée avec l'utilisateur (convention Treegram vérifiée sur un MDP, décision) : plus à confirmer
 CONFLICT_PENALTY = 0.2
 
 
@@ -191,6 +192,8 @@ class Classifier:
         d.code, d.source, d.reason = code, source, why
         d.conflicts = [f"{s} : {k} ({w})" for s, k, w in found[1:] if k != code]
         d.confidence = CONFIDENCE[source] - (CONFLICT_PENALTY if d.conflicts else 0.0)
+        if source == "dictionnaire" and not d.conflicts:
+            d.confidence = DECIDED   # noms d'extérieurs (BAL, ENT, ESC…) validés sur les MDP avec l'utilisateur, 28–29.10.2026
         d.type = room[0].get("type") if room and room[0]["code"] == code else (c.get("exterior_default_types") or {}).get(code)
         return d
 
@@ -221,7 +224,16 @@ class Classifier:
             d.nature, d.confidence = other, CONFIDENCE[source]
             return self._exterior(item, d) if other == EXTERIEUR else d
         d.conflicts = [f"{s} : {c} ({w})" for s, c, w in found[1:] if c != code]
+        if room and room[0]["code"] != code and self._from_rooms(item, lot, code):
+            # le nom vaut aussi pour le code retenu (« CIR » qu'une catégorie SUS met au parking : sa voie) : le
+            # dictionnaire n'est pas en désaccord, il donnait seulement sa première lecture
+            d.conflicts = [x for x in d.conflicts if not x.startswith("dictionnaire")]
         d.confidence = CONFIDENCE[source] - (CONFLICT_PENALTY if d.conflicts else 0.0)
+        if self.c.get("technical_over_sus", True) and code == "SUS" and room and room[0]["code"] == "SI":
+            # local technique (électricité, CVC) que l'architecte compte en SUS : une installation, SIA 416 (29.10.2026)
+            d.conflicts = [f"{source} : SUS ({why})"]
+            code, d.code, d.source = "SI", "SI", "dictionnaire"
+            d.reason, d.confidence = f"local technique, {room[1]} : SI (installations, SIA 416)", DECIDED
         d.type = self._type(item, lot, code, room)
         if code in self.TYPED and not (room and room[0]["code"] == code) and not self._from_rooms(item, lot, code):
             d.conflicts.append(f"sous-type : aucun nom reconnu pour une {code}, « {d.type} » par défaut")
@@ -229,13 +241,14 @@ class Classifier:
             d.conflicts.append(f"{source} : SD ({why})")
             d.code, d.type, d.source = "SUP", "Distribution", "convention"
             d.reason = "convention Treegram : dégagement d'un logement compté en SUP « Distribution »"
-            d.confidence = CONFIDENCE["dictionnaire"]
+            d.confidence = DECIDED   # conforme aux MDP Myonaz
         elif (self.c.get("treegram_conventions", True) and lot and code == "SUS" and room
               and room[0]["code"] == "SUP"):
-            d.conflicts.append(f"{source} : SUS ({why})")
+            # le sous-type SUS « par défaut » ne vaut plus : la pièce est une SUP du logement
+            d.conflicts = [x for x in d.conflicts if not x.startswith("sous-type :")] + [f"{source} : SUS ({why})"]
             d.code, d.type, d.source = "SUP", room[0].get("type"), "convention"
             d.reason = f"convention Treegram : {room[1]} dans un logement compté en SUP (MDP Myonaz : réduits en SUP)"
-            d.confidence = CONFIDENCE["dictionnaire"]
+            d.confidence = DECIDED
         return d
 
 
@@ -251,7 +264,7 @@ def classify(model: Model, plans: list[Plan], cfg_generation: dict | None = None
     for s in model.spaces:   # espaces sans niveau : jugés quand même, ils ne seront pas comptés
         out.setdefault(s.gid, k.decide(s, False))
     if c.get("treegram_conventions", True) and c.get("sut_without_flats", True):
-        without_flats(model, out)
+        without_flats(model, out, k)
     return out
 
 
@@ -269,12 +282,16 @@ def type_for(model: Model, decisions: dict[str, Decision], cfg_generation: dict 
 SANITARY = re.compile(r"\b(wc|wch|toilettes?|sanitaires?|lavabos?|douches?|salle de bains?|sdb|vestiaires?)\b")
 
 
-def without_flats(model: Model, decisions: dict[str, Decision]) -> dict[str, int]:
+def without_flats(model: Model, decisions: dict[str, Decision], classifier: "Classifier | None" = None) -> dict[str, int]:
     """Bâtiment sans logement (aucune pièce dans un lot) : la SUP de l'architecte, au sens de la SIA 416, est de
     la SUT chez Treegram, dont les sous-types SUP sont ceux du logement (décision du 28.10.2026, sur la
-    proposition de l'analyse IA d'Afiro). Les sanitaires passent en SUS, comme des sanitaires communs.
+    proposition de l'analyse IA d'Afiro). Les sanitaires passent en SUS, comme des sanitaires communs. Avec le
+    `classifier`, un nom qui dit SUS, SD ou SI (`name_wins_without_flats` : stockage, circulation, local technique)
+    l'emporte sur la SUP de l'architecte (décision du 29.10.2026).
     Renvoie, par bâtiment touché, le nombre de pièces reclassées."""
     building = {s.gid: s.building for s in model.spaces}
+    items = {s.gid: s for s in model.spaces}
+    wins = set((classifier.c.get("name_wins_without_flats") or []) if classifier else [])
     words = {s.gid: norm(" ".join(str(v) for v in (s.name, s.long_name, *s.props.values()) if v)) for s in model.spaces}
     flats = {building[g] for g, d in decisions.items() if d.nature == PIECE and d.in_lot}
     out: dict[str, int] = {}
@@ -285,8 +302,21 @@ def without_flats(model: Model, decisions: dict[str, Decision]) -> dict[str, int
         # décision approuvée : pas un désaccord, l'espace ne repart pas à l'analyse IA pour cette seule raison
         # sanitaire : sous-type à points d'eau, ou le nom le dit sans sous-type (CGA L04 : « SUP_WC », « WC handicapés »)
         sanitary = (d.type or "").startswith("PieceSecondaire") or bool(SANITARY.search(words.get(g, "")))
+        named = classifier._from_rooms(items[g], False) if wins and g in items and not sanitary else None
+        if named and named[0]["code"] in wins:
+            code = named[0]["code"]
+            d.code, d.type = code, named[0].get("type") or classifier.defaults.get(code)
+            d.reason = f"bâtiment sans logement : {named[1]} l'emporte sur la SUP de l'architecte ({d.source} : {d.reason})"
+            d.conflicts = [x for x in d.conflicts if not x.startswith("dictionnaire")]
+            d.source, d.confidence = "convention", DECIDED
+            out[b] = out.get(b, 0) + 1
+            continue
         d.code, d.type = ("SUS", "Sanitaires") if sanitary else ("SUT", "Commerce")
         d.reason = f"convention Treegram : bâtiment sans logement, SUP ({d.source} : {d.reason}) comptée en {d.code}"
         d.source = "convention"
+        agree = [x for x in d.conflicts if x.startswith(f"dictionnaire : {d.code} ")]
+        if agree:   # le nom dit déjà ce code (« SUP_WC » : SUS) : plus de désaccord
+            d.conflicts = [x for x in d.conflicts if x not in agree]
+            d.confidence = max(d.confidence, DECIDED)
         out[b] = out.get(b, 0) + 1
     return out

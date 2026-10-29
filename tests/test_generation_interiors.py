@@ -42,7 +42,9 @@ def k(gen_cfg):
     (space("6", "CAV", "Cave", lot="1A.99.00"), "SUS", "Cave", "dictionnaire"),
     (space("7", "GTC", "gaine", lot="1A.01.02"), "SI", "Gaine", "dictionnaire"),
     (space("8", "X", "Local", **{"Données.SIA416": "SUS"}), "SUS", "LocauxCommuns", "propriete"),   # à l'IA
-    (space("9", "L04_A_CON_001", "SUS_CON"), "SUS", "LocauxCommuns", "prefixe"),
+    (space("9", "L04_A_CON_001", "SUS_CON"), "SUS", "Depot", "prefixe"),            # CON = conteneurs (29.10.2026)
+    (space("12", "L04_A_ELE", "SUS_ELE_CFA"), "SI", "Local", "dictionnaire"),        # local technique préfixé SUS
+    (space("13", "G", "G", **{"Pset_SpaceCommon.Category": "416-SN-Surface utile secondaire"}), "SUS", "LocalVelos", "categorie"),
     (space("10", "ASC", "Ascenseur", **{"Pset_SpaceCommon.Category": "Surface de dégagement"}), "SD", "Ascenseur", "categorie"),
     (space("11", "Raum 12", None), "NONCLASSE", None, None),
 ])
@@ -270,3 +272,22 @@ def test_without_flats_sanitary_named_without_subtype():
 def test_secondary_rooms_take_the_subtype_of_their_affectation(k, item, typ):
     d = k.decide(item, False)
     assert (d.code, d.type) == ("SUS", typ)
+
+
+def test_without_flats_the_name_wins_when_it_says_sus_sd_or_si(k):
+    """Afiro (29.10.2026) : sans logement, un stockage ou une circulation que l'architecte met en SUP suit son nom."""
+    from types import SimpleNamespace
+    items = [Item("s", "IfcSpace", "S2.010.03", "Ateliers", "S02", long_name="DEPOT"),
+             Item("c", "IfcSpace", "E1.030.16", "Ateliers", "N01", long_name="CIRCULATION"),
+             Item("b", "IfcSpace", "E0.010.05", "Ateliers", "N00", long_name="BUREAU DE DIRECTION")]
+    d = {g: classify.Decision(g, "piece", "SUP", "PieceDeVie", "propriete", 0.75, "Données.SIA416 = SUP") for g in "scb"}
+    classify.without_flats(SimpleNamespace(spaces=items), d, k)
+    assert (d["s"].code, d["s"].type) == ("SUS", "Depot") and d["s"].confidence >= 0.8
+    assert (d["c"].code, d["c"].type) == ("SD", "CirculationH")
+    assert (d["b"].code, d["b"].type) == ("SUT", "Commerce")
+
+
+def test_exterior_stair_is_a_circulation(k):
+    """La Bâtie S01 : « ESC » extérieur, un escalier extérieur (SED), plus une terrasse par défaut."""
+    d = k.decide(Item("e", "IfcSpace", "ESC", "A", "S01", props={"Pset_SpaceCommon.Category": "416-SN-Surface externe nette"}), False)
+    assert (d.nature, d.code, d.type) == ("exterieur", "SED", "CirculationExt")

@@ -487,7 +487,17 @@ C'est la première publication de la V4 : release GitHub « SIA Check Viewer 4.0
    - Dans l'onglet Ratios du bilan, puis dans le benchmark, les ratios SIA 416 et les ratios USPI sont aujourd'hui mêlés.
    - Il faut deux groupes visuellement distincts, chacun avec un titre et une courte définition, dans le même ordre partout.
    - Les ratios d'enveloppe (SFN, SRV, SPT) forment un troisième groupe, ou restent avec les ratios SIA. C'est à trancher dans le plan de design.
-3. **Compléter les classifications manquantes des projets générés.**
+3. ☑ **Compléter les classifications manquantes des projets générés** (relevé et décisions de l'utilisateur du 29.10.2026). Avant : 93 espaces à confirmer ou au sous-type par défaut sur les cinq projets. Après : 2, à Afiro, reconnus seulement à leur nom et corrects (STOCKAGE BASE en SUS Depot, BUREAU TECHNIQUE en SI Local).
+   - **Sans logement**, le nom l'emporte sur la SUP de l'architecte quand il dit SUS, SD ou SI (`name_wins_without_flats`). Afiro : 13 stockages, dépôts et archives passent en SUS Depot, 4 circulations, SAS et cage en SD, la technique cuisine en SI. Les propositions IA contraires sont rejetées, et les 4 conformes acceptées.
+   - **Un local technique préfixé ou catégorisé SUS est une SI** (`technical_over_sus`) : CGA SUS_ELE_MICROGRID et SUS_ELE_CFA, La Bâtie CVC.
+   - **Abréviations des parties communes** : CON = conteneurs (SUS Depot, CGA et La Bâtie), « G » = garage à vélos (SUS LocalVelos, La Bâtie), ESC extérieur = escalier extérieur (SED CirculationExt, La Bâtie S01).
+   - **Myonaz 2, S01** : « Couloir/stockage abri PC » reste en SD, sa catégorie Revit faisant foi. C'est une décision manuelle du journal.
+   - **Règles validées qui ne remontent plus en « à trancher »** :
+     - noms d'extérieurs (BAL, ENT, ESC) ;
+     - conventions Treegram vérifiées sur les MDP (réduits et dégagements d'un logement en SUP) ;
+     - nom compatible avec le code retenu (« CIR » au parking) ;
+     - sanitaire confirmé par son nom.
+   - Le conflit périmé « sous-type SUS par défaut » des réduits en SUP est retiré.
    - Il faut relever, projet par projet, les espaces encore douteux ou sans sous-type : la liste « À trancher » de l'onglet Espaces, les SUS sans affectation et les lots incomplets.
    - On les tranche avec l'utilisateur, en séance si besoin. Chaque décision passe par le journal (`decisions.json`), et les règles générales vont dans `config.yaml`.
 4. **Le gros morceau : calculer les surfaces déduites, SC et SEC, depuis l'IFC.**

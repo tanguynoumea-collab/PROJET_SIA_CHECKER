@@ -263,6 +263,38 @@ def test_pitched_roof_ignores_a_dormer():
     assert n00.envelope["GrossArea"] == pytest.approx(2 * 20 * 1.2 + 2 * gable, rel=1e-3)
 
 
+def test_roof_window_in_its_lining_lies_in_the_roof_plane():
+    """Myonaz 2 « Luc » (29.10.2026) : une fenêtre de toit modélisée avec son ébrasement (joues verticales jusqu'au
+    plafond, plus grandes que la vitre) n'est pas une baie verticale : sa vitre, parallèle au pan, est un vitrage SRV
+    de toiture à son aire vraie."""
+    import math
+    import numpy as np
+    roof_mesh, ridge = _gable_roof()
+    n00 = level("N00", 0.0, 3.0, sp=box(0, 0, 10, 20))
+    ttr = level("TTR", 3.0, None)
+    roof = Item("r", "IfcRoof", "Toit", "A", "TTR", mesh=roof_mesh, z_min=1.0, z_max=ridge + 0.2)
+    ttr.plan.elements.append(plans.Placed(roof, plans.footprint(roof_mesh)))
+    s = math.radians(30)
+    # vitre 1,2 m (le long de la pente) × 1,0 m (en y), dans le pan x de 2 à 3,04 ; joues verticales de 1,5 m de haut
+    x0, x1, y0, y1 = 2.0, 2.0 + 1.2 * math.cos(s), 9.5, 10.5
+    z = lambda x: 1.2 + x * math.tan(s)
+    g = [((x0, y0, z(x0)), (x1, y0, z(x1)), (x1, y1, z(x1))), ((x0, y0, z(x0)), (x1, y1, z(x1)), (x0, y1, z(x0)))]
+    glass = g + [(a, c, b) for a, b, c in g]
+    cheeks = []
+    for y in (y0, y1):
+        q = [(x0, y, z(x0) - 1.5), (x1, y, z(x1) - 1.5), (x1, y, z(x1)), (x0, y, z(x0))]
+        cheeks += [(q[0], q[1], q[2]), (q[0], q[2], q[3]), (q[0], q[2], q[1]), (q[0], q[3], q[2])]
+    win = _mesh(glass + cheeks)
+    zs = np.asarray(win.vertices).reshape(-1, 3)[:, 2]
+    luc = Item("w", "IfcWindow", "Luc", "A", "TTR", mesh=win, z_min=float(zs.min()), z_max=float(zs.max()))
+    ttr.plan.elements.append(plans.Placed(luc, plans.footprint(win)))
+    exteriors.build([n00, ttr], {}, set(), {})
+    assert n00.envelope["RoofWindowsArea"] == pytest.approx(1.2, rel=1e-3)        # la vitre, pas les joues
+    assert n00.envelope["ReservationsArea"] == 0.0
+    v = np.asarray(n00.glazing.vertices).reshape(-1, 3)
+    assert np.ptp(v[:, 2]) == pytest.approx(1.2 * math.sin(s), abs=1e-6)          # dessinée dans le pan
+
+
 def test_construction_scp_scn_thin_bands_and_true_gaps():
     """V4.1 : murs porteurs et poteaux en SCP, autres murs en SCN, bandes minces restantes en SC (non modélisée),
     le reste est la SP non classée ; garde-corps d'un balcon en SECN."""

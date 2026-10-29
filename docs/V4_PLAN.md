@@ -496,6 +496,21 @@ Non-régression :
   - Myonaz 2 N03 : SRV 120,6 → 121,1 m².
 - **Tests** : la marquise sous une toiture plate, et la lucarne sur un pan.
 
+**Fenêtres de toit dans leur ébrasement (retour du 29.10.2026)** : sur Myonaz 2, des vasistas encastrés (« Luc », types FT01, FT02, ST01) étaient dessinés debout comme des baies.
+
+- **Cause** : la maquette les modélise avec leur ébrasement, des joues verticales jusqu'au plafond. Ces joues ont plus d'aire que la vitre, et l'orientation retenue était celle des plus grandes faces.
+- **Correction** (`roofs.window_panel`) :
+  - sous la toiture, une fenêtre dont des faces sont parallèles au pan est une fenêtre de toit. Il faut au moins 0,3 m² de ces faces, et au moins 30 % de sa silhouette verticale ;
+  - sa vitre est faite de ces faces : aire vraie, dessinée dans le pan ;
+  - une porte-fenêtre de pignon dont le linteau suit la pente n'en est pas une : ce chant ne fait que 15 % de sa silhouette.
+- **Myonaz 2 N03** :
+  - fenêtres de toit : 7,8 → 34,3 m² ;
+  - réservations de façade : 85,0 m² ;
+  - SRV : 121,1 → 119,3 m², les vitres comptées à leur aire vraie.
+- **Myonaz 1 N03** : 16,8 m² de fenêtres de toit.
+- **La Bâtie** : inchangée.
+- **Test** : fenêtre de toit entourée de joues plus grandes que sa vitre.
+
 ## 23. Publication de la 4.0.0 (29.10.2026)
 
 Le tag `v4.0.0` est posé sur l'état final, avec les retours des §20 à §22 :

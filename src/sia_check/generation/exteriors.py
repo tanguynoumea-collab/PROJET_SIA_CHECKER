@@ -50,7 +50,7 @@ from .classify import EXTERIEUR, Decision, norm
 from .ingest import Storey
 from .interiors import NOT_OPENINGS, Level, Room, area_of
 from .plans import Placed, Plan
-from .roofs import ROOF_DROP_M, ROOF_WINDOW_DEG, ROOF_WINDOW_REACH_M, Roofs, is_roof, quads_mesh, window_panel
+from .roofs import ROOF_DROP_M, ROOF_GLASS_SHARE, ROOF_WINDOW_DEG, SLOPED_NZ, ROOF_WINDOW_REACH_M, Roofs, is_roof, quads_mesh, window_panel
 
 SLIVER_M = 0.25        # ouverture morphologique : bandes plus fines (tranches de murs, débords) ignorées
 MIN_ROOF_M2 = 2.0      # morceau de toiture plus petit : ignoré
@@ -352,6 +352,11 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
         for p in lv.plan.of("IfcWindow"):
             if p.item.mesh is not None and (w := window_panel(p.item.mesh)) is not None:
                 windows[p.item.gid] = (p, *w)
+    # fenêtre de toit dans son ébrasement (joues verticales plus grandes que la vitre) : la vitre est parallèle au pan
+    for g, (p, *_w) in list(windows.items()):
+        r = roofs.get(p.item.building)
+        if _w[0] <= ROOF_WINDOW_DEG and _under_roof(r, p) and (n := r.normal_at(tuple(p.shape.centroid.coords[0]))) is not None                 and n[2] < SLOPED_NZ and (w := window_panel(p.item.mesh, n)) is not None and w[1] >= ROOF_GLASS_SHARE * _w[1]:
+            windows[g] = (p, *w)
     tilted = {g for g, w in windows.items() if w[1] > ROOF_WINDOW_DEG and _under_roof(roofs.get(w[0].item.building), w[0])}
     taken: set[str] = set()
     for b in dict.fromkeys(lv.plan.storey.building for lv in levels):

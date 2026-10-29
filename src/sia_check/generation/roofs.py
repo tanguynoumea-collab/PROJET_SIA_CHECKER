@@ -22,7 +22,11 @@ plus proche est prolongé. La surface développée, elle, compte toutes les face
 **Fenêtres de toit** : une fenêtre est d'abord une boîte, dont la grande face donne l'orientation (axe propre du
 maillage le plus chargé en aire) et l'aire (silhouette vue selon cet axe : largeur × hauteur, quelle que soit la
 pente). Inclinée de plus de `ROOF_WINDOW_DEG` sur la verticale, c'est une fenêtre de toit (velux) : elle perce la
-toiture, pas la façade.
+toiture, pas la façade. Une fenêtre de toit que la maquette entoure de son ébrasement (joues verticales jusqu'au
+plafond, Myonaz 2 « Luc ») a plus d'aire verticale que vitrée : sous la toiture, une fenêtre dont des faces sont
+parallèles au pan (à `PAN_DEG` près, au moins `ROOF_GLASS_M2` et `ROOF_GLASS_SHARE` de sa silhouette verticale)
+est une fenêtre de toit, sa vitre est ces faces. Une porte-fenêtre de pignon dont le linteau suit la pente n'en est pas
+une : ce chant ne fait qu'une petite part de sa silhouette.
 """
 
 from __future__ import annotations
@@ -48,6 +52,8 @@ FLAT_RATIO = 1.01       # surface développée à moins de 1 % de l'emprise : to
 MAIN_SHARE = 0.10       # orientation de faces portant moins de cette part de l'aire : lucarne, souche, pas un pan
 PAN_DEG = 10.0          # faces d'un même pan : normales à moins de cet angle
 EXTEND_M = 3.0          # plan d'un pan prolongé jusqu'à cette distance (lucarne, rive) ; au-delà, pas de toiture
+ROOF_GLASS_M2 = 0.3     # vitre parallèle au pan plus petite : cadre ou tablette, pas une fenêtre de toit
+ROOF_GLASS_SHARE = 0.3  # vitre parallèle au pan plus petite par rapport à la silhouette verticale : linteau en pente
 LAYER_M = 0.8           # couches d'un même pan (tuiles, isolant, chevrons) : à moins de cette distance l'une de l'autre
 
 
@@ -152,6 +158,22 @@ class Roofs:
             return _flatten(t[keep], a[keep], n[keep], group[keep])
         self._top, self._top_n = stack(tops)
 
+    def normal_at(self, pt) -> np.ndarray | None:
+        """Normale du pan principal sous le point, ou du plus proche (`EXTEND_M` au plus) ; None hors toiture."""
+        if not len(self._top):
+            return None
+        p = np.asarray(pt, float)
+        d = _distance(self._top, p)
+        inside = Roofs._z(self._top, p.reshape(1, 2), np.fmax)
+        k = int(np.argmin(d))
+        if np.isnan(inside[0]) and d[k] > EXTEND_M:
+            return None
+        if not np.isnan(inside[0]):   # sous le point : le pan le plus haut
+            z = _plane_z(self._top, self._top_n, np.repeat(p.reshape(1, 2), len(self._top), axis=0))
+            z[d > 1e-6] = -np.inf
+            k = int(np.argmax(z))
+        return self._top_n[k]
+
     def __bool__(self) -> bool:
         return bool(self.parts)
 
@@ -242,13 +264,21 @@ class Roofs:
         return Mesh(v, list(range(len(xy))))
 
 
-def window_panel(mesh: Mesh) -> tuple[float, float, list] | None:
-    """(inclinaison sur la verticale en degrés, aire vue de face, quadrilatère de la vitre) d'une fenêtre."""
+def window_panel(mesh: Mesh, pan: np.ndarray | None = None) -> tuple[float, float, list] | None:
+    """(inclinaison sur la verticale en degrés, aire vue de face, quadrilatère de la vitre) d'une fenêtre. `pan` :
+    normale du pan de toiture ; la vitre est alors faite des faces parallèles au pan (fenêtre de toit dans son
+    ébrasement), None s'il n'y en a pas assez."""
     t, a, n = _triangles(mesh)
     if not len(a):
         return None
-    w, vec = np.linalg.eigh((n * a[:, None]).T @ n)
-    d = vec[:, -1]
+    if pan is not None:
+        glass = np.abs(n @ pan) >= np.cos(np.radians(PAN_DEG))
+        if 0.5 * a[glass].sum() < ROOF_GLASS_M2:
+            return None
+        t, a, n, d = t[glass], a[glass], n[glass], np.asarray(pan, float)
+    else:
+        w, vec = np.linalg.eigh((n * a[:, None]).T @ n)
+        d = vec[:, -1]
     tilt = float(np.degrees(np.arcsin(min(abs(d[2]), 1.0))))
     area = float(0.5 * np.sum(a * np.abs(n @ d)))
     # repère de la vitre : u horizontal dans son plan, v le long de la pente

@@ -49,8 +49,6 @@ public sealed class RecentItem(RecentProject project, ProjectStatus status, MdpP
     public string? Warning => FolderMissing ? "Dossier introuvable"
         : Identity is null || ProjectIdentity.Missing(Identity, forBase: true).Count > 0 ? "Infos à compléter" : null;
     public bool HasWarning => Warning is not null;
-    /// <summary>Intertitre de la liste de l'accueil (Évolution 4.6) : le statut regroupe, il n'est plus redit sur chaque ligne.</summary>
-    public string GroupLabel => IsDone ? "Traités" : "En traitement";
     public string Path => Project.Path;
     public int IssueCount => Project.IssueCount;
     public DateTime LastAnalysis => Project.LastAnalysis;

@@ -2089,3 +2089,15 @@ Non-régression : les écrans de la Fiabilisation (barre de commande, calques, b
   - les données sont centrées sous leur en-tête, sauf le nom du projet, aligné à gauche ;
   - les icônes ⚠ suivent le nom ;
   - il n'y a plus de vide entre « Modifié » et la limite centrale.
+
+## Évolution 4.8 — Liste continue, aucune action visible (mode ÉVOLUTION)
+
+> Statut : ☑ Demandé par l'utilisateur et implémenté (29.10.2026)
+
+- **Compteur retiré** : le « 6 » à droite de « Projets » faisait doublon et ne disait pas ce qu'il comptait.
+- **Intertitres retirés** : « En traitement » et « Traités » disparaissent, et les projets se suivent dans une seule liste. L'ordre reste le même : en traitement d'abord, puis traités, le plus récent d'abord. C'est l'icône d'activité qui dit où en est chaque projet.
+- **Ajouter à la base passe dans le clic droit** : l'entrée apparaît en tête du menu, pour un projet traité seulement. La ligne n'a plus aucun bouton ; toutes les actions sont au clic droit (ou avec la touche Menu, ou Maj+F10).
+- Le statut « traité » n'est plus affiché sur la ligne. Il ne se voit qu'à l'entrée « Ajouter à la base » du menu, et à l'icône ↻ quand le projet a été modifié depuis.
+- **Revue** :
+  - `docs/ui-baseline/accueil-minage-light.png` ;
+  - `docs/ui-baseline/accueil-menu-projet-light.jpg` : le menu de L'Orée (traité) commence par « Ajouter à la base ».

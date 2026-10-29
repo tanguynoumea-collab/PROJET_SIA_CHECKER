@@ -35,6 +35,12 @@ public sealed class SceneController
     private const double SlabThickness = 0.15;  // m : dalle d'une surface élémentaire
     private const double SpThickness = 0.30;    // m : dalle SP, plus épaisse, sous les pièces
     private const double SpDrop = 0.04;         // m : dessus de la SP sous celui des pièces (joints visibles)
+    // m : chaîne USPI empilée du net au brut (SNH dessus, SVB dessous), coplanaire sinon : vue de dessus, chaque
+    // surface dépasse de la précédente de ce qu'elle ajoute (cloisons, murs, extérieurs), sans moiré (Évolution 4.2)
+    private static readonly Dictionary<string, double> UspiDrop = new(StringComparer.Ordinal)
+    {
+        ["SNH"] = 0.01, ["SH"] = 0.02, ["SHA"] = 0.02, ["SBH"] = 0.03, ["SVN"] = 0.05, ["SVB"] = 0.06,
+    };
     private const double EdgeShade = 0.58;      // chants : 58 % de la luminosité du dessus
     private const double SpShade = 0.72;        // SP plus foncée que sa couleur de légende, comme dans Treegram
     private const double ExternalTint = 0.45;   // surfaces externes : part de la couleur conservée (reste = blanc)
@@ -245,7 +251,7 @@ public sealed class SceneController
         if (code == "SRV") surfaces = OffsetOutward(surfaces.ToList(), GlazingOffset);
         // Façades et vitrages sont verticaux : pas d'épaisseur de dalle, qui les doublerait d'un chant horizontal
         var (top, edges, starts, ids) = Extrude(surfaces,
-            dz: lift - (sp ? SpDrop : 0), thickness: sp ? SpThickness : _palette.IsEnvelope(code) ? 0 : SlabThickness, textured: false);
+            dz: lift - (sp ? SpDrop : UspiDrop.GetValueOrDefault(code)), thickness: sp ? SpThickness : _palette.IsEnvelope(code) ? 0 : SlabThickness, textured: false);
         var batch = new Batch(code,
             new GeometryModel3D(top, MaterialOf(code, edge: false)) { BackMaterial = MaterialOf(code, edge: false) },
             new GeometryModel3D(edges, MaterialOf(code, edge: true)) { BackMaterial = MaterialOf(code, edge: true) },

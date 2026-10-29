@@ -482,7 +482,7 @@ C'est la première publication de la V4 : release GitHub « SIA Check Viewer 4.0
 
 ## 24. Feuille de route V4.1 (demandes de l'utilisateur du 29.10.2026)
 
-1. **Couleurs des surfaces USPI.** SNH, SH, SBH, SVN et SVB sont aujourd'hui toutes grises dans la vue 3D et les calques. On ne peut donc pas les contrôler. Il faut une teinte par code, distincte des codes SIA 416, lisible en clair et en sombre, et la même dans la légende, les infobulles et les exports. Le travail passe par une évolution du DESIGN_PLAN, sur les tokens de la famille USPI.
+1. ☑ **Couleurs des surfaces USPI** (livré le 29.10.2026, DESIGN_PLAN Évolution 4.2 : rampe pétrole, vente hachurée, chaîne empilée en 3D). SNH, SH, SBH, SVN et SVB sont aujourd'hui toutes grises dans la vue 3D et les calques. On ne peut donc pas les contrôler. Il faut une teinte par code, distincte des codes SIA 416, lisible en clair et en sombre, et la même dans la légende, les infobulles et les exports. Le travail passe par une évolution du DESIGN_PLAN, sur les tokens de la famille USPI.
 2. **Ratios du Dashboard : séparer SIA 416 et USPI.**
    - Dans l'onglet Ratios du bilan, puis dans le benchmark, les ratios SIA 416 et les ratios USPI sont aujourd'hui mêlés.
    - Il faut deux groupes visuellement distincts, chacun avec un titre et une courte définition, dans le même ordre partout.

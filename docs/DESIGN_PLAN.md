@@ -1865,3 +1865,23 @@ Non-régression : les écrans de la Fiabilisation (barre de commande, calques, b
 - **Colonne Repère** : « typologie ? » ou « sans repère » à la place de la plage ; l'infobulle l'explique. La jauge n'a pas de bande de repère.
 - **Analyser** : tant que la typologie manque, la fiche projet s'ouvre une fois par projet et par session, avec la typologie proposée. Annuler analyse sans repères.
 - Capture de revue : `--ratios` ouvre l'onglet Ratios.
+
+---
+
+## Évolution 4.2 — Couleurs des surfaces USPI (mode ÉVOLUTION)
+
+> Statut : ☑ Validé par l'utilisateur et implémenté (29.10.2026). Demande : « elles sont toutes grises, on ne peut même pas les contrôler ».
+
+- **Teinte unique, le pétrole.** C'est la seule teinte libre : la légende SIA 416 occupe le magenta, le rouge, l'orange, le jaune et le bleu, le vert est réservé aux abords (SA), et le violet-pervenche à l'accent.
+- **Rampe du net au brut**, comme la chaîne USPI 2014 : SNH `#5CCFB8` → SH (et SHA) `#22A08C` → SBH `#0F6E62`. Plus la teinte est foncée, plus la surface comprend de construction.
+- **Surfaces de vente hachurées.** SVN reprend la teinte de SH, et SVB celle de SBH. Elles sont hachurées, car le hachuré veut déjà dire « surface externe » et SVN = SH + SE. Aucune nouvelle couleur.
+- **3D : la chaîne empilée.** Les cinq surfaces sont coplanaires et se disputaient la profondeur (moiré). Elles sont maintenant posées de 1 à 6 cm sous le plan, de SNH (dessus) à SVB (dessous). Vue de dessus, chaque surface dépasse de la précédente de ce qu'elle ajoute : cloisons, murs, puis extérieurs.
+- Les couleurs vivent une seule fois dans `report.SIA_COLORS` : calques, vue 3D, infobulles, rapport HTML et benchmark.
+- Capture de revue : `--layers SNH,SH,SBH` ne montre que ces calques. Références : `docs/ui-baseline/uspi-myonaz2-dark.png`, `uspi-myonaz2-light.png`.
+- **Revue visuelle (Myonaz 2, sombre et clair)** :
+  - ✅ plus de moiré ;
+  - ✅ SNH clair dessus, SH et SBH en liseré plus foncé sur les cloisons et les murs ;
+  - ✅ SVN et SVB pâles et hachurées, qui débordent sur les balcons ;
+  - ✅ légende lisible dans les deux thèmes.
+  - Point faible restant : le liseré SH est mince (cloisons de 10 à 20 cm) et se lit mieux de près.
+  - Le SNH clair reste proche des vitrages SRV (`#9ED8E6`), mais les uns sont verticaux et l'autre en plan : ils ne se superposent pas.

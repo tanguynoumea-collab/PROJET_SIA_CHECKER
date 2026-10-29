@@ -27,8 +27,12 @@ from .config import Config
 SIA_COLORS = {"SP": "#B1005D", "SUP": "#D5003B", "SUT": "#E8601C", "SUS": "#F0A900", "SD": "#F2E900", "SI": "#0C9DDA",
               "SEP": "#B1005D", "SEU": "#D5003B", "SED": "#F2E900", "SEI": "#0C9DDA",
               "SA": "#5BA845",   # abords (§1.2) : surfaces créées par une découpe vers SA
-              "SFN": "#A8A29E", "SRV": "#9ED8E6"}   # enveloppe : hors légende SIA 416 (DESIGN_PLAN, Évolution 3.6)
-HATCHED = {"SEP", "SEU", "SED", "SEI", "SEN", "SEC"}
+              "SFN": "#A8A29E", "SRV": "#9ED8E6",   # enveloppe : hors légende SIA 416 (DESIGN_PLAN, Évolution 3.6)
+              # USPI 2014 (Évolution 4.2) : rampe pétrole, du net au brut, comme la chaîne SNH ⊂ SH ⊂ SBH ; la vente
+              # (habitable + surfaces externes) reprend la teinte de sa base, hachurée comme toute surface externe
+              "SNH": "#5CCFB8", "SH": "#22A08C", "SHA": "#22A08C", "SBH": "#0F6E62",
+              "SVN": "#22A08C", "SVB": "#0F6E62"}
+HATCHED = {"SEP", "SEU", "SED", "SEI", "SEN", "SEC", "SVN", "SVB"}
 LEVEL_COLUMNS = ["SP", "SUP", "SUT", "SUS", "SD", "SI", "SEP", "SEU", "SED"]
 
 RESIDUAL_LABELS = {

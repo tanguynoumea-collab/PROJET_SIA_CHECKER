@@ -140,6 +140,9 @@ public partial class App : Application
         }
         if (Environment.GetCommandLineArgs().Contains("--points")) window.ViewModel.ShowPointsTabCommand.Execute(null);
         if (Environment.GetCommandLineArgs().Contains("--ratios")) window.ViewModel.ShowRatios = true;   // onglet Ratios du bilan
+        // --layers SNH,SH,SBH : seuls ces calques visibles (revue visuelle des couleurs, Évolution 4.2)
+        if (ArgAfter(Environment.GetCommandLineArgs(), "--layers")?.Split(',') is { } codes)
+            foreach (var layer in window.ViewModel.Layers) layer.IsVisible = codes.Contains(layer.Code);
         // --spaces : onglet Espaces d'un projet généré, premier espace sélectionné (revue visuelle, Évolution 4.0)
         if (Environment.GetCommandLineArgs().Contains("--spaces"))
         {

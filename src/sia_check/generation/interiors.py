@@ -6,7 +6,9 @@
    (loggia comptée par erreur : SEP au sens de SIA 416 §3) ;
 2. sinon le contour des pièces, des murs, des murs-rideaux et des poteaux du niveau, joints fermés (fermeture
    morphologique de `sp.close_m`) et vides intérieurs de moins de `sp.min_hole_m2` bouchés (gaines, joints).
-   Les vides plus grands (cours, patios) restent hors SP.
+   Les vides plus grands (cours, patios) restent hors SP. Les baies des portes et fenêtres (la part de l'ouverture
+   prise dans l'épaisseur du mur) en font partie : le mur est évidé à l'ouverture, et sans elles le contour rentrerait
+   dans chaque baie de porte (CGA L04 S01 : portes sur rampe PMR, SP et façade en retrait sous la porte).
 
 **Altitude d'un niveau** (`Level.z`) : le sol de la plupart des pièces (altitude de base des IfcSpace la plus
 fréquente, pondérée par l'aire), à défaut celle du niveau IFC, souvent décalée (Myonaz 2 S01 : niveau à 612,04,
@@ -33,12 +35,14 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field, replace
 
+import re
+
 import shapely
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
 
 from .audit import declared_area
-from .classify import EXTERIEUR, PIECE, PLANCHER, Decision
+from .classify import EXTERIEUR, PIECE, PLANCHER, Decision, norm
 from .plans import Placed, Plan
 
 ENVELOPE_CLASSES = ("IfcWall", "IfcCurtainWall", "IfcColumn")
@@ -46,6 +50,9 @@ INSIDE = 0.8        # part d'un extérieur dans la surface de plancher au-delà 
 OUTSIDE_M2 = 0.5    # part d'une pièce hors de la surface de plancher dessinée au-delà de laquelle elle y est ajoutée
 WALL_REACH = 0.5    # murs pris autour de ces pièces (m)
 OUTSIDE_EXCLUDED = {"SI"}   # installations hors du contour dessiné : gardées en SI, hors SP
+OPENING_CLASSES = ("IfcDoor", "IfcWindow", "IfcOpeningElement")
+NOT_OPENINGS = r"(garde corps|gardecorps|railing|balustrade|barriere|main courante)"   # IfcDoor de garde-corps (CGA)
+BAY_REACH_M = 1.0   # murs pris autour d'une ouverture pour refermer sa baie
 
 
 @dataclass
@@ -101,10 +108,29 @@ def _contour(parts: list, walls: list, close: float, min_hole: float) -> BaseGeo
     return _fill_holes(g.buffer(0), min_hole)
 
 
+def bays(plan: Plan, not_openings: str = NOT_OPENINGS) -> list[BaseGeometry]:
+    """Baies des portes et fenêtres du niveau : l'ouverture prise dans l'enveloppe convexe des murs qui l'entourent,
+    c'est-à-dire dans l'épaisseur du mur qu'elle perce."""
+    walls = [p.shape for p in plan.of("IfcWall", "IfcCurtainWall") if p.shape is not None]
+    fake = re.compile(not_openings)
+    out = []
+    for p in plan.of(*OPENING_CLASSES):
+        if p.shape is None or fake.search(norm(f"{p.item.name} {p.item.type_name}")):
+            continue
+        near = p.shape.buffer(BAY_REACH_M)
+        parts = [w.intersection(near) for w in walls if w.intersects(near)]
+        if not parts:
+            continue
+        bay = shapely.union_all(parts).convex_hull.intersection(p.shape)
+        if bay.area > 0:
+            out.append(bay)
+    return out
+
+
 def surface_de_plancher(plan: Plan, decisions: dict[str, Decision], close: float, min_hole: float) -> tuple[BaseGeometry | None, str]:
     planchers = [p.shape for p in plan.spaces if p.shape is not None and decisions[p.item.gid].nature == PLANCHER]
     pieces = [p.shape for p in plan.spaces if p.shape is not None and decisions[p.item.gid].nature == PIECE]
-    walls = [p.shape for p in plan.of(*ENVELOPE_CLASSES) if p.shape is not None]
+    walls = [p.shape for p in plan.of(*ENVELOPE_CLASSES) if p.shape is not None] + bays(plan)
     if planchers:
         g, why = shapely.union_all(planchers), f"{len(planchers)} espace(s) « surface de plancher »"
         # locaux que la surface dessinée oublie (La Bâtie, rez : poussettes, buanderie) : ajoutés avec leurs murs,

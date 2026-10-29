@@ -202,6 +202,22 @@ def test_rooms_outside_the_drawn_floor_area_are_added():
     assert 106.5 < sp.area < 107.5 and "1 pièce(s) hors de ce contour" in why
 
 
+def test_door_bay_belongs_to_the_floor_area():
+    """CGA L04 S01 : le mur est évidé à la porte ; la SP passe sous la baie, sans retrait (garde-corps exclus)."""
+    plan = plans.Plan(Storey("st", "S01", "A", 0.0))
+    plan.spaces = [plans.Placed(space("r", "VOI", "Parking"), box(0, 0, 10, 10))]
+    walls = [box(10, 0, 10.3, 4), box(10, 6, 10.3, 10)]   # baie de 2 m entre y = 4 et 6
+    plan.elements = [plans.Placed(Item(f"w{i}", "IfcWall", "Mur", "A", "st"), w) for i, w in enumerate(walls)]
+    decisions = {"r": classify.Decision("r", "piece", "SUS")}
+    before, _ = interiors.surface_de_plancher(plan, decisions, 0.3, 4.0)
+    railing = Item("g", "IfcDoor", "RAMPE-004", "A", "st", type_name="Type de garde-corps")
+    plan.elements.append(plans.Placed(railing, box(9.9, 4, 10.4, 6)))
+    assert interiors.surface_de_plancher(plan, decisions, 0.3, 4.0)[0].area == pytest.approx(before.area)
+    plan.elements.append(plans.Placed(Item("d", "IfcOpeningElement", "Por-002", "A", "st"), box(9.9, 4, 10.6, 6)))
+    sp, _ = interiors.surface_de_plancher(plan, decisions, 0.3, 4.0)
+    assert sp.area == pytest.approx(before.area + 0.6) and sp.bounds[2] == pytest.approx(10.3)
+
+
 MYONAZ = Path.home() / ("HRS Real Estate AG/HRS BIM-WEST - Documents/10-WIP/Analyse parametrique des projets/"
                         "analys maquettes arc/1712.00 ORO - La Myonaz 1_ARC-GEN #44.ifc")
 MDP_1712 = ROOT / "00_RESSOURCES/03-DataBase-DonneesProjets/MDP-1712.00_Myonaz.xlsx"

@@ -39,7 +39,7 @@ from shapely.geometry import box
 from ..geom import Mesh
 from .classify import EXTERIEUR, Decision, norm
 from .ingest import Storey
-from .interiors import Level, Room, area_of
+from .interiors import NOT_OPENINGS, Level, Room, area_of
 from .plans import Plan
 
 SLIVER_M = 0.25        # ouverture morphologique : bandes plus fines (tranches de murs, débords) ignorées
@@ -106,8 +106,8 @@ def _rings(g: BaseGeometry):
 
 
 GLAZED_DOORS = r"(vitr|fenetre|verre|glass|baie|coulissant|porte fenetre|\bpf\b)"
-# « portes » qui n'en sont pas : garde-corps de rampe modélisés en IfcDoor (CGA L04) ; ni réservation, ni vitrage
-NOT_OPENINGS = r"(garde corps|gardecorps|railing|balustrade|barriere|main courante)"
+# NOT_OPENINGS (interiors) : « portes » qui n'en sont pas, garde-corps de rampe en IfcDoor (CGA L04) ; ni réservation,
+# ni vitrage, ni baie dans la SP
 
 
 def _external(it) -> bool | None:

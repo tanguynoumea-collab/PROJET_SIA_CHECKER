@@ -26,6 +26,16 @@ from .plans import Plan
 PIECE, PLANCHER, LOGEMENT, EXTERIEUR, SITE, CONSTRUCTION = "piece", "plancher", "logement", "exterieur", "site", "construction"
 CONFIDENCE = {"propriete": 0.95, "categorie": 0.9, "prefixe": 0.9, "dictionnaire": 0.7}
 DECIDED = 0.85   # règle tranchée avec l'utilisateur (convention Treegram vérifiée sur un MDP, décision) : plus à confirmer
+
+
+def settle(d: "Decision") -> "Decision":
+    """Règle tranchée (`DECIDED`) : les sources qu'elle contredit passent dans la raison. Ce ne sont plus des
+    désaccords à trancher (onglet Espaces, questions IA), seulement la trace de ce que la règle a écarté."""
+    if d.conflicts:
+        d.reason = f"{d.reason} (l'emporte sur {' ; '.join(d.conflicts)})"
+        d.conflicts = []
+    d.confidence = max(d.confidence, DECIDED)
+    return d
 CONFLICT_PENALTY = 0.2
 
 
@@ -233,7 +243,8 @@ class Classifier:
             # local technique (électricité, CVC) que l'architecte compte en SUS : une installation, SIA 416 (29.10.2026)
             d.conflicts = [f"{source} : SUS ({why})"]
             code, d.code, d.source = "SI", "SI", "dictionnaire"
-            d.reason, d.confidence = f"local technique, {room[1]} : SI (installations, SIA 416)", DECIDED
+            d.reason = f"local technique, {room[1]} : SI (installations, SIA 416)"
+            settle(d)
         d.type = self._type(item, lot, code, room)
         if code in self.TYPED and not (room and room[0]["code"] == code) and not self._from_rooms(item, lot, code):
             d.conflicts.append(f"sous-type : aucun nom reconnu pour une {code}, « {d.type} » par défaut")
@@ -241,14 +252,14 @@ class Classifier:
             d.conflicts.append(f"{source} : SD ({why})")
             d.code, d.type, d.source = "SUP", "Distribution", "convention"
             d.reason = "convention Treegram : dégagement d'un logement compté en SUP « Distribution »"
-            d.confidence = DECIDED   # conforme aux MDP Myonaz
+            settle(d)   # conforme aux MDP Myonaz
         elif (self.c.get("treegram_conventions", True) and lot and code == "SUS" and room
               and room[0]["code"] == "SUP"):
             # le sous-type SUS « par défaut » ne vaut plus : la pièce est une SUP du logement
             d.conflicts = [x for x in d.conflicts if not x.startswith("sous-type :")] + [f"{source} : SUS ({why})"]
             d.code, d.type, d.source = "SUP", room[0].get("type"), "convention"
             d.reason = f"convention Treegram : {room[1]} dans un logement compté en SUP (MDP Myonaz : réduits en SUP)"
-            d.confidence = DECIDED
+            settle(d)
         return d
 
 

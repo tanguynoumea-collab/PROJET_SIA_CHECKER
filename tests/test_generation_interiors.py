@@ -60,7 +60,9 @@ def test_property_beats_dictionary_and_disagreement_lowers_confidence(k):
 
 def test_treegram_convention_apartment_hall_is_sup_distribution(k):
     d = k.decide(space("1", "HAL", "Hall", lot="1A.01.02", **{"Pset_SpaceCommon.Category": "Surface de dégagement"}), False)
-    assert (d.code, d.type, d.source) == ("SUP", "Distribution", "convention") and "SD" in d.conflicts[-1]
+    # règle tranchée : la catégorie SD écartée est dans la raison, pas un désaccord à trancher
+    assert (d.code, d.type, d.source) == ("SUP", "Distribution", "convention") and not d.conflicts
+    assert "l'emporte sur" in d.reason and "categorie : SD" in d.reason and d.confidence >= 0.8
 
 
 @pytest.mark.parametrize("item, container, nature", [

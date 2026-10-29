@@ -536,7 +536,8 @@ public sealed partial class MainViewModel : ObservableObject
         OnBuildingsChanged();
         UpdateLayers();
         Explode = 0;
-        _settings.Touch(ProjectDir!, doc.Project, DateTime.Now, doc.Issues.Count);
+        // Projet généré depuis un IFC : listé dans la section Génération seulement, pas parmi les projets Treegram
+        if (!IsGenerated) _settings.Touch(ProjectDir!, doc.Project, DateTime.Now, doc.Issues.Count);
         _settings.Save(_paths);
         try
         {

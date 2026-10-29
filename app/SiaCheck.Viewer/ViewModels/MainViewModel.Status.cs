@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.Input;
+using SiaCheck.Viewer.Models;
 using SiaCheck.Viewer.Services;
 
 namespace SiaCheck.Viewer.ViewModels;
@@ -132,6 +133,8 @@ public sealed partial class MainViewModel
     private void FillRecents()
     {
         Recents.Clear();
+        // Projets générés depuis un IFC, inscrits par les versions 4.0 : retirés, ils ont leur liste (section Génération)
+        if (_settings.Recents.RemoveAll(r => GenerationReport.Exists(r.Path)) > 0) _settings.Save(_paths);
         // Un dossier introuvable reste listé (signalé) : la fiche projet permet de le repointer
         foreach (var r in _settings.Recents
                      .Select(r => new RecentItem(r, _registry.StatusOf(r.Path), _settings.FindMdpProject(r.Path),

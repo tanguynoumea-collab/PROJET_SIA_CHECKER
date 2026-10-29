@@ -80,6 +80,12 @@ class Generated:
     data: dict
 
 
+def _sep(lv) -> float:
+    """SEP du niveau, toitures comprises à leur aire développée, comme le total du .siagen (assemble)."""
+    flat = lv.spt.area if lv.spt is not None else 0.0
+    return (lv.sep.area if lv.sep is not None else 0.0) + sum(a for _, a, _ in lv.roof_parts) - flat
+
+
 def _r(x, nd=3):
     return None if x is None else round(x, nd)
 
@@ -116,8 +122,8 @@ def report(model: ingest.Model, pl: list[plans.Plan], issues, decisions: dict, l
         lv_out.append({"building": lv.plan.storey.building, "storey": lv.plan.storey.name,
                        "level": codes.get(lv.plan.storey.gid),
                        "sp_m2": _r(lv.sp_area, 2), "sp_method": lv.sp_method, "rooms": len(lv.rooms),
-                       "exteriors": len(lv.exteriors), "sep_m2": _r(lv.sep.area if lv.sep is not None else 0.0, 2),
-                       "spt_m2": _r(lv.spt.area if lv.spt is not None else 0.0, 2),
+                       "exteriors": len(lv.exteriors), "sep_m2": _r(_sep(lv), 2),
+                       "spt_m2": _r(sum(a for _, a, _ in lv.roof_parts), 2),
                        "slab_m2": _r(lv.slab.area if lv.slab is not None else 0.0, 2), "envelope": lv.envelope,
                        "totals": {k: _r(v, 2) for k, v in sorted(totals.items())},
                        "lots": [{"lot": x.key, "bedrooms": x.bedrooms, "sbh_source": x.sbh_source,

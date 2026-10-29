@@ -163,3 +163,59 @@ def test_columns_are_construction_and_railings_are_not_openings():
     assert lv.rooms[0].area == pytest.approx(200.0 - 0.27) and lv.rooms[0].placed.shape.area == pytest.approx(200.0 - 0.27)
     exteriors.build([lv], {}, set(), {})
     assert lv.envelope["ReservationsArea"] == 0.0
+
+
+def _mesh(tris):
+    """Maillage de triangles donnés sommet par sommet."""
+    from sia_check.geom import Mesh
+    v = [c for t in tris for p in t for c in p]
+    return Mesh(v, list(range(len(v) // 3)))
+
+
+def _gable_roof(eave=1.0, slope_deg=30.0, thickness=0.2):
+    """Toiture à deux pans sur 10 × 20 m (faîte en x = 5), sous-face à `eave` aux rives : dessous et dessus."""
+    import math
+    ridge = eave + 5 * math.tan(math.radians(slope_deg))
+    tris = []
+    for dz, up in ((0.0, False), (thickness, True)):
+        e, r = eave + dz, ridge + dz
+        for x0, x1, z0, z1 in ((0, 5, e, r), (5, 10, r, e)):
+            a, b, c, d = (x0, 0, z0), (x1, 0, z1), (x1, 20, z1), (x0, 20, z0)
+            tris += [(a, b, c), (a, c, d)] if up else [(a, c, b), (a, d, c)]
+    return _mesh(tris), ridge
+
+
+def _box(center, u, v, n, du, dv, dn):
+    """Boîte (fenêtre) de demi-côtés du, dv, dn selon les axes u, v, n."""
+    import numpy as np
+    c, u, v, n = (np.asarray(x, float) for x in (center, u, v, n))
+    p = [c + su * du * u + sv * dv * v + sn * dn * n for su in (-1, 1) for sv in (-1, 1) for sn in (-1, 1)]
+    faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    return _mesh([tuple(map(tuple, (p[a], p[b], p[c_]))) for a, b, c_, d in faces for (a, b, c_) in ((a, b, c_), (a, c_, d))])
+
+
+def test_pitched_roof_spt_facade_and_roof_window():
+    """Myonaz 2 (29.10.2026) : SPT développée, façade sous les rampants (rives basses, pignons) ; un velux est un
+    vitrage SRV à son aire vraie, pas une réservation de façade."""
+    import math
+    import numpy as np
+    roof_mesh, ridge = _gable_roof()
+    n00 = level("N00", 0.0, 3.0, sp=box(0, 0, 10, 20))
+    ttr = level("TTR", 3.0, None)
+    roof = Item("r", "IfcRoof", "Toit", "A", "TTR", mesh=roof_mesh, z_min=1.0, z_max=ridge + 0.2)
+    ttr.plan.elements.append(plans.Placed(roof, plans.footprint(roof_mesh)))
+    s = math.radians(30)
+    win = _box((2.5, 10, 1 + 2.5 * math.tan(s) + 0.1), (0, 1, 0), (math.cos(s), 0, math.sin(s)), (-math.sin(s), 0, math.cos(s)),
+               0.5, 0.6, 0.05)
+    zs = np.asarray(win.vertices).reshape(-1, 3)[:, 2]
+    velux = Item("v", "IfcWindow", "Velux", "A", "TTR", mesh=win, z_min=float(zs.min()), z_max=float(zs.max()))
+    ttr.plan.elements.append(plans.Placed(velux, plans.footprint(win)))
+    exteriors.build([n00, ttr], {}, set(), {})
+    assert ttr.roof_parts[0][1] == pytest.approx(200 / math.cos(s), rel=1e-3)          # 230,9 m² et non 200
+    gable = 10 * 1.0 + 0.5 * 10 * (ridge - 1.0)
+    assert n00.envelope["GrossArea"] == pytest.approx(2 * 20 * 1.0 + 2 * gable, rel=1e-3)
+    assert n00.envelope["ReservationsArea"] == 0.0 and n00.envelope["SRV"] == pytest.approx(1.2, rel=1e-3)
+    # la SEP compte la toiture à son aire développée (la Fiabilisation l'en retire)
+    from sia_check.generation import assemble
+    seps = [e for e in assemble.elements([n00, ttr]) if e.name == "SEP" and e.kind == "node"]
+    assert seps[-1].props["Area"] == pytest.approx(200 / math.cos(s), rel=1e-3)

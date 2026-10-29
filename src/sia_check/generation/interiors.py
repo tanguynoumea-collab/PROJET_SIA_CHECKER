@@ -72,6 +72,7 @@ class Level:
     exteriors: list[Room] = field(default_factory=list)
     sep: BaseGeometry | None = None
     spt: BaseGeometry | None = None
+    spt_parts: list = field(default_factory=list)   # (emprise, aire développée, maillage drapé) par morceau de SPT
     slab: BaseGeometry | None = None   # dalle sur sous-sol, à découvert : abords, hors SEP
     envelope: dict = field(default_factory=dict)
     facade: object = None     # geom.Mesh vertical de la façade (SFN)
@@ -83,6 +84,13 @@ class Level:
     @property
     def z(self) -> float:
         return self.floor_z if self.floor_z is not None else self.plan.storey.elevation
+
+    @property
+    def roof_parts(self) -> list:
+        """Morceaux de SPT (emprise, aire, maillage drapé ou None) ; à plat s'ils n'ont pas été mesurés sur la toiture."""
+        if self.spt_parts or self.spt is None:
+            return self.spt_parts
+        return [(p, p.area, None) for p in getattr(self.spt, "geoms", [self.spt])]
 
     @property
     def sp_area(self) -> float:

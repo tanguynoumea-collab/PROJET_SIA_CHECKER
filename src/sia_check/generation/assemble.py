@@ -105,8 +105,10 @@ def elements(levels: list[Level], codes: dict[str, str] | None = None) -> list[E
         common_shell = len(lots) + 1
         totals = {code: 0.0 for code in NODE_ORDER}
         totals["SP"] = level.sp_area
-        totals["SEP"] = level.sep.area if level.sep is not None else 0.0
-        totals["SPT"] = level.spt.area if level.spt is not None else 0.0
+        totals["SPT"] = sum(a for _, a, _ in level.roof_parts)
+        # la SEP compte les SPT (la Fiabilisation les en retire) : à leur aire développée sous une toiture en pente
+        totals["SEP"] = (level.sep.area if level.sep is not None else 0.0) \
+            + totals["SPT"] - (level.spt.area if level.spt is not None else 0.0)
         leaves, counter = [], {}
         for r in sorted(level.rooms, key=lambda r: (r.placed.item.lot or "~", r.placed.item.name or "", r.placed.item.gid)):
             d, item = r.decision, r.placed.item
@@ -135,10 +137,10 @@ def elements(levels: list[Level], codes: dict[str, str] | None = None) -> list[E
             leaves.append((f"{b}_{lv}_ExtShellByTgm-{ext}_{d.code}", props,
                            mesh_of(r.placed.shape, level.z)))
             totals[d.code] += r.area
-        for part in getattr(level.spt, "geoms", [level.spt]) if level.spt is not None else []:
+        for part, area, draped in level.roof_parts:
             ext += 1
-            leaves.append((f"{b}_{lv}_ExtShellByTgm-{ext}_SPT", {CATEGORY: "SPT", "Area": round(part.area, 3),
-                                                                 "Type": "Toiture"}, mesh_of(part, level.z)))
+            leaves.append((f"{b}_{lv}_ExtShellByTgm-{ext}_SPT", {CATEGORY: "SPT", "Area": round(area, 3),
+                                                                 "Type": "Toiture"}, draped or mesh_of(part, level.z)))
         for lot in level.lots:
             for code in USPI_NODES:
                 props = {CATEGORY: code, "Area": round(lot.areas[code], 3), "ApartmentByTgm": apart[lot.key]}

@@ -9,7 +9,8 @@
   créé s'il manque), moins les extérieurs dessinés (une terrasse accessible est une SEU). Au-dessus d'un
   sous-sol, ce n'est pas une toiture mais une dalle sur sous-sol : des abords (SA, SIA 416 §1.2), hors SEP,
   gardés dans `Level.slab` pour le rapport. Treegram L'Orée la laisse dans la SEP du rez (A1, R3) ; le MDP de
-  La Bâtie ne la compte pas (SEP du rez 49,8 m², dalle 1 081 m²).
+  La Bâtie ne la compte pas (SEP du rez 49,8 m², dalle 1 081 m²). Sous une toiture en pente, la SPT est sa surface
+  développée, drapée sur la couverture (roofs.py, décision du 29.10.2026) ; la SEP la compte de même.
 - **SEP** du niveau : union des extérieurs, des contours et des toitures (Treegram compte les SPT dans la SEP ;
   la Fiabilisation les en retire, rules.COUNTED_IN).
 - **Ouvertures de façade** : fenêtres, portes et percements sans menuiserie (baies libres, ouvertures de parking :
@@ -19,7 +20,13 @@
   jamais, même près du contour ; une ouverture dite extérieure en est une. Aire : grand côté de l'emprise × hauteur
   du maillage.
 - **SFN** (façade) : périmètre de la SP × hauteur d'étage ; réservations = toutes les ouvertures de façade. Le
-  maillage de la façade est percé de ces ouvertures (une baie vitrée se voit comme un trou dans la SFN).
+  maillage de la façade est percé de ces ouvertures (une baie vitrée se voit comme un trou dans la SFN). Sous une
+  toiture, la façade s'arrête à sa sous-face : plus basse aux rives (murets), en pointe dans les pignons là où aucun
+  niveau ne la recouvre (Myonaz 2 N03). Les fenêtres des lucarnes que la maquette range dans le niveau de toiture
+  comptent dans la façade du niveau dont elles percent la hauteur.
+- **Fenêtres de toit** (velux, inclinées de plus de 15° sur la verticale, ou au-dessus de la façade sous la
+  toiture : fenêtres hautes des lucarnes) : ni réservations ni façade, mais des vitrages SRV du dernier niveau
+  sous elles, à leur aire vraie et dans leur plan.
 - **SRV** (vitrages extérieurs) : les fenêtres de façade, et les portes de façade vitrées (nom ou type :
   `envelope.glazed_doors`). Une porte d'entrée pleine, une porte de garage restent des réservations sans vitrage.
   Les vitrages intérieurs (cloisons vitrées, fenêtres intérieures) ne comptent pas. Treegram L'Orée : SRV ≈
@@ -29,24 +36,30 @@
 
 from __future__ import annotations
 
-import shapely
-from shapely.geometry.base import BaseGeometry
-
+import math
 import re
 
+import numpy as np
+import shapely
 from shapely.geometry import box
+from shapely.geometry.base import BaseGeometry
 
 from ..geom import Mesh
 from .classify import EXTERIEUR, Decision, norm
 from .ingest import Storey
 from .interiors import NOT_OPENINGS, Level, Room, area_of
-from .plans import Plan
+from .plans import Placed, Plan
+from .roofs import ROOF_WINDOW_DEG, ROOF_WINDOW_REACH_M, Roofs, is_roof, quads_mesh, window_panel
 
 SLIVER_M = 0.25        # ouverture morphologique : bandes plus fines (tranches de murs, débords) ignorées
 MIN_ROOF_M2 = 2.0      # morceau de toiture plus petit : ignoré
 FACADE_REACH_M = 0.6   # ouverture à moins de cette distance du contour de la SP : en façade
 DUPLICATE_M = 0.6      # deux ouvertures plus proches qui se recouvrent vues de face : la même baie percée deux fois
 DEFAULT_HEIGHT_M = 3.0  # hauteur d'un niveau sans niveau au-dessus (Treegram L'Orée : niveaux « Toiture »)
+SAMPLE_M = 0.5          # pas des points du haut de la façade sous une toiture
+MIN_WALL_M = 0.3        # sous-face de toiture plus basse au-dessus du sol : ignorée (toiture d'un niveau inférieur)
+GABLE_MAX_M = 8.0       # pignon plus haut au-dessus de la hauteur d'étage : ignoré
+INWARD_M = (0.4, 0.8, 1.2)   # retraits successifs vers l'intérieur où chercher une toiture qui ne déborde pas
 
 
 def _clean(g: BaseGeometry | None) -> BaseGeometry | None:
@@ -117,17 +130,21 @@ def _external(it) -> bool | None:
 
 
 def _openings(level: Level, sp: BaseGeometry, glazed_doors: str = GLAZED_DOORS, band: tuple[float, float] | None = None,
-              not_openings: str = NOT_OPENINGS) -> tuple[float, float, list, list]:
-    """(réservations m², vitrages m², panneaux des réservations, panneaux des vitrages) de la façade du niveau.
-    `band` (z0, z1) : hauteur d'étage ; une ouverture n'y compte que pour sa part comprise (allège sous le sol fini,
-    fenêtre à cheval sur deux étages), comme la façade brute qui n'a que cette hauteur."""
+              not_openings: str = NOT_OPENINGS, extra: list[Placed] = (), skip: set[str] = frozenset(),
+              top=None) -> tuple[float, float, list, list, set[str]]:
+    """(réservations m², vitrages m², panneaux des réservations, panneaux des vitrages, gid retenus) de la façade du
+    niveau. `band` (z0, z1) : hauteur d'étage ; une ouverture n'y compte que pour sa part comprise (allège sous le sol
+    fini, fenêtre à cheval sur deux étages), comme la façade brute qui n'a que cette hauteur ; `top` (points -> z) :
+    haut de la façade sous une toiture. `extra` : ouvertures d'un autre niveau (lucarnes rangées dans la toiture) ;
+    `skip` : fenêtres de toit."""
     edge = sp.boundary
     glazed = re.compile(glazed_doors)
     fake = re.compile(not_openings)
-    found = []   # (aire, panneau, vitrée, emprise) avant dédoublonnage
-    for p in level.plan.of("IfcWindow", "IfcDoor", "IfcOpeningElement"):
+    found = []   # (aire, panneau, vitrée, emprise, gid) avant dédoublonnage
+    for p in list(level.plan.of("IfcWindow", "IfcDoor", "IfcOpeningElement")) + list(extra):
         it = p.item
-        if p.shape is None or it.z_min is None or it.z_max is None or fake.search(norm(f"{it.name} {it.type_name}")):
+        if p.shape is None or it.z_min is None or it.z_max is None or it.gid in skip \
+                or fake.search(norm(f"{it.name} {it.type_name}")):
             continue
         external = _external(it)
         if external is False or (external is None and p.shape.distance(edge) > FACADE_REACH_M):
@@ -142,11 +159,14 @@ def _openings(level: Level, sp: BaseGeometry, glazed_doors: str = GLAZED_DOORS, 
         side = _along(edge, p.shape, ((a, b), (a, d)))
         width = ((side[1][0] - side[0][0]) ** 2 + (side[1][1] - side[0][1]) ** 2) ** 0.5
         zl, zh = (max(it.z_min, band[0]), min(it.z_max, band[1])) if band else (it.z_min, it.z_max)
+        if top is not None and band:   # pignon : la façade dépasse l'étage, l'ouverture aussi ; jamais rognée en dessous
+            c = p.shape.centroid
+            zh = min(it.z_max, max(band[1], float(top([(c.x, c.y)])[0])))
         if zh - zl <= 0.01:
             continue
         is_glass = it.ifc_class.startswith("IfcWindow") or not it.ifc_class.startswith("IfcOpeningElement") \
             and glazed.search(norm(f"{it.name} {it.type_name} {it.long_name}")) is not None
-        found.append((width * (zh - zl), (side[0], side[1], zl, zh), is_glass, p.shape))
+        found.append((width * (zh - zl), (side[0], side[1], zl, zh), is_glass, p.shape, it.gid))
     # Une même baie percée deux fois (bardage et mur derrière, CGA L04) : une seule réservation, la plus grande ;
     # vitrée si l'une des deux l'est (la fenêtre posée dans le percement du mur)
     found.sort(key=lambda f: -f[0])
@@ -173,7 +193,7 @@ def _openings(level: Level, sp: BaseGeometry, glazed_doors: str = GLAZED_DOORS, 
             and min(k[1][3], panel[3]) - max(k[1][2], panel[2]) > 0.5 * height
 
     kept = []
-    for m2, panel, is_glass, shape in found:
+    for m2, panel, is_glass, shape, gid in found:
         twin = next((k for k in kept if twins(k, panel, shape)), None)
         if twin is None:
             kept.append([m2, panel, is_glass, shape])
@@ -181,7 +201,7 @@ def _openings(level: Level, sp: BaseGeometry, glazed_doors: str = GLAZED_DOORS, 
             twin[2] = True
     resa = sum(k[0] for k in kept)
     glass = sum(k[0] for k in kept if k[2])
-    return resa, glass, [k[1] for k in kept], [k[1] for k in kept if k[2]]
+    return resa, glass, [k[1] for k in kept], [k[1] for k in kept if k[2]], {f[4] for f in found}
 
 
 def _along(edge: BaseGeometry, shape: BaseGeometry, sides) -> tuple:
@@ -200,9 +220,15 @@ def _along(edge: BaseGeometry, shape: BaseGeometry, sides) -> tuple:
     return max(sides, key=lambda s: abs((s[1][0] - s[0][0]) * fx + (s[1][1] - s[0][1]) * fy) / (fl * max(length(s), 1e-9)))
 
 
-def facade_mesh(sp: BaseGeometry, z0: float, z1: float, holes: list) -> Mesh | None:
-    """Façade du niveau : un panneau vertical par côté de la SP, percé des ouvertures qui s'y projettent."""
-    v, idx = [], []
+def facade_mesh(sp: BaseGeometry, z0: float, z1: float, holes: list, top=None) -> Mesh | None:
+    """Façade du niveau : un panneau vertical par côté de la SP, percé des ouvertures qui s'y projettent. `top`
+    (points -> z) : haut de la façade sous une toiture, échantillonné tous les `SAMPLE_M` ; à défaut z1."""
+    return _facade(sp, z0, z1, holes, top)[0]
+
+
+def _facade(sp: BaseGeometry, z0: float, z1: float, holes: list, top=None) -> tuple[Mesh | None, float]:
+    """(maillage, aire brute) de la façade : voir facade_mesh."""
+    v, idx, gross = [], [], 0.0
     for ring in _rings(sp):
         pts = list(ring.coords)
         for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
@@ -210,7 +236,12 @@ def facade_mesh(sp: BaseGeometry, z0: float, z1: float, holes: list) -> Mesh | N
             if length < 1e-6:
                 continue
             ux, uy = (x1 - x0) / length, (y1 - y0) / length
-            wall = box(0.0, z0, length, z1)
+            if top is None:
+                wall = box(0.0, z0, length, z1)
+            else:
+                us = np.linspace(0.0, length, max(2, math.ceil(length / SAMPLE_M) + 1))
+                zs = top([(x0 + ux * u, y0 + uy * u) for u in us])
+                wall = shapely.Polygon([(0.0, z0), (length, z0)] + list(zip(us[::-1], zs[::-1]))).buffer(0)
             cut = []
             for (ax, ay), (bx, by), zl, zh in holes:
                 # distance au côté (normale) et position le long du côté, pour les deux bouts de l'ouverture
@@ -218,7 +249,10 @@ def facade_mesh(sp: BaseGeometry, z0: float, z1: float, holes: list) -> Mesh | N
                 da, db = abs((ax - x0) * uy - (ay - y0) * ux), abs((bx - x0) * uy - (by - y0) * ux)
                 if max(da, db) > 2 * FACADE_REACH_M or max(ua, ub) < 0 or min(ua, ub) > length:   # emprise à 0,6 m, axe un peu plus loin
                     continue
-                cut.append(box(min(ua, ub), zl, max(ua, ub), zh))
+                cut.append(box(max(min(ua, ub), 0.0), zl, min(max(ua, ub), length), zh))
+            if top is not None and cut:   # sous une toiture, la façade monte au moins jusqu'au haut de ses ouvertures (lucarnes)
+                wall = shapely.union_all([wall] + cut)
+            gross += wall.area
             face = wall.difference(shapely.union_all(cut)) if cut else wall
             if face.is_empty:
                 continue
@@ -228,7 +262,57 @@ def facade_mesh(sp: BaseGeometry, z0: float, z1: float, holes: list) -> Mesh | N
                 for u, z in list(t.exterior.coords)[:3]:
                     idx.append(len(v) // 3)
                     v += [x0 + ux * u, y0 + uy * u, z]
-    return Mesh(v, idx) if idx else None
+    return (Mesh(v, idx) if idx else None), gross
+
+
+def _top(roofs: Roofs | None, z0: float, z1: float, above: BaseGeometry | None, sp: BaseGeometry | None = None,
+         last: bool = False):
+    """Haut de la façade d'un niveau en des points de son contour, là où aucun niveau ne le recouvre : la sous-face
+    de la toiture si elle est plus basse que l'étage (rive) ; au dernier niveau occupé (`last`), la sous-face en
+    pente si elle est plus haute (pignon) ; sinon z1. Une
+    toiture posée sur les murets sans déborder (Myonaz 2) ne couvre pas le nu extérieur du mur : la sous-face est
+    cherchée un peu à l'intérieur de la SP (`INWARD_M`)."""
+    if not roofs:
+        return None
+    near = above.buffer(FACADE_REACH_M) if above is not None else None
+    inner = [sp.buffer(-d).boundary for d in INWARD_M] if sp is not None else []
+
+    def under(pts, sloped):
+        zu = roofs.under_z(pts, sloped)
+        for ring in inner:
+            miss = np.isnan(zu)
+            if not miss.any() or ring.is_empty:
+                break
+            moved = [ring.interpolate(ring.project(shapely.Point(x, y))) for x, y in pts[miss]]
+            zu[miss] = roofs.under_z([(q.x, q.y) for q in moved], sloped)
+        return zu
+
+    def top(pts):
+        pts = np.asarray(pts, float).reshape(-1, 2)
+        free = np.array([near is None or not near.covers(shapely.Point(x, y)) for x, y in pts], dtype=bool)
+        out = np.full(len(pts), z1)
+        if not free.any():
+            return out
+        zu = under(pts, False)
+        eave = free & ~np.isnan(zu) & (zu > z0 + MIN_WALL_M) & (zu < z1)
+        out[eave] = zu[eave]
+        if last:
+            zg = under(pts, True)
+            gable = free & ~eave & ~np.isnan(zg) & (zg > z1) & (zg < z1 + GABLE_MAX_M)
+            out[gable] = zg[gable]
+        return out
+    return top
+
+
+def _merge(meshes) -> Mesh | None:
+    v, i = [], []
+    for m in meshes:
+        if m is None:
+            continue
+        k = len(v) // 3
+        v += list(m.vertices)
+        i += [k + j for j in m.indices]
+    return Mesh(v, i) if i else None
 
 
 def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set[str],
@@ -262,20 +346,77 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
                 lv.spt = free
                 lv.sep = shapely.union_all([g for g in (lv.sep, free) if g is not None])
 
+    roofs = {b: Roofs([p for lv in levels if lv.plan.storey.building == b for p in lv.plan.elements if is_roof(p)])
+             for b in dict.fromkeys(lv.plan.storey.building for lv in levels)}
     for lv in levels:
-        st = lv.plan.storey
-        h = lv.height or st.height or DEFAULT_HEIGHT_M
-        if lv.sp is None:
-            lv.envelope = {"GrossArea": 0.0, "NetArea": 0.0, "ReservationsArea": 0.0, "Perimeter": 0.0,
-                           "GrossHeight": round(h, 3), "SRV": 0.0}
+        if lv.spt is None:
             continue
-        perimeter = lv.sp.length
-        env_cfg = (cfg_generation or {}).get("envelope") or {}
-        resa, glass, holes, panes = _openings(lv, lv.sp, env_cfg.get("glazed_doors") or GLAZED_DOORS, (lv.z, lv.z + h),
-                                              env_cfg.get("not_openings") or NOT_OPENINGS)
-        lv.facade = facade_mesh(lv.sp, lv.z, lv.z + h, holes)
-        lv.glazing = vertical_mesh(panes)
-        gross = perimeter * h
-        lv.envelope = {"GrossArea": round(gross, 2), "NetArea": round(max(gross - resa, 0.0), 2),
-                       "ReservationsArea": round(resa, 2), "Perimeter": round(perimeter, 2),
-                       "GrossHeight": round(h, 3), "SRV": round(glass, 2)}
+        r = roofs[lv.plan.storey.building]
+        lv.spt_parts = [(part, r.developed(part) if r else part.area, r.drape(part, lv.z) if r else None)
+                        for part in getattr(lv.spt, "geoms", [lv.spt])]
+
+    env_cfg = (cfg_generation or {}).get("envelope") or {}
+    windows = {}   # gid -> (Placed, inclinaison, aire, quadrilatère) des fenêtres du bâtiment
+    for lv in levels:
+        for p in lv.plan.of("IfcWindow"):
+            if p.item.mesh is not None and (w := window_panel(p.item.mesh)) is not None:
+                windows[p.item.gid] = (p, *w)
+    tilted = {g for g, w in windows.items() if w[1] > ROOF_WINDOW_DEG and _under_roof(roofs.get(w[0].item.building), w[0])}
+    taken: set[str] = set()
+    for b in dict.fromkeys(lv.plan.storey.building for lv in levels):
+        own = sorted((lv for lv in levels if lv.plan.storey.building == b), key=lambda lv: lv.z)
+        # ouvertures d'un niveau sans SP (toiture) : comptées dans la façade du niveau dont elles percent la hauteur
+        loose = [p for lv in own if lv.sp is None for p in lv.plan.of("IfcWindow", "IfcDoor", "IfcOpeningElement")]
+        top_level = max((lv for lv in own if lv.sp is not None), key=lambda lv: lv.z, default=None)
+        for k, lv in enumerate(own):
+            h = lv.height or lv.plan.storey.height or DEFAULT_HEIGHT_M
+            if lv.sp is None:
+                lv.envelope = {"GrossArea": 0.0, "NetArea": 0.0, "ReservationsArea": 0.0, "Perimeter": 0.0,
+                               "GrossHeight": round(h, 3), "SRV": 0.0}
+                continue
+            above = next((u.sp for u in own[k + 1:] if u.sp is not None), None)
+            top = _top(roofs[b], lv.z, lv.z + h, above, lv.sp, last=lv is top_level)
+            resa, glass, holes, panes, used = _openings(
+                lv, lv.sp, env_cfg.get("glazed_doors") or GLAZED_DOORS, (lv.z, lv.z + h),
+                env_cfg.get("not_openings") or NOT_OPENINGS, extra=loose, skip=tilted, top=top)
+            taken |= used
+            lv.facade, gross = _facade(lv.sp, lv.z, lv.z + h, holes, top)
+            lv.glazing = vertical_mesh(panes)
+            lv.envelope = {"GrossArea": round(gross, 2), "NetArea": round(max(gross - resa, 0.0), 2),
+                           "ReservationsArea": round(resa, 2), "Perimeter": round(lv.sp.length, 2),
+                           "GrossHeight": round(h, 3), "SRV": round(glass, 2)}
+        _roof_windows(own, roofs[b], windows, tilted, taken)
+
+
+def _under_roof(roofs: Roofs | None, p: Placed) -> bool:
+    """Fenêtre juste sous la couverture ; loin dessous (fenêtre inclinée d'un niveau inférieur, saut-de-loup), non.
+    La couverture est lue autour de la fenêtre : une lucarne perce la toiture, il n'y en a pas au droit de sa vitre."""
+    if not roofs or p.item.z_max is None:
+        return False
+    ring = p.shape.buffer(1.0).exterior if hasattr(p.shape.buffer(1.0), "exterior") else p.shape.envelope.exterior
+    pts = [p.shape.centroid] + [ring.interpolate(d) for d in np.arange(0.0, ring.length, SAMPLE_M)]
+    z = roofs.top_z([(q.x, q.y) for q in pts])
+    return not np.isnan(z).all() and p.item.z_max >= np.nanmin(z) - ROOF_WINDOW_REACH_M
+
+
+def _roof_windows(own: list[Level], roofs: Roofs, windows: dict, tilted: set[str], taken: set[str]) -> None:
+    """Fenêtres de toit du bâtiment : inclinées, ou hors façade sous la toiture et au-dessus de la façade. Vitrages
+    SRV du dernier niveau occupé sous elles, à leur aire vraie et dans leur plan."""
+    if not roofs:
+        return
+    cover = shapely.union_all([r.shape for r in roofs.parts])
+    gids = {p.item.gid for lv in own for p in lv.plan.of("IfcWindow")}
+    for g in gids:
+        p, tilt, area, quad = windows.get(g, (None, 0, 0, None))
+        if p is None or g in taken or _external(p.item) is False or not p.shape.intersects(cover) \
+                or not _under_roof(roofs, p):
+            continue
+        host = next((lv for lv in reversed(own) if lv.sp is not None and lv.z <= p.item.z_min + 0.01), None)
+        if host is None:
+            continue
+        h = host.height or host.plan.storey.height or DEFAULT_HEIGHT_M
+        if g not in tilted and p.item.z_min < host.z + h - 0.01:
+            continue   # verticale dans la hauteur de l'étage, hors façade : fenêtre intérieure
+        host.glazing = _merge([host.glazing, quads_mesh([quad])])
+        host.envelope["SRV"] = round(host.envelope.get("SRV", 0.0) + area, 2)
+        host.envelope["RoofWindowsArea"] = round(host.envelope.get("RoofWindowsArea", 0.0) + area, 2)

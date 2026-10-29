@@ -6,14 +6,18 @@ la maquette (IfcRoof, IfcSlab de type ROOF), ou plutôt leurs faces :
 
 - **dessus** (normale vers le haut) : la couverture. `top_z` donne l'altitude de la plus haute en un point ; la SPT
   y est drapée pour la vue 3D ;
-- **dessous** (normale vers le bas) : la sous-face. `under_z` donne l'altitude de la plus haute en un point (un
-  auvent plus bas ne compte pas) ; la façade du dernier niveau monte jusque-là, plus bas aux rives (murets), en
-  pointe dans les pignons ;
+- la **façade** du dernier niveau monte jusqu'à la couverture en pente (`top_z(..., sloped=True)`), la même surface
+  que la SPT : plus bas aux rives (murets), en pointe dans les pignons ; une toiture plate ne la touche pas ;
 - **surface développée** d'une emprise : chaque morceau de toiture la compte au rapport de ses faces de dessus à
   leur projection, indépendant du nombre de couches (caisson, isolant, tuiles). Le plus haut l'emporte là où deux
   se recouvrent ; hors de toute toiture, l'emprise compte à plat.
 
 Les pannes et chevrons (morceaux de moins de `ROOF_PART_M2` en plan) n'en font pas partie.
+
+**Pans principaux** (retour du 29.10.2026 : SPT et façades « biscornues ») : la SPT et le haut de la façade ne
+suivent que les pans de la toiture, les orientations de faces qui portent au moins `MAIN_SHARE` de son aire. Les
+lucarnes, souches et faîtières n'y sont pas : là où un pan est percé (lucarne) ou s'arrête (rive), le plan du pan le
+plus proche est prolongé. La surface développée, elle, compte toutes les faces.
 
 **Fenêtres de toit** : une fenêtre est d'abord une boîte, dont la grande face donne l'orientation (axe propre du
 maillage le plus chargé en aire) et l'aire (silhouette vue selon cet axe : largeur × hauteur, quelle que soit la
@@ -37,8 +41,14 @@ ROOF_PART_M2 = 5.0      # morceau de toiture plus petit en plan (panne, chevron,
 FACE_NZ = 0.2           # composante verticale de la normale au-delà de laquelle une face est dessus ou dessous
 ROOF_WINDOW_DEG = 15.0  # inclinaison sur la verticale au-delà de laquelle une fenêtre est une fenêtre de toit
 DRAPE_CELL_M = 1.0      # maille du drapé de la SPT sur la couverture
-SLOPED_NZ = 0.985       # sous-face plus horizontale (pente de moins de 10°) : toit plat, pas de pignon
+SLOPED_NZ = 0.985       # pan plus horizontal (pente de moins de 10°) : toit plat, la façade ne le suit pas
 ROOF_WINDOW_REACH_M = 2.5   # fenêtre de toit : à moins de cette hauteur sous la couverture
+ROOF_DROP_M = 3.0       # toiture plus basse que le niveau de toiture (marquise du rez, auvent) : pas la sienne
+FLAT_RATIO = 1.01       # surface développée à moins de 1 % de l'emprise : toiture plate, SPT dessinée à plat
+MAIN_SHARE = 0.10       # orientation de faces portant moins de cette part de l'aire : lucarne, souche, pas un pan
+PAN_DEG = 10.0          # faces d'un même pan : normales à moins de cet angle
+EXTEND_M = 3.0          # plan d'un pan prolongé jusqu'à cette distance (lucarne, rive) ; au-delà, pas de toiture
+LAYER_M = 0.8           # couches d'un même pan (tuiles, isolant, chevrons) : à moins de cette distance l'une de l'autre
 
 
 def _triangles(mesh: Mesh) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -49,6 +59,62 @@ def _triangles(mesh: Mesh) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     a = 0.5 * np.linalg.norm(n, axis=1)
     ok = a > 1e-9
     return t[ok], a[ok], n[ok] / (2 * a[ok, None])
+
+
+def _main(tri: np.ndarray, area: np.ndarray, normal: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(faces des pans principaux, groupe d'orientation de chaque face) : faces regroupées par orientation (normales à
+    moins de `PAN_DEG`), on garde les groupes qui portent au moins `MAIN_SHARE` de l'aire."""
+    keep = np.zeros(len(tri), dtype=bool)
+    group = np.full(len(tri), -1)
+    if not len(tri):
+        return keep, group
+    cos = np.cos(np.radians(PAN_DEG))
+    for k in np.argsort(-area):   # le plus grand triangle ouvre son groupe
+        if group[k] >= 0:
+            continue
+        group[(group < 0) & (normal @ normal[k] >= cos)] = k
+    for g in np.unique(group):
+        if area[group == g].sum() >= MAIN_SHARE * area.sum():
+            keep |= group == g
+    return keep, group
+
+
+def _flatten(tri: np.ndarray, area: np.ndarray, normal: np.ndarray, group: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Chaque pan ramené à un plan : sa normale moyenne, à la hauteur de sa couche la plus haute (la couverture ;
+    deux couches à moins de `LAYER_M` sont le même pan, au-delà deux pans : ailes de hauteurs différentes). Les
+    sommets sont reposés sur ce plan : plus de marches entre tuiles, isolant et chevrons."""
+    tri, normal = tri.copy(), normal.copy()
+    for g in np.unique(group):
+        m = np.flatnonzero(group == g)
+        n = (normal[m] * area[m, None]).sum(axis=0)
+        n /= np.linalg.norm(n)
+        d = tri[m].mean(axis=1) @ n          # distance de chaque face au plan, le long de la normale
+        order = np.argsort(d)
+        layer = np.concatenate([[0], np.cumsum(np.diff(d[order]) > LAYER_M)])
+        for k in np.unique(layer):
+            faces = m[order[layer == k]]
+            top = d[order[layer == k]].max()
+            xy = tri[faces, :, :2]
+            tri[faces, :, 2] = (top - n[0] * xy[..., 0] - n[1] * xy[..., 1]) / n[2]
+            normal[faces] = n
+    return tri, normal
+
+
+def _plane_z(tri: np.ndarray, normal: np.ndarray, pts: np.ndarray) -> np.ndarray:
+    """Altitude du plan de chaque triangle à l'aplomb du point correspondant."""
+    p0 = tri[:, 0]
+    return p0[:, 2] - (normal[:, 0] * (pts[:, 0] - p0[:, 0]) + normal[:, 1] * (pts[:, 1] - p0[:, 1])) / normal[:, 2]
+
+
+def _distance(tri: np.ndarray, pt: np.ndarray) -> np.ndarray:
+    """Distance en plan d'un point à chaque triangle (à ses côtés ; le point est hors des triangles)."""
+    best = np.full(len(tri), np.inf)
+    for i, j in ((0, 1), (1, 2), (2, 0)):
+        a, b = tri[:, i, :2], tri[:, j, :2]
+        ab = b - a
+        t = np.clip(((pt - a) * ab).sum(axis=1) / np.maximum((ab * ab).sum(axis=1), 1e-12), 0.0, 1.0)
+        best = np.minimum(best, np.linalg.norm(a + ab * t[:, None] - pt, axis=1))
+    return best
 
 
 def is_roof(p: Placed) -> bool:
@@ -68,29 +134,42 @@ class Roofs:
     """Toitures d'un bâtiment : faces de dessus et de dessous, morceaux et leur pente."""
 
     def __init__(self, placed: list[Placed]):
-        tops, unders, sloped, self.parts = [], [], [], []
+        tops, self.parts = [], []
         for p in placed:
             t, a, n = _triangles(p.item.mesh)
-            up, down = n[:, 2] > FACE_NZ, n[:, 2] < -FACE_NZ
+            up = n[:, 2] > FACE_NZ
             if not up.any():
                 continue
-            tops.append(t[up])
-            unders.append(t[down])
-            sloped.append(t[down & (n[:, 2] > -SLOPED_NZ)])
+            tops.append((t[up], a[up], n[up]))
             self.parts.append(Part(p.shape, float(a[up].sum() / (a[up] * n[up, 2]).sum()), float(t[:, :, 2].max())))
         self.parts.sort(key=lambda r: -r.z_max)
-        self._top = np.concatenate(tops) if tops else np.zeros((0, 3, 3))
-        self._under = np.concatenate(unders) if unders else np.zeros((0, 3, 3))
-        self._sloped = np.concatenate(sloped) if sloped else np.zeros((0, 3, 3))
+
+        def stack(faces):
+            if not faces:
+                return np.zeros((0, 3, 3)), np.zeros((0, 3))
+            t, a, n = (np.concatenate(x) for x in zip(*faces))
+            keep, group = _main(t, a, n)   # pans principaux du bâtiment : ni lucarnes, ni souches
+            return _flatten(t[keep], a[keep], n[keep], group[keep])
+        self._top, self._top_n = stack(tops)
 
     def __bool__(self) -> bool:
         return bool(self.parts)
 
     @staticmethod
-    def _z(tri: np.ndarray, pts: np.ndarray, pick) -> np.ndarray:
-        """Altitude de la face retenue (`pick` : np.fmax ou np.fmin) sous chaque point ; NaN hors des faces."""
+    def _z(tri: np.ndarray, pts: np.ndarray, pick, normal: np.ndarray | None = None) -> np.ndarray:
+        """Altitude de la face retenue (`pick` : np.fmax ou np.fmin) sous chaque point ; hors des faces, NaN, ou avec
+        `normal` (normales des faces) le plan de la face la plus proche en plan, prolongé (lucarne, rive)."""
         out = np.full(len(pts), np.nan)
         if not len(tri):
+            return out
+        if normal is not None:
+            out = Roofs._z(tri, pts, pick)
+            miss = np.flatnonzero(np.isnan(out))
+            for k in miss:
+                d = _distance(tri, pts[k])
+                near = int(np.argmin(d))
+                if d[near] <= EXTEND_M:
+                    out[k] = _plane_z(tri[near:near + 1], normal[near:near + 1], pts[k:k + 1])[0]
             return out
         lo, hi = tri[:, :, :2].min(axis=1), tri[:, :, :2].max(axis=1)
         for k, (x, y) in enumerate(pts):
@@ -109,26 +188,38 @@ class Roofs:
                 out[k] = pick.reduce(z)
         return out
 
-    def top_z(self, pts) -> np.ndarray:
-        return self._z(self._top, np.asarray(pts, float).reshape(-1, 2), np.fmax)
+    def top_z(self, pts, z_min: float | None = None, extend: bool = False, sloped: bool = False) -> np.ndarray:
+        """Couverture (pans principaux) la plus haute en chaque point ; `z_min` : seulement les faces qui montent
+        au-dessus ; `extend` : hors des pans, le plan du pan le plus proche ; `sloped` : seulement les pans en pente
+        (haut de la façade : une toiture plate ne la touche pas)."""
+        keep = np.ones(len(self._top), dtype=bool) if z_min is None else self._top[:, :, 2].max(axis=1) >= z_min
+        if sloped:
+            keep &= self._top_n[:, 2] < SLOPED_NZ
+        return self._z(self._top[keep], np.asarray(pts, float).reshape(-1, 2), np.fmax,
+                       self._top_n[keep] if extend else None)
 
-    def under_z(self, pts, sloped: bool = False) -> np.ndarray:
-        """Sous-face la plus haute en chaque point ; `sloped` : seulement les sous-faces en pente (pignons)."""
-        return self._z(self._sloped if sloped else self._under, np.asarray(pts, float).reshape(-1, 2), np.fmax)
-
-    def developed(self, g: BaseGeometry) -> float:
-        """Surface développée d'une emprise mesurée sur les toitures (à plat hors toiture)."""
+    def developed(self, g: BaseGeometry, z_min: float | None = None) -> float:
+        """Surface développée d'une emprise mesurée sur les toitures (à plat hors toiture) ; `z_min` : seulement les
+        toitures qui montent au-dessus (pas la marquise du rez sous la toiture du dernier étage)."""
         rest, area = g, 0.0
         for r in self.parts:
             if rest.is_empty:
                 break
+            if z_min is not None and r.z_max < z_min:
+                continue
             part = rest.intersection(r.shape)
             area += part.area * r.ratio
             rest = rest.difference(r.shape)
         return area + rest.area
 
-    def drape(self, g: BaseGeometry, z_default: float) -> Mesh | None:
-        """Emprise triangulée par mailles de `DRAPE_CELL_M`, posée sur la couverture (à `z_default` hors toiture)."""
+    def drape(self, g: BaseGeometry, z_level: float) -> Mesh | None:
+        """Emprise triangulée par mailles de `DRAPE_CELL_M`, posée sur la couverture du niveau de toiture `z_level`
+        (les toitures plus basses de `ROOF_DROP_M` n'en sont pas), sur ses pans principaux : une lucarne, une rive
+        prolongent le pan le plus proche, la surface reste continue, sans dents ni bosses. None : toiture plate
+        (SPT dessinée à plat)."""
+        z_min = z_level - ROOF_DROP_M
+        if self.developed(g, z_min) < FLAT_RATIO * g.area:
+            return None
         x0, y0, x1, y1 = g.bounds
         cells = [shapely.box(x, y, x + DRAPE_CELL_M, y + DRAPE_CELL_M)
                  for x in np.arange(x0, x1, DRAPE_CELL_M) for y in np.arange(y0, y1, DRAPE_CELL_M)]
@@ -143,8 +234,10 @@ class Roofs:
         if not tris:
             return None
         xy = np.asarray(tris, float).reshape(-1, 2)
-        z = self.top_z(xy)
-        z = np.where(np.isnan(z), z_default, z)
+        z = self.top_z(xy, z_min, extend=True)
+        if np.isnan(z).all():
+            return None
+        z = np.where(np.isnan(z), z_level, z)   # loin de toute toiture (terrasse) : à plat, au niveau
         v = np.column_stack([xy, z]).ravel().tolist()
         return Mesh(v, list(range(len(xy))))
 

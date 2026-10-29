@@ -212,8 +212,10 @@ def test_pitched_roof_spt_facade_and_roof_window():
     ttr.plan.elements.append(plans.Placed(velux, plans.footprint(win)))
     exteriors.build([n00, ttr], {}, set(), {})
     assert ttr.roof_parts[0][1] == pytest.approx(200 / math.cos(s), rel=1e-3)          # 230,9 m² et non 200
-    gable = 10 * 1.0 + 0.5 * 10 * (ridge - 1.0)
-    assert n00.envelope["GrossArea"] == pytest.approx(2 * 20 * 1.0 + 2 * gable, rel=1e-3)
+    # la façade monte jusqu'à la couverture (dessus du pan, 0,20 au-dessus de la sous-face) : façade et SPT se rejoignent
+    eave = 1.0 + 0.2
+    gable = 10 * eave + 0.5 * 10 * (ridge - 1.0)
+    assert n00.envelope["GrossArea"] == pytest.approx(2 * 20 * eave + 2 * gable, rel=1e-3)
     assert n00.envelope["ReservationsArea"] == 0.0 and n00.envelope["SRV"] == pytest.approx(1.2, rel=1e-3)
     # contrôle E3 : la SFN porte la hauteur moyenne de la façade, l'étage garde la sienne
     assert n00.envelope["GrossHeight"] * 60 == pytest.approx(n00.envelope["GrossArea"], abs=0.1)
@@ -222,6 +224,43 @@ def test_pitched_roof_spt_facade_and_roof_window():
     from sia_check.generation import assemble
     seps = [e for e in assemble.elements([n00, ttr]) if e.name == "SEP" and e.kind == "node"]
     assert seps[-1].props["Area"] == pytest.approx(200 / math.cos(s), rel=1e-3)
+
+
+def test_flat_roof_ignores_a_canopy_below():
+    """La Bâtie (29.10.2026) : sous une toiture plate, la marquise du rez n'est pas la toiture du dernier étage ; la
+    SPT reste à plat, sans « piliers » qui descendent jusqu'à elle."""
+    flat = _mesh([((0, 0, 6.2), (10, 0, 6.2), (10, 20, 6.2)), ((0, 0, 6.2), (10, 20, 6.2), (0, 20, 6.2))])
+    canopy = _mesh([((8, 8, 0.5), (12, 8, 0.5), (12, 12, 0.5)), ((8, 8, 0.5), (12, 12, 0.5), (8, 12, 0.5))])
+    n00 = level("N00", 0.0, 3.0, sp=box(0, 0, 10, 20))
+    n01 = level("N01", 3.0, 3.0, sp=box(0, 0, 10, 20))
+    ttr = level("TTR", 6.0, None)
+    for gid, m in (("r", flat), ("m", canopy)):
+        it = Item(gid, "IfcRoof", "Toit", "A", "TTR", mesh=m, z_min=0.5, z_max=6.2)
+        ttr.plan.elements.append(plans.Placed(it, plans.footprint(m) if gid == "r" else box(8, 8, 12, 12)))
+    exteriors.build([n00, n01, ttr], {}, set(), {})
+    part, developed, mesh = ttr.spt_parts[0]
+    assert developed == pytest.approx(200.0) and mesh is None                    # plate : dessinée à plat
+    assert n01.envelope["GrossArea"] == pytest.approx(60 * 3.0)                  # la façade garde la hauteur d'étage
+
+
+def test_pitched_roof_ignores_a_dormer():
+    """Myonaz 2 (29.10.2026) : une lucarne (petit toit d'une autre orientation) ne fait ni bosse dans la SPT ni dent
+    dans la façade ; le pan est prolongé sous elle."""
+    import math
+    import numpy as np
+    roof_mesh, ridge = _gable_roof()
+    dormer = _mesh([((1.5, 9, 3.5), (3.5, 9, 3.5), (2.5, 10, 4.5)), ((1.5, 11, 3.5), (2.5, 10, 4.5), (3.5, 11, 3.5))])
+    n00 = level("N00", 0.0, 3.0, sp=box(0, 0, 10, 20))
+    ttr = level("TTR", 3.0, None)
+    for gid, m in (("r", roof_mesh), ("d", dormer)):
+        it = Item(gid, "IfcRoof", "Toit", "A", "TTR", mesh=m, z_min=1.0, z_max=ridge + 0.2)
+        ttr.plan.elements.append(plans.Placed(it, plans.footprint(m) if gid == "r" else box(1.5, 9, 3.5, 11)))
+    exteriors.build([n00, ttr], {}, set(), {})
+    v = np.asarray(ttr.spt_parts[0][2].vertices).reshape(-1, 3)
+    pan = 1.2 + np.minimum(v[:, 0], 10 - v[:, 0]) * math.tan(math.radians(30))   # dessus des deux pans
+    assert np.abs(v[:, 2] - pan).max() < 1e-6                                     # sans la bosse de la lucarne
+    gable = 10 * 1.2 + 0.5 * 10 * (ridge - 1.0)
+    assert n00.envelope["GrossArea"] == pytest.approx(2 * 20 * 1.2 + 2 * gable, rel=1e-3)
 
 
 def test_construction_scp_scn_thin_bands_and_true_gaps():

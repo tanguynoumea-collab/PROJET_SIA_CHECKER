@@ -469,6 +469,33 @@ Non-régression :
 | Les fenêtres de toit sont projetées à la verticale ou ignorées | Une fenêtre inclinée de plus de 15° sur la verticale (velux), ou hors façade et au-dessus d'elle sous la toiture (fenêtres hautes des lucarnes), à moins de 2,5 m sous la couverture, n'est ni une réservation ni de la façade. C'est un vitrage SRV du dernier niveau, à son aire vraie, dessiné dans son plan. Les fenêtres de lucarne que la maquette range dans le niveau de toiture comptent dans la façade du niveau dont elles percent la hauteur. Myonaz 2 N03 : SRV 108,1 → 120,6 m², dont 7,8 m² de fenêtres de toit. Une fenêtre déclarée intérieure (`IsExternal` faux, MOB-0010) reste écartée. |
 
 
+**Simplification (retour du 29.10.2026, avant clôture de la V4.1)** : SPT et façades « biscornues » sur Myonaz 2, « piliers » sous la toiture de La Bâtie.
+
+- **Causes** :
+  - la SPT était drapée sur la plus haute face de dessus de toute la maquette :
+    - les lucarnes, souches et faîtières y faisaient des bosses ;
+    - un point hors couverture retombait au niveau, d'où les dents à la rive ;
+    - La Bâtie : la marquise du rez, 15 m plus bas, faisait descendre la toiture plate jusqu'à elle ;
+  - la façade suivait une sous-face faite de plusieurs couches, de chéneaux et de lucarnes, d'où les dents et les marches.
+- **Pans principaux** (`roofs.py`) :
+  - seules les orientations de faces qui portent au moins 10 % de l'aire de la toiture sont des pans ;
+  - chaque pan est ramené à un plan, sa couche la plus haute : la couverture ;
+  - sous une lucarne ou à la rive, le plan du pan le plus proche est prolongé, jusqu'à 3 m.
+- **SPT** :
+  - drapée sur ces pans, sans les toitures plus basses de plus de 3 m que le niveau de toiture (marquise, auvent) ;
+  - une toiture plate, dont la surface développée dépasse l'emprise de moins de 1 %, est dessinée à plat ;
+  - la surface développée ne change pas (Myonaz 2 : 546,1 m²).
+- **SFN** :
+  - la façade monte jusqu'à la couverture en pente, la même surface que la SPT : façade et toiture se rejoignent sans jour ;
+  - une toiture plate ne la touche pas : La Bâtie garde 321,5 m² au dernier étage ;
+  - une lucarne ne fait plus monter la façade ;
+  - Myonaz 2 N03 : 261,5 → 222,3 m² ; Myonaz 1 N03 : 168,2 → 145,4 m².
+- **SRV** :
+  - une fenêtre au-dessus de la rive pour plus de moitié (lucarne) est une fenêtre de toit : vitrage SRV dans son plan ;
+  - une fenêtre à cheval sur la rive compte en façade pour sa part sous la rive ;
+  - Myonaz 2 N03 : SRV 120,6 → 121,1 m².
+- **Tests** : la marquise sous une toiture plate, et la lucarne sur un pan.
+
 ## 23. Publication de la 4.0.0 (29.10.2026)
 
 Le tag `v4.0.0` est posé sur l'état final, avec les retours des §20 à §22 :

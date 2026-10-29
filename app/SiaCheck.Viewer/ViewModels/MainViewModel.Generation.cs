@@ -34,63 +34,68 @@ public sealed partial class MainViewModel
 
     // ------------------------------------------------------------------ accueil
 
-    public ObservableCollection<GeneratedItem> GeneratedProjects { get; } = [];
-
     private const string GenerationFolderName = "SIA Check - projets generes";
 
     /// <summary>
     /// Dossier choisi, sinon « Documents\SIA Check - projets generes » : celui du profil s'il existe (Documents redirigé
     /// vers OneDrive ou non), sinon celui de Windows.
     /// </summary>
-    private string GenerationFolder => _settings.GenerationFolder is { Length: > 0 } f ? f
+    internal string GenerationFolder => _settings.GenerationFolder is { Length: > 0 } f ? f
         : new[] { Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                   Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents") }
               .Select(d => Path.Combine(d, GenerationFolderName)).FirstOrDefault(Directory.Exists)
           ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), GenerationFolderName);
 
     /// <summary>Projets générés : tout sous-dossier du dossier des projets générés qui a un rapport de génération.</summary>
-    private void FillGenerated()
+    private List<RecentItem> GeneratedProjects()
     {
-        GeneratedProjects.Clear();
-        if (!Directory.Exists(GenerationFolder)) return;
-        var items = new List<GeneratedItem>();
-        foreach (var dir in Directory.EnumerateDirectories(GenerationFolder).Where(GenerationReport.Exists))
+        var items = new List<RecentItem>();
+        if (!Directory.Exists(GenerationFolder)) return items;
+        foreach (var dir in GeneratedDirs())
         {
             try
             {
                 var report = GenerationReport.Load(dir);
-                items.Add(new GeneratedItem(Path.GetFileName(dir), dir, report.Source, File.GetLastWriteTime(GenerationReport.PathOf(dir)),
-                                            GenerationState.Of(report, GenerationDecision.Load(dir))));
+                var info = new GeneratedInfo(report.Source, GenerationState.Of(report, GenerationDecision.Load(dir)));
+                var project = new RecentProject { Path = dir, Name = Path.GetFileName(dir), LastAnalysis = File.GetLastWriteTime(GenerationReport.PathOf(dir)) };
+                items.Add(new RecentItem(project, _registry.StatusOf(dir), _settings.FindMdpProject(dir), generated: info));
             }
             catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException) { /* rapport illisible : ignoré */ }
         }
-        foreach (var i in items.OrderByDescending(i => i.Date)) GeneratedProjects.Add(i);
+        return items;
     }
 
-    /// <summary>Générer depuis un IFC… : la maquette, puis le nom et le dossier du projet, puis la génération et l'ouverture.</summary>
-    [RelayCommand]
-    private async Task GenerateFromIfcAsync()
+    private IEnumerable<string> GeneratedDirs() => Directory.Exists(GenerationFolder)
+        ? Directory.EnumerateDirectories(GenerationFolder).Where(GenerationReport.Exists).Select(ProjectFolder.Normalize)
+        : [];
+
+    /// <summary>Nouveau projet depuis une maquette IFC : la fiche est enregistrée, puis la génération et l'ouverture.</summary>
+    private async Task CreateFromIfcAsync(ProjectSheet sheet)
     {
-        if (_engine is null) return;
-        var ifc = _shell.PickOpenFile("Maquette architecte IFC (avec ses IfcSpace)", "Maquette IFC|*.ifc");
-        if (ifc is null) return;
-        var answer = await _shell.AskAsync("Générer depuis un IFC",
-            "Le moteur lit la maquette, classe ses espaces et écrit les surfaces SIA au modèle Treegram. Comptez de 30 s à quelques minutes.",
-            [("Nom du projet", CleanName(Path.GetFileNameWithoutExtension(ifc))), ("Dossier des projets générés", GenerationFolder)], "Générer");
-        if (answer is not [var name, var folder] || CleanName(name) is not { Length: > 0 } project) return;
-        if (!string.Equals(folder, GenerationFolder, StringComparison.OrdinalIgnoreCase))
-        {
-            _settings.GenerationFolder = folder;
-            _settings.Save(_paths);
-        }
-        await RunGenerationAsync(ifc, folder, project);
+        var outDir = sheet.OutDir ?? GenerationFolder;
+        var project = CleanName(sheet.Identity.Name.Length > 0 ? sheet.Identity.Name : Path.GetFileNameWithoutExtension(sheet.Ifc!));
+        if (sheet.Identity.Name.Length == 0) sheet.Identity.Name = project;
+        if (!ProjectFolder.Same(outDir, GenerationFolder)) _settings.GenerationFolder = outDir;
+        _settings.SetMdpProject(Path.Combine(outDir, project), sheet.Identity);
+        _settings.Save(_paths);
+        await RunGenerationAsync(sheet.Ifc!, outDir, project);
+    }
+
+    /// <summary>Ce que la fiche dit sous la maquette choisie : introuvable, projet déjà généré sous ce nom, ou le dossier créé.</summary>
+    private SheetCheck CheckIfcSheet(ProjectSheet s)
+    {
+        if (string.IsNullOrWhiteSpace(s.Ifc)) return new("Choisissez la maquette IFC.", false, false, null);
+        if (!File.Exists(s.Ifc)) return new("Maquette introuvable.", false, false, null);
+        var project = CleanName(s.Identity.Name.Length > 0 ? s.Identity.Name : Path.GetFileNameWithoutExtension(s.Ifc));
+        if (project.Length == 0) return new("Donnez un nom au projet.", false, false, null);
+        var target = Path.Combine(s.OutDir ?? GenerationFolder, project);
+        return Directory.Exists(target)
+            ? new($"Un projet généré s'appelle déjà « {project} » : changez le nom, ou régénérez-le depuis la liste (↻).", false, false, null)
+            : new($"✓ {Path.GetFileName(s.Ifc)} · le projet sera créé dans {target}", true, false, null);
     }
 
     /// <summary>Nom utilisable par le moteur (assemble.clean) : pas de « _ », pas d'espace.</summary>
-    private static string CleanName(string name) => Regex.Replace(name.Trim(), @"[-_\s]+", "-").Trim('-');
-
-    [RelayCommand]
-    private Task OpenGeneratedAsync(GeneratedItem item) => OpenGeneratedDirAsync(item.Path);
+    internal static string CleanName(string name) => Regex.Replace(name.Trim(), @"[-_\s]+", "-").Trim('-');
 
     private async Task OpenGeneratedDirAsync(string dir)
     {
@@ -99,7 +104,8 @@ public sealed partial class MainViewModel
     }
 
     [RelayCommand]
-    private Task RegenerateItemAsync(GeneratedItem item) => RegenerateDirAsync(item.Path, item.Source);
+    private Task RegenerateItemAsync(RecentItem item) =>
+        item.Generated is { } g ? RegenerateDirAsync(item.Path, g.Source) : Task.CompletedTask;
 
     // ------------------------------------------------------------------ génération
 
@@ -167,7 +173,7 @@ public sealed partial class MainViewModel
         if (HasDocument && ProjectDir is not null && ProjectFolder.Same(ProjectDir, dir)) await AnalyseAsync();
         else await OpenAsync(dir);
         if (IsGenerated && (keepTab || !HasSubjects)) ShowSpacesTab();
-        FillGenerated();
+        FillRecents();
     }
 
     // ------------------------------------------------------------------ onglet Espaces
@@ -394,12 +400,8 @@ public sealed partial class MainViewModel
     }
 }
 
-/// <summary>Projet généré de la colonne Génération de l'accueil.</summary>
-public sealed record GeneratedItem(string Name, string Path, string Source, DateTime Date, GenerationState State)
-{
-    public bool IsSettled => State.ToDecide == 0;
-    public string StateText => IsSettled ? "tout tranché" : $"{State.ToDecide} à trancher";
-}
+/// <summary>Ce qu'un projet de l'accueil tient de sa génération : la maquette source, l'état des décisions.</summary>
+public sealed record GeneratedInfo(string Source, GenerationState State);
 
 /// <summary>Ligne de l'onglet Espaces : un espace de la maquette, sa décision éventuelle, le changement qu'elle porte.</summary>
 public sealed class SpaceItem(GeneratedSpace space, GenerationDecision? decision, SiaPalette palette)

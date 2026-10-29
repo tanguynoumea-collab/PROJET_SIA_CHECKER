@@ -3,10 +3,18 @@ using System.IO;
 namespace SiaCheck.Viewer.Services;
 
 /// <summary>
-/// Fiche projet (docs/DESIGN_PLAN.md, Évolution 3.8) : le dossier Treegram et l'identité HRS, saisis à la création du
-/// projet et modifiables à tout moment ; l'export MDP reprend l'identité sans rien redemander.
+/// Fiche projet (docs/DESIGN_PLAN.md, Évolutions 3.8 et 4.5) : l'identité HRS et la source des données, saisies à la
+/// création du projet et modifiables à tout moment ; l'export MDP reprend l'identité sans rien redemander.
+/// Source Treegram : <see cref="Folder"/> est le dossier du .tgm. Source IFC (<see cref="Ifc"/>) : à la création,
+/// <see cref="OutDir"/> est le dossier des projets générés (le projet y prend son nom) ; ensuite, <see cref="Folder"/>
+/// est le dossier généré et la maquette reste en lecture seule.
 /// </summary>
-public sealed record ProjectSheet(string Folder, MdpProject Identity);
+public sealed record ProjectSheet(string Folder, MdpProject Identity)
+{
+    public string? Ifc { get; init; }
+    public string? OutDir { get; init; }
+    public bool IsIfc => Ifc is not null;
+}
 
 /// <summary>Ce que la fiche affiche sous ses champs : état du dossier, ID déjà pris ; <see cref="CanSave"/> = bouton actif.</summary>
 public sealed record SheetCheck(string FolderMessage, bool FolderOk, bool FolderWarning, string? IdWarning)

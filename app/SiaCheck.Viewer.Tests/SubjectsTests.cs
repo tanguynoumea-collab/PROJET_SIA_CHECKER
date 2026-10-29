@@ -375,7 +375,7 @@ public class SubjectPointsTests
         using var tmp = new TempDir();
         var dir = TreegramFolder(tmp, "L OREE");
         var shell = new FakeShell();
-        var settings = new AppSettings();
+        var settings = new AppSettings { GenerationFolder = Path.Combine(tmp.Path, "generes") };
         settings.SetMdpProject(dir, new MdpProject { Id = "1778", Name = "L'Orée", Canton = "VD" });
         var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
         var hrs = await vm.AskMdpProjectAsync(dir + "/", "L OREE", IdentityMode.Export);
@@ -389,7 +389,7 @@ public class SubjectPointsTests
         using var tmp = new TempDir();
         var dir = TreegramFolder(tmp, "L OREE");
         var shell = new FakeShell { SheetAnswer = s => s with { Identity = new MdpProject { Id = "1778", Name = "L'Orée" } } };
-        var settings = new AppSettings();
+        var settings = new AppSettings { GenerationFolder = Path.Combine(tmp.Path, "generes") };
         var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
         Assert.Equal("1778", (await vm.AskMdpProjectAsync(dir, "L OREE", IdentityMode.Export))!.Id);
         Assert.Equal(("L OREE", 1), (shell.SheetShown!.Identity.Name, shell.SheetCount));   // nom proposé : le dossier
@@ -440,7 +440,7 @@ public class SubjectPointsTests
     {
         using var tmp = new TempDir();
         var (a, b) = (TreegramFolder(tmp, "A"), TreegramFolder(tmp, "B"));
-        var settings = new AppSettings();
+        var settings = new AppSettings { GenerationFolder = Path.Combine(tmp.Path, "generes") };
         settings.Touch(a, "A", DateTime.Now, 0);
         settings.SetMdpProject(a, new MdpProject { Id = "1778", Name = "L'Orée" });
         var vm = new MainViewModel(new FakeShell(), new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
@@ -457,7 +457,7 @@ public class SubjectPointsTests
         using var tmp = new TempDir();
         var (old, nouveau) = (TreegramFolder(tmp, "LIVRAISON 1"), TreegramFolder(tmp, "LIVRAISON 2"));
         var paths = new AppPaths(Path.Combine(tmp.Path, "roaming"), Path.Combine(tmp.Path, "local"));
-        var settings = new AppSettings();
+        var settings = new AppSettings { GenerationFolder = Path.Combine(tmp.Path, "generes") };
         settings.Touch(old, "LIVRAISON 1", DateTime.Now, 3);
         settings.SetMdpProject(old, new MdpProject { Id = "1778", Name = "L'Orée" });
         foreach (var f in new[] { paths.ReviewFile(old), paths.CorrectionsFile(old), paths.AnalysisFile(old) })
@@ -482,7 +482,7 @@ public class SubjectPointsTests
     {
         using var tmp = new TempDir();
         var (old, nouveau) = (TreegramFolder(tmp, "A"), TreegramFolder(tmp, "B"));
-        var settings = new AppSettings();
+        var settings = new AppSettings { GenerationFolder = Path.Combine(tmp.Path, "generes") };
         settings.SetMdpProject(old, new MdpProject { Id = "1" });
         var shell = new FakeShell { ConfirmAnswer = false, SheetAnswer = s => s with { Folder = nouveau } };
         var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
@@ -496,20 +496,86 @@ public class SubjectPointsTests
     {
         using var tmp = new TempDir();
         var dir = TreegramFolder(tmp, "OUCHY B");
-        var settings = new AppSettings();
-        var shell = new FakeShell { FolderAnswer = dir, SheetAnswer = s => s with { Identity = new MdpProject { Id = "1900", Typologie = "Santé" } } };
+        var settings = new AppSettings { GenerationFolder = Path.Combine(tmp.Path, "generes") };
+        var shell = new FakeShell { SheetAnswer = s => s with { Folder = dir, Identity = new MdpProject { Id = "1900", Typologie = "Santé" } } };
         var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
         await vm.NewProjectCommand.ExecuteAsync(null);
+        Assert.Equal("", shell.SheetShown!.Folder);                                 // la fiche d'abord, sans explorateur
         Assert.Equal(("1900", "OUCHY B", "Santé"), (settings.FindMdpProject(dir)!.Id, settings.FindMdpProject(dir)!.Name,
                                                       settings.FindMdpProject(dir)!.Typologie));   // nom : celui du dossier
         Assert.Single(settings.Recents);
+    }
+
+    /// <summary>Projet généré minimal : un rapport de génération dans le dossier des projets générés.</summary>
+    internal static string GeneratedFolder(string root, string name, string source = @"C:\maquettes\m.ifc")
+    {
+        var dir = Path.Combine(root, name);
+        Directory.CreateDirectory(Path.Combine(dir, "generation"));
+        File.WriteAllText(Path.Combine(dir, $"{name}.siagen.json"), "{}");
+        File.WriteAllText(Path.Combine(dir, "generation", "rapport.json"),
+                          System.Text.Json.JsonSerializer.Serialize(new { source, spaces = Array.Empty<object>() }));
+        return dir;
+    }
+
+    [Fact]
+    public async Task New_project_from_an_ifc_saves_its_sheet_under_the_generated_folder()
+    {
+        using var tmp = new TempDir();
+        var ifc = Path.Combine(tmp.Path, "myonaz 3.ifc");
+        File.WriteAllText(ifc, "");
+        var gen = Path.Combine(tmp.Path, "generes");
+        var settings = new AppSettings { GenerationFolder = gen };
+        var shell = new FakeShell { SheetAnswer = s => s with { Ifc = ifc, Identity = new MdpProject { Id = "1901", Typologie = "Santé" } } };
+        var vm = new MainViewModel(shell, new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
+        await vm.NewProjectCommand.ExecuteAsync(null);
+        Assert.Equal(gen, shell.SheetShown!.OutDir);
+        Assert.True(shell.LastCheck!.CanSave);
+        Assert.Contains(Path.Combine(gen, "myonaz-3"), shell.LastCheck.FolderMessage);
+        var sheet = settings.FindMdpProject(Path.Combine(gen, "myonaz-3"))!;
+        Assert.Equal(("1901", "myonaz-3"), (sheet.Id, sheet.Name));                 // nom : celui de la maquette, nettoyé
+        Assert.Empty(settings.Recents);                                             // un projet IFC n'est pas un récent Treegram
+    }
+
+    [Fact]
+    public void Ifc_sheet_refuses_a_missing_model_or_a_taken_name()
+    {
+        using var tmp = new TempDir();
+        var gen = Path.Combine(tmp.Path, "generes");
+        GeneratedFolder(gen, "Afiro");
+        var ifc = Path.Combine(tmp.Path, "afiro.ifc");
+        File.WriteAllText(ifc, "");
+        var vm = new MainViewModel(new FakeShell(), new AppPaths(tmp.Path, tmp.Path), new AppSettings { GenerationFolder = gen }, enginePath: null);
+        ProjectSheet Sheet(string? model, string name) => new("", new MdpProject { Name = name }) { Ifc = model, OutDir = gen };
+        Assert.False(vm.CheckSheet(Sheet("", "X"), null).CanSave);
+        Assert.Equal("Maquette introuvable.", vm.CheckSheet(Sheet(Path.Combine(tmp.Path, "absente.ifc"), "X"), null).FolderMessage);
+        Assert.Contains("s'appelle déjà « Afiro »", vm.CheckSheet(Sheet(ifc, "Afiro"), null).FolderMessage);
+        Assert.True(vm.CheckSheet(Sheet(ifc, "Afiro 2"), null).CanSave);
+    }
+
+    [Fact]
+    public void Treegram_and_ifc_projects_share_one_list()
+    {
+        using var tmp = new TempDir();
+        var tgm = TreegramFolder(tmp, "L OREE");
+        var gen = Path.Combine(tmp.Path, "generes");
+        var afiro = GeneratedFolder(gen, "Afiro");
+        var settings = new AppSettings { GenerationFolder = gen };
+        settings.Touch(tgm, "L OREE", DateTime.Now.AddDays(-1), 8);
+        settings.SetMdpProject(afiro, new MdpProject { Id = "2001", Name = "Afiro Genève" });
+        var vm = new MainViewModel(new FakeShell(), new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
+        Assert.Equal(["Afiro Genève", "L OREE"], vm.Recents.Select(r => r.DisplayName));   // le plus récent d'abord
+        var (ifcRow, tgmRow) = (vm.Recents[0], vm.Recents[1]);
+        Assert.Equal((true, "tout tranché", "2001"), (ifcRow.IsIfc, ifcRow.ActivityText, ifcRow.IdText));
+        Assert.Equal((false, "8 points"), (tgmRow.IsIfc, tgmRow.ActivityText));
+        Assert.Contains("L'ID 2001 est aussi celui de « Afiro Genève »",
+                        vm.CheckSheet(new ProjectSheet(tgm, new MdpProject { Id = "2001" }), tgm).IdWarning);
     }
 
     [Fact]
     public void Missing_folder_stays_listed_with_a_warning()
     {
         using var tmp = new TempDir();
-        var settings = new AppSettings();
+        var settings = new AppSettings { GenerationFolder = Path.Combine(tmp.Path, "generes") };
         settings.Touch(Path.Combine(tmp.Path, "DISPARU"), "DISPARU", DateTime.Now, 0);
         var vm = new MainViewModel(new FakeShell(), new AppPaths(tmp.Path, tmp.Path), settings, enginePath: null);
         Assert.Equal("Dossier introuvable", vm.Recents.Single().Warning);
@@ -539,7 +605,7 @@ public class DeleteProjectTests
         var files = new[] { paths.ReviewFile(project), paths.CorrectionsFile(project), paths.AnalysisFile(project),
                             Path.Combine(paths.AiReviewDir(project), "r.md") };
         foreach (var f in files) { Directory.CreateDirectory(Path.GetDirectoryName(f)!); File.WriteAllText(f, "{}"); }
-        var settings = new AppSettings();
+        var settings = new AppSettings { GenerationFolder = Path.Combine(tmp.Path, "generes") };
         settings.Touch(project, "L OREE", DateTime.Today, 3);
         settings.SetMdpProject(project, new MdpProject { Id = "1778", Name = "L'Orée" });
         var shell = new FakeShell();
@@ -556,6 +622,25 @@ public class DeleteProjectTests
         Assert.Null(settings.FindMdpProject(project));
         Assert.True(Directory.Exists(project));                                 // le dossier Treegram reste
         Assert.Empty(AppSettings.Load(paths).Recents);
+    }
+
+    [Fact]
+    public async Task Deleting_a_generated_project_removes_its_folder_but_not_the_model()
+    {
+        using var tmp = new TempDir();
+        var ifc = Path.Combine(tmp.Path, "afiro.ifc");
+        File.WriteAllText(ifc, "");
+        var gen = Path.Combine(tmp.Path, "generes");
+        var dir = ProjectFolder.Normalize(SubjectPointsTests.GeneratedFolder(gen, "Afiro", ifc));
+        var paths = new AppPaths(Path.Combine(tmp.Path, "roaming"), Path.Combine(tmp.Path, "local"));
+        var settings = new AppSettings { GenerationFolder = gen };
+        settings.SetMdpProject(dir, new MdpProject { Id = "2001" });
+        var vm = new MainViewModel(new FakeShell(), paths, settings, enginePath: null);
+        await vm.DeleteRecentCommand.ExecuteAsync(vm.Recents.Single());
+        Assert.Empty(vm.Recents);
+        Assert.False(Directory.Exists(dir));
+        Assert.True(File.Exists(ifc));
+        Assert.Null(settings.FindMdpProject(dir));
     }
 }
 

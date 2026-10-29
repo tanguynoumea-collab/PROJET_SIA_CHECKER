@@ -4,10 +4,26 @@ using SiaCheck.Viewer.Services;
 
 namespace SiaCheck.Viewer.ViewModels;
 
-/// <summary>Projet récent sur l'accueil, avec son statut (registre des projets).</summary>
-public sealed class RecentItem(RecentProject project, ProjectStatus status, MdpProject? identity = null, bool exists = true)
+/// <summary>
+/// Projet de la liste « Projets » de l'accueil (Minage de données, Évolution 4.5), avec son statut (registre des projets) :
+/// un projet Treegram, ou un projet généré depuis un IFC (<paramref name="generated"/>).
+/// </summary>
+public sealed class RecentItem(RecentProject project, ProjectStatus status, MdpProject? identity = null, bool exists = true,
+                               GeneratedInfo? generated = null)
 {
     public RecentProject Project { get; } = project;
+    public GeneratedInfo? Generated { get; } = generated;
+    /// <summary>Généré depuis un IFC : glyphe cube, état des espaces, ↻ Régénérer, ouverture sur l'onglet Espaces.</summary>
+    public bool IsIfc => Generated is not null;
+    public string SourceTooltip => IsIfc ? $"Généré depuis un IFC : {Generated!.Source}" : "Projet Treegram";
+    /// <summary>Maquette dont le projet est tiré (infobulle de ↻).</summary>
+    public string Source => Generated?.Source ?? "";
+    /// <summary>Tous les espaces tranchés (coche) : projet IFC seulement.</summary>
+    public bool IsSettled => Generated?.State.ToDecide == 0;
+    /// <summary>Colonne d'activité : les points de l'analyse, ou les espaces à trancher d'un projet généré.</summary>
+    public string ActivityText => Generated is { } g
+        ? (g.State.ToDecide == 0 ? "tout tranché" : $"{g.State.ToDecide} à trancher")
+        : $"{Project.IssueCount} points";
     /// <summary>Nom du dossier (repli du nom de la fiche, nommage des fichiers).</summary>
     public string Name => Project.Name;
     public MdpProject? Identity { get; } = identity;
@@ -129,18 +145,23 @@ public sealed partial class MainViewModel
         else _shell.Notify($"« {ProjectName} » remis en traitement.");
     }
 
-    /// <summary>Projets actifs de l'accueil : en traitement d'abord, puis traités, chacun dans l'ordre des récents.</summary>
+    /// <summary>
+    /// Projets de l'accueil (Minage de données) : les projets Treegram des récents et les projets générés du dossier des
+    /// projets générés, mêlés ; en traitement d'abord, puis traités, le plus récent d'abord.
+    /// </summary>
     private void FillRecents()
     {
         Recents.Clear();
-        // Projets générés depuis un IFC, inscrits par les versions 4.0 : retirés, ils ont leur liste (section Génération)
+        // Projets générés inscrits parmi les récents par les versions 4.0 : retirés, ils sont lus dans leur dossier
         if (_settings.Recents.RemoveAll(r => GenerationReport.Exists(r.Path)) > 0) _settings.Save(_paths);
         // Un dossier introuvable reste listé (signalé) : la fiche projet permet de le repointer
-        foreach (var r in _settings.Recents
-                     .Select(r => new RecentItem(r, _registry.StatusOf(r.Path), _settings.FindMdpProject(r.Path),
-                                                 System.IO.Directory.Exists(r.Path)))
-                     .OrderBy(r => r.IsDone))
-            Recents.Add(r);
+        var items = _settings.Recents
+            .Select(r => new RecentItem(r, _registry.StatusOf(r.Path), _settings.FindMdpProject(r.Path), System.IO.Directory.Exists(r.Path)))
+            .Concat(GeneratedProjects())
+            .Select((r, i) => (r, i))
+            .OrderBy(x => x.r.IsDone).ThenByDescending(x => x.r.LastAnalysis).ThenBy(x => x.i)
+            .Select(x => x.r);
+        foreach (var r in items) Recents.Add(r);
     }
 
     private static string S(int n) => n > 1 ? "s" : "";

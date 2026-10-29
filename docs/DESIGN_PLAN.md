@@ -1923,3 +1923,120 @@ Non-régression : les écrans de la Fiabilisation (barre de commande, calques, b
   - ✅ sujet SP à 32 m² ;
   - ✅ SECP et SECN hachurés.
   - Point faible restant : en thème sombre, la SCP anthracite contraste peu avec le fond, mais les pièces et le trou restent bien lisibles.
+## Évolution 4.5 — Minage de données : une seule section, une seule fiche (mode ÉVOLUTION)
+
+> Statut : ☑ Brouillon ☑ Auto-critiqué (Passe B) ☑ **VALIDÉ PAR L'UTILISATEUR** (29.10.2026) ☑ Implémenté
+> Demande du 29.10.2026 : fusionner Génération et Fiabilisation. Un projet est un projet, qu'il vienne de Treegram ou d'un IFC ; seule sa source diffère.
+> Aucune nouvelle couleur, aucun nouveau token de couleur.
+
+### Ancrage
+
+- **Job de la section** : *tenir tous les projets de surfaces en cours au même endroit, quelle que soit la source.*
+- L'ordre Génération → Fiabilisation de l'Évolution 4.0 disparaît : un projet généré finit de toute façon dans le même espace de revue. La source n'est qu'un attribut du projet, comme sa typologie.
+
+### Wireframe — accueil
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┬───────────────────────────┐
+│  MINAGE DE DONNÉES                                                             │  BENCHMARK                │
+│  Tirer les surfaces SIA d'un projet Treegram ou d'une maquette IFC.            │  (inchangé)               │
+│  [▸ Nouveau projet…] (accent, Ctrl+N)                                          │                           │
+│  La fiche projet : l'identité HRS, puis la source des données.                 │                           │
+│                                                                                │                           │
+│  PROJETS                                                                   6   │                           │
+│  ⧉ 1778  L OREE       Log. mixte VD   Traité          8 points · 29.10   ⇥ ✎ 🗑 │                           │
+│  ◫ —     Myonaz-1     Infos à compléter  En traitement  1 à trancher · 29.10 ↻ ✎ 🗑 │                           │
+│  ◫ —     CGA-L04      Infos à compléter  En traitement  ✓ tout tranché · 29.10 ↻ ✎ 🗑 │                   │
+│  …                                                                             │                           │
+└────────────────────────────────────────────────────────────────────────────────┴───────────────────────────┘
+  ⧉ = glyphe Treegram   ◫ = glyphe IFC (16 px, TextSecondary, infobulle « Projet Treegram » / « Généré depuis un IFC »)
+```
+
+- **Deux colonnes** : Minage de données (1,6*) | Benchmark (1*). Le séparateur central et la colonne Génération disparaissent.
+- **Une liste unique, « Projets »**, avec les mêmes colonnes que les projets actifs actuels. Un **glyphe de source** s'ajoute en tête de ligne : c'est le seul signe distinctif. Ordre : en traitement d'abord, puis traités ; à statut égal, le plus récent d'abord.
+- **Colonne d'état, selon la source** :
+  - Treegram : « 8 points · date d'analyse » ;
+  - IFC : « 1 à trancher · date » en TextSecondary, ou « ✓ tout tranché · date » avec la coche StatusSeen.
+- **Actions** (alignées à droite, même emplacement pour toutes les lignes) :
+  - ↻ Régénérer : IFC seulement (emplacement réservé et vide sur une ligne Treegram, pour que ✎ et 🗑 restent alignés) ;
+  - ⇥ Ajouter à la base : projet traité, quelle que soit sa source ;
+  - ✎ Fiche projet ; 🗑 Supprimer.
+- **Clic sur une ligne** : un projet Treegram s'ouvre sur l'onglet Sujets, un projet IFC sur l'onglet Espaces (comme aujourd'hui).
+
+### Wireframe — fiche « Nouveau projet »
+
+```
+┌ Nouveau projet ──────────────────────────────────────────────┐
+│ IDENTITÉ                                                     │
+│   ID projet HRS *        [            ]                      │
+│   Nom du projet *        [            ]                      │
+│   Typologie * · Canton * · Commune · Intervention * · Phase  │
+│   (rappel des champs * pour le benchmark, inchangé)          │
+│                                                              │
+│ SOURCE DES DONNÉES                                           │
+│   [ Treegram | Maquette IFC ]      ← choix segmenté          │
+│                                                              │
+│   Treegram :                                                 │
+│   [ dossier du projet ………………………… ] [Parcourir…]            │
+│   ✓ L OREE.tgm · cache VWR présent                           │
+│                                                              │
+│   Maquette IFC :                                             │
+│   [ fichier .ifc ……………………………… ] [Parcourir…]                │
+│   ✓ maquette.ifc · le projet sera créé dans                  │
+│     Documents\SIA Check - projets generes\<Nom>   [Changer…] │
+│   La maquette doit contenir ses IfcSpace. 30 s à 4 min.      │
+│                                                              │
+│            [Créer et analyser | Créer et générer] [Annuler]  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+- **L'identité d'abord, la source ensuite**, comme demandé. Ctrl+N ouvre directement la fiche : l'explorateur ne s'ouvre plus avant elle (écart assumé à l'Évolution 3.8).
+- **Le choix de source** est un contrôle segmenté à deux options. La ligne en dessous change selon la source. Le bouton principal dit ce qu'il fera : « Créer et analyser » ou « Créer et générer ».
+- **Nom suggéré** : tant que le nom n'a pas été saisi, le dossier Treegram ou le fichier IFC choisi le propose (mécanisme `SuggestName` existant).
+- **Contrôles sous le champ source** :
+  - Treegram : les messages de `ProjectFolder.Check`, inchangés ;
+  - IFC : fichier introuvable, ou dossier `<Nom>` déjà pris par un autre projet généré, en erreur. Le nom du dossier est le nom du projet nettoyé (`CleanName`).
+- **Fiche ✎ d'un projet IFC** : la même fiche, avec la source verrouillée sur « Maquette IFC ». Elle montre le chemin de la maquette, en lecture seule. ↻ redemande la maquette si elle a bougé.
+
+### Mapping ancien → nouveau (iso-fonctionnalité)
+
+| Avant | Après |
+|---|---|
+| Colonne Génération, « Générer depuis un IFC… » | Nouveau projet… → source « Maquette IFC » |
+| Liste « Projets générés » (nom, état, date, ↻) | Liste « Projets », glyphe IFC, mêmes état, date et ↻ |
+| Dossier des projets générés (boîte de génération) | Ligne « sera créé dans … [Changer…] » de la fiche |
+| Colonne Fiabilisation, « Projets actifs » | Liste « Projets », glyphe Treegram |
+| Projet généré sans fiche projet | Fiche ✎ ; ID, typologie et canton affichés dans la liste |
+
+### Passe B — auto-critique
+
+- **Glyphes** : un arbre pour Treegram n'est pas un logo officiel. Il est lisible grâce à l'infobulle, et l'œil apprend vite deux formes différentes. L'alternative, un badge mono « TGM » / « IFC », est plus explicite mais ajoute du texte sur une ligne déjà chargée.
+- **Densité** : la ligne IFC porte une action de plus (↻). L'emplacement réservé évite le décalage des boutons.
+- **Chanel** : pas de filtre par source au-dessus de la liste. Avec moins de 10 projets, le glyphe suffit. À rediscuter au-delà de 20.
+- **Point ouvert** : 🗑 sur un projet IFC. Effacer seulement les traces dans l'app ne suffit pas : le dossier généré réapparaîtrait au prochain retour à l'accueil. Proposition : la suppression d'un projet IFC efface aussi son dossier généré, après confirmation. Ce dossier ne contient que des fichiers produits par l'app ; la maquette IFC n'est jamais touchée.
+
+### Choix rejetés
+
+| Proposition | Raison du rejet | Date |
+|---|---|---|
+| Deux sous-listes (Treegram, IFC) dans la même colonne | C'est garder deux sections sous un seul titre | 29.10.2026 |
+
+### Écarts au plan, décidés à l'implémentation
+
+| Plan | Réalisé | Raison |
+|---|---|---|
+| Glyphe « arbre » pour Treegram | `TextBulletListTree16` (une arborescence) ; `Cube16` pour IFC | La bibliothèque Fluent de WPF-UI 4.3 n'a pas d'arbre. L'arborescence dit la même chose : un projet Treegram est un arbre de surfaces. |
+| Contrôle segmenté Treegram \| Maquette IFC | Deux boutons radio côte à côte | WPF-UI n'a pas de contrôle segmenté. Les radios gardent la navigation clavier et le focus visible sans style sur mesure. |
+| Hauteur fixe de la fiche | La fiche suit son contenu (`SizeToContent`) | Le bloc IFC, plus haut, était coupé à la première revue. |
+| Message rouge sous une source vide | En TextSecondary tant que rien n'est choisi | Une fiche vierge ne doit pas s'ouvrir sur une erreur. |
+| Place réservée pour ↻ seulement | Places réservées pour ↻ et ⇥ | Sinon, la ligne d'un projet traité se décalait d'un bouton. |
+| Colonne d'activité de largeur libre | Largeur fixe de 168 px | « 1 à trancher » est plus court que « ✓ tout tranché » : la ligne se décalait. |
+
+### Revue visuelle (Phase 2, 29.10.2026, thème clair)
+
+- `docs/ui-baseline/accueil-minage-light.png` : 6 projets, 5 IFC et 1 Treegram, mêlés. Les glyphes, les statuts, l'activité et les boutons sont alignés d'une ligne à l'autre.
+- `docs/ui-baseline/nouveau-projet-ifc-light.jpg` :
+  - l'identité vient en tête ;
+  - la source « Maquette IFC » montre le dossier des projets générés, « Changer… » et le rappel des IfcSpace ;
+  - le bouton devient « Créer et générer ».
+- À surveiller : sur un projet IFC pas encore traité, une place vide sépare ↻ de ✎ (place réservée pour ⇥).

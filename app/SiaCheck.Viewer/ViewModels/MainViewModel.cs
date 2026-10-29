@@ -37,7 +37,6 @@ public sealed partial class MainViewModel : ObservableObject
         _showRatios = settings.ShowRatios;
         _registry = new ProjectRegistry(paths.ProjectsFile);
         FillRecents();
-        FillGenerated();
         InitBenchmark();
         LayersView = new ListCollectionView(Layers);
         LayersView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(LayerItem.Group)));
@@ -98,17 +97,20 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _overlayStepsText = "lecture du .tgm, contrôles SIA 416, géométrie";
 
     /// <summary>
-    /// Nouveau projet (Évolution 3.8) : l'explorateur pour choisir le dossier Treegram, comme avant, puis la fiche
-    /// (dossier prérempli, identité), puis l'analyse.
+    /// Nouveau projet (Évolutions 3.8 et 4.5) : la fiche, identité d'abord, puis la source des données, dossier Treegram
+    /// ou maquette IFC ; puis l'analyse, ou la génération.
     /// </summary>
     [RelayCommand]
     private async Task NewProjectAsync()
     {
-        var dir = _shell.PickFolder("Dossier du projet Treegram (contient le fichier .tgm et le dossier VWR)", ProjectDir);
-        if (dir is null) return;
-        var initial = new ProjectSheet(ProjectFolder.Normalize(dir), new MdpProject { Name = Path.GetFileName(ProjectFolder.Normalize(dir)) });
+        var initial = new ProjectSheet("", new MdpProject()) { OutDir = GenerationFolder };
         var sheet = await _shell.AskProjectSheetAsync(initial, IdentityLists, creating: true, s => CheckSheet(s, null));
         if (sheet is null || Refused(CheckSheet(sheet, null))) return;
+        if (sheet.IsIfc)
+        {
+            await CreateFromIfcAsync(sheet);
+            return;
+        }
         var folderName = Path.GetFileName(ProjectFolder.Normalize(sheet.Folder));
         if (sheet.Identity.Name.Length == 0) sheet.Identity.Name = folderName;
         _settings.SetMdpProject(sheet.Folder, sheet.Identity);
@@ -120,20 +122,21 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Fiche d'un projet actif (✎) ou, sans paramètre, du projet ouvert (clic sur son nom).</summary>
     [RelayCommand]
     private Task EditProjectSheetAsync(RecentItem? recent) =>
-        recent is not null ? EditSheetAsync(recent.Path, recent.Name)
-        : ProjectDir is not null ? EditSheetAsync(ProjectDir, Document?.Project ?? Path.GetFileName(ProjectDir))
+        recent is not null ? EditSheetAsync(recent.Path, recent.Name, ifc: recent.Generated?.Source)
+        : ProjectDir is not null ? EditSheetAsync(ProjectDir, Document?.Project ?? Path.GetFileName(ProjectDir), ifc: _genReport?.Source)
         : Task.CompletedTask;
 
     /// <summary>
     /// Édite la fiche d'un projet ; un nouveau dossier emporte statuts, commentaires, corrections et revues IA, et le
     /// projet ouvert est rouvert dessus (réanalyse). Renvoie la fiche enregistrée, null si annulée ou refusée.
     /// </summary>
-    internal async Task<ProjectSheet?> EditSheetAsync(string path, string folderName, string? typologie = null)
+    internal async Task<ProjectSheet?> EditSheetAsync(string path, string folderName, string? typologie = null, string? ifc = null)
     {
         var known = KnownIdentity(path, folderName);
         if (typologie is not null && known.Typologie.Length == 0) known.Typologie = typologie;   // proposée d'après les surfaces
         var saved = System.Text.Json.JsonSerializer.Serialize(_settings.FindMdpProject(path));
-        var sheet = await _shell.AskProjectSheetAsync(new ProjectSheet(ProjectFolder.Normalize(path), known), IdentityLists,
+        // Projet généré : la source reste sa maquette (lecture seule), le dossier reste celui de la génération
+        var sheet = await _shell.AskProjectSheetAsync(new ProjectSheet(ProjectFolder.Normalize(path), known) { Ifc = ifc }, IdentityLists,
                                                       creating: false, s => CheckSheet(s, path));
         if (sheet is null || Refused(CheckSheet(sheet, path))) return null;
         if (sheet.Identity.Name.Length == 0) sheet.Identity.Name = known.Name;
@@ -179,12 +182,14 @@ public sealed partial class MainViewModel : ObservableObject
     internal SheetCheck CheckSheet(ProjectSheet s, string? current)
     {
         bool Mine(string p) => current is not null && ProjectFolder.Same(p, current);
-        var c = ProjectFolder.Check(s.Folder);
-        if (c.FolderOk && !Mine(s.Folder) && _settings.Recents.FirstOrDefault(r => ProjectFolder.Same(r.Path, s.Folder)) is { } taken)
+        var c = s.IsIfc && s.OutDir is not null ? CheckIfcSheet(s) : ProjectFolder.Check(s.Folder);
+        if (!s.IsIfc && c.FolderOk && !Mine(s.Folder) && _settings.Recents.FirstOrDefault(r => ProjectFolder.Same(r.Path, s.Folder)) is { } taken)
             c = c with { FolderMessage = $"Ce dossier est déjà celui de « {DisplayName(taken)} ».", FolderOk = false };
         var id = s.Identity.Id.Trim();
-        if (id.Length > 0 && _settings.Recents.FirstOrDefault(r => !Mine(r.Path) && !ProjectFolder.Same(r.Path, s.Folder)
-                                                                    && _settings.FindMdpProject(r.Path)?.Id.Trim() == id) is { } twin)
+        // ID en double : parmi tous les projets, Treegram comme générés
+        var others = _settings.Recents.Select(r => r.Path).Concat(GeneratedDirs());
+        if (id.Length > 0 && others.FirstOrDefault(p => !Mine(p) && !ProjectFolder.Same(p, s.Folder)
+                                                         && _settings.FindMdpProject(p)?.Id.Trim() == id) is { } twin)
             c = c with { IdWarning = $"L'ID {id} est aussi celui de « {DisplayName(twin)} »." };
         return c;
     }
@@ -198,6 +203,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     private string DisplayName(RecentProject r) => _settings.FindMdpProject(r.Path)?.Name is { Length: > 0 } n ? n : r.Name;
+    private string DisplayName(string path) => _settings.FindMdpProject(path)?.Name is { Length: > 0 } n ? n : Path.GetFileName(path);
 
     /// <summary>Identité connue d'un projet : sa fiche, complétée par le MDP de la base de même ID.</summary>
     private MdpProject KnownIdentity(string path, string folderName)
@@ -211,24 +217,34 @@ public sealed partial class MainViewModel : ObservableObject
         return known;
     }
 
+    /// <summary>Un projet Treegram s'ouvre sur ses sujets, un projet généré sur l'onglet Espaces.</summary>
     [RelayCommand]
-    private Task OpenRecentAsync(RecentItem recent) => OpenAsync(recent.Path);
+    private Task OpenRecentAsync(RecentItem recent) => recent.IsIfc ? OpenGeneratedDirAsync(recent.Path) : OpenAsync(recent.Path);
 
-    /// <summary>Supprime un projet de l'application (récents, statuts, corrections, analyse, revues IA, ID MDP) : repartir de zéro.</summary>
+    /// <summary>
+    /// Supprime un projet de l'application (récents, statuts, corrections, analyse, revues IA, ID MDP) : repartir de zéro.
+    /// Un projet généré perd aussi son dossier (fichiers écrits par le moteur), sans quoi il reviendrait dans la liste.
+    /// </summary>
     [RelayCommand]
     private async Task DeleteRecentAsync(RecentItem recent)
     {
-        var ok = await _shell.ConfirmAsync($"Supprimer « {recent.Name} » ?",
+        var ok = await _shell.ConfirmAsync($"Supprimer « {recent.DisplayName} » ?",
             "Les statuts et commentaires des points, les décisions sur les corrections, la dernière analyse, les revues IA " +
             "lancées depuis l'app, l'ID MDP et le statut (en traitement / traité) de ce projet seront effacés.\n\n" +
-            "Le dossier Treegram (.tgm, VWR) et les fichiers exportés ne sont pas touchés : le projet pourra être rouvert et " +
-            "réanalysé de zéro.",
+            (recent.IsIfc
+                ? $"Le dossier généré est supprimé lui aussi, avec les décisions sur ses espaces :\n{recent.Path}\n\n" +
+                  "La maquette IFC n'est pas touchée : le projet pourra être généré de nouveau."
+                : "Le dossier Treegram (.tgm, VWR) et les fichiers exportés ne sont pas touchés : le projet pourra être rouvert et " +
+                  "réanalysé de zéro."),
             "Supprimer", "Annuler");
         if (!ok) return;
         try
         {
             _paths.DeleteProject(recent.Path);
             _registry.Forget(recent.Path);
+            // Garde-fou : on n'efface qu'un dossier écrit par le moteur, rangé dans le dossier des projets générés
+            if (recent.IsIfc && GenerationReport.Exists(recent.Path) && GeneratedDirs().Any(d => ProjectFolder.Same(d, recent.Path)))
+                Directory.Delete(recent.Path, recursive: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -238,7 +254,7 @@ public sealed partial class MainViewModel : ObservableObject
         _settings.Forget(recent.Path);
         _settings.Save(_paths);
         Recents.Remove(recent);
-        _shell.Notify($"« {recent.Name} » supprimé de SIA Check.");
+        _shell.Notify($"« {recent.DisplayName} » supprimé de SIA Check.");
     }
 
     public async Task OpenAsync(string dir)
@@ -455,7 +471,6 @@ public sealed partial class MainViewModel : ObservableObject
         Scene = null;
         IsDashboard = false;
         FillRecents();
-        FillGenerated();
         if (IsBenchmarkStale) _ = RefreshBenchmarkAsync();
     }
 

@@ -40,88 +40,31 @@
             </ui:TitleBar.Icon>
         </ui:TitleBar>
 
-        <!-- ================================================================ ACCUEIL : Fiabilisation | Benchmark (plan §Évolution 3.0) -->
+        <!-- ================================================================ ACCUEIL : Minage de données | Benchmark (plan §Évolutions 3.0, 4.5) -->
         <Grid Grid.Row="1" Visibility="{Binding IsHome, Converter={StaticResource BoolToVisibility}}" ClipToBounds="True">
             <!-- Filigrane : le logo (plaques seules), grand et pâle, calé dans le coin bas-gauche, derrière le contenu -->
             <Image Source="pack://application:,,,/Assets/SiaCheckMark.png" Height="740" Opacity="0.07"
                    HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="-100,0,0,-125"
                    IsHitTestVisible="False" Focusable="False" RenderOptions.BitmapScalingMode="HighQuality" />
             <Grid MaxWidth="{StaticResource HomeMaxWidth}" Margin="{StaticResource HomeMargin}">
-                <!-- Génération plus étroite (liste courte : nom, état, date), Fiabilisation plus large (lignes chargées) -->
+                <!-- Minage de données (Évolution 4.5) : projets Treegram et IFC dans une seule liste, plus large que le benchmark -->
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="0.8*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="1.25*" />
+                    <ColumnDefinition Width="1.6*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Génération (Évolution 4.0) : surfaces SIA d'une maquette architecte IFC -->
+                <!-- Minage de données : tirer les surfaces d'un projet Treegram ou d'une maquette IFC -->
                 <DockPanel Grid.Column="0" Margin="{StaticResource HomeColumnLeft}">
                     <StackPanel DockPanel.Dock="Top">
-                        <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Génération" />
+                        <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Minage de données" />
                         <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"
-                                   Text="Générer les surfaces SIA d'une maquette IFC." />
-                        <ui:Button Margin="0,24,0,0" Appearance="Primary" Icon="{ui:SymbolIcon CubeAdd20}"
-                                   Content="Générer depuis un IFC…" Command="{Binding GenerateFromIfcCommand}"
-                                   MinHeight="{StaticResource TargetSize}" />
-                        <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
-                                   Text="La maquette doit contenir ses IfcSpace. Le projet généré s'ouvre ensuite dans la Fiabilisation." />
-                        <DockPanel Margin="0,32,0,8" Visibility="{Binding GeneratedProjects.Count, Converter={StaticResource VisibleWhen}}">
-                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource TextCaption}" Text="{Binding GeneratedProjects.Count}" />
-                            <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Projets générés" />
-                        </DockPanel>
-                    </StackPanel>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-                        <ItemsControl ItemsSource="{Binding GeneratedProjects}" KeyboardNavigation.TabNavigation="Continue">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel>
-                                        <ui:Button DockPanel.Dock="Right" Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon ArrowClockwise20}"
-                                                   VerticalAlignment="Center" MinHeight="{StaticResource TargetSize}"
-                                                   Command="{Binding DataContext.RegenerateItemCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                   CommandParameter="{Binding}" ToolTip="{Binding Source}"
-                                                   AutomationProperties.Name="Régénérer depuis la maquette" />
-                                        <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}"
-                                                Command="{Binding DataContext.OpenGeneratedCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                CommandParameter="{Binding}">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" MinWidth="80" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Style="{StaticResource TextSubtitle}" Text="{Binding Name}" ToolTip="{Binding Path}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                                <StackPanel Grid.Column="1" Margin="8,0" Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <ui:SymbolIcon Symbol="Checkmark16" FontSize="12" Margin="0,0,4,0" Foreground="{DynamicResource BrushStatusSeen}"
-                                                                   Visibility="{Binding IsSettled, Converter={StaticResource BoolToVisibility}}" />
-                                                    <TextBlock Style="{StaticResource TextCaption}" Text="{Binding StateText}" />
-                                                </StackPanel>
-                                                <TextBlock Grid.Column="2" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
-                                                           Text="{Binding Date, StringFormat=dd.MM.yyyy}" />
-                                            </Grid>
-                                        </Button>
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </DockPanel>
-
-                <Border Grid.Column="1" Width="1" Background="{DynamicResource BrushDivider}" />
-
-                <!-- Fiabilisation : contrôler et corriger un projet Treegram -->
-                <DockPanel Grid.Column="2" Margin="{StaticResource HomeColumnMiddle}">
-                    <StackPanel DockPanel.Dock="Top">
-                        <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Fiabilisation" />
-                        <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"
-                                   Text="Contrôler et corriger les surfaces d'un projet Treegram." />
+                                   Text="Tirer les surfaces SIA d'un projet Treegram ou d'une maquette IFC." />
                         <ui:Button Margin="0,24,0,0" Appearance="Primary" Icon="{ui:SymbolIcon FolderAdd20}"
                                    Content="Nouveau projet…" Command="{Binding NewProjectCommand}"
                                    MinHeight="{StaticResource TargetSize}" ToolTip="Ctrl+N" />
                         <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}" TextWrapping="Wrap"
-                                   Text="La fiche projet : le dossier Treegram (fichier .tgm et cache VWR) et l'identité HRS, reprise dans le MDP." />
+                                   Text="La fiche projet : l'identité HRS, reprise dans le MDP, puis la source des données (dossier Treegram ou maquette IFC)." />
 
                         <Border Margin="0,16,0,0" Style="{StaticResource Banner}" BorderBrush="{DynamicResource BrushVerdictError}"
                                 Visibility="{Binding HomeError, Converter={StaticResource VisibleWhen}}">
@@ -130,7 +73,7 @@
 
                         <DockPanel Margin="0,32,0,8" Visibility="{Binding Recents.Count, Converter={StaticResource VisibleWhen}}">
                             <TextBlock DockPanel.Dock="Right" Style="{StaticResource TextCaption}" Text="{Binding Recents.Count}" />
-                            <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Projets actifs" />
+                            <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Projets" />
                         </DockPanel>
                     </StackPanel>
 
@@ -144,45 +87,68 @@
                                                    Command="{Binding DataContext.DeleteRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                    CommandParameter="{Binding}" ToolTip="Supprimer le projet de SIA Check (statuts, corrections, analyse, revues IA)"
                                                    AutomationProperties.Name="Supprimer le projet" />
-                                        <!-- Fiche projet (Évolution 3.8) : identité et dossier, modifiables sans ouvrir le projet -->
+                                        <!-- Fiche projet (Évolution 3.8) : identité et source, modifiables sans ouvrir le projet -->
                                         <ui:Button DockPanel.Dock="Right" Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Edit20}"
                                                    VerticalAlignment="Center" MinHeight="{StaticResource TargetSize}"
                                                    Command="{Binding DataContext.EditProjectSheetCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                   CommandParameter="{Binding}" ToolTip="Fiche projet : identité HRS et dossier Treegram"
+                                                   CommandParameter="{Binding}" ToolTip="Fiche projet : identité HRS et source des données"
                                                    AutomationProperties.Name="Fiche projet" />
-                                        <!-- Un projet traité nourrit la base du benchmark -->
+                                        <!-- Un projet traité nourrit la base du benchmark ; place réservée sinon (boutons alignés) -->
                                         <ui:Button DockPanel.Dock="Right" Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon DatabaseArrowRight20}"
                                                    VerticalAlignment="Center" MinHeight="{StaticResource TargetSize}"
-                                                   Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibility}}"
+                                                   Visibility="{Binding IsDone, Converter={StaticResource VisibleOrHidden}}"
                                                    Command="{Binding DataContext.AddToBaseCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                    CommandParameter="{Binding}"
                                                    ToolTip="Ajouter à la base : exporte le MDP du projet (surfaces corrigées) dans le dossier de la base du benchmark"
                                                    AutomationProperties.Name="Ajouter à la base" />
+                                        <!-- Projet IFC : ↻ Régénérer ; sa place reste réservée sur une ligne Treegram (boutons alignés) -->
+                                        <ui:Button DockPanel.Dock="Right" Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon ArrowClockwise20}"
+                                                   VerticalAlignment="Center" MinHeight="{StaticResource TargetSize}"
+                                                   Visibility="{Binding IsIfc, Converter={StaticResource VisibleOrHidden}}"
+                                                   Command="{Binding DataContext.RegenerateItemCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                   CommandParameter="{Binding}" ToolTip="{Binding Source, StringFormat=Régénérer depuis {0}}"
+                                                   AutomationProperties.Name="Régénérer depuis la maquette" />
                                         <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}"
                                                 Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="28" />
                                                     <ColumnDefinition Width="44" />
                                                     <ColumnDefinition Width="*" MinWidth="100" />
                                                     <ColumnDefinition Width="112" />
                                                     <ColumnDefinition Width="104" />
-                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="168" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding IdText}" />
-                                                <TextBlock Grid.Column="1" Style="{StaticResource TextSubtitle}" Text="{Binding DisplayName}" ToolTip="{Binding Path}"
+                                                <!-- Source : arborescence pour Treegram, cube pour une maquette IFC -->
+                                                <ui:SymbolIcon FontSize="16" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                               Foreground="{DynamicResource BrushTextSecondary}" ToolTip="{Binding SourceTooltip}"
+                                                               AutomationProperties.Name="{Binding SourceTooltip}">
+                                                    <ui:SymbolIcon.Style>
+                                                        <Style TargetType="ui:SymbolIcon">
+                                                            <Setter Property="Symbol" Value="TextBulletListTree16" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsIfc}" Value="True">
+                                                                    <Setter Property="Symbol" Value="Cube16" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </ui:SymbolIcon.Style>
+                                                </ui:SymbolIcon>
+                                                <TextBlock Grid.Column="1" Style="{StaticResource TextMono}" VerticalAlignment="Center" Text="{Binding IdText}" />
+                                                <TextBlock Grid.Column="2" Style="{StaticResource TextSubtitle}" Text="{Binding DisplayName}" ToolTip="{Binding Path}"
                                                            TextTrimming="CharacterEllipsis" />
                                                 <!-- Typologie et canton, comme la liste de la base ; sinon ce qui manque (✎ pour compléter) -->
-                                                <TextBlock Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
+                                                <TextBlock Grid.Column="3" Margin="8,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
                                                            TextTrimming="CharacterEllipsis"
                                                            Visibility="{Binding HasWarning, Converter={StaticResource HiddenWhen}}">
                                                     <Run Text="{Binding TypologieText, Mode=OneWay}" /><Run Text="  " /><Run FontFamily="{StaticResource FontMono}" Text="{Binding CantonText, Mode=OneWay}" />
                                                 </TextBlock>
-                                                <TextBlock Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
+                                                <TextBlock Grid.Column="3" Margin="8,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center"
                                                            Foreground="{DynamicResource BrushVerdictWarning}" Text="{Binding Warning}"
                                                            ToolTip="Cliquez sur ✎ pour compléter la fiche projet"
                                                            Visibility="{Binding HasWarning, Converter={StaticResource BoolToVisibility}}" />
-                                                <TextBlock Grid.Column="3" Margin="8,0" Text="{Binding StatusLabel}" ToolTip="Statut du projet">
+                                                <TextBlock Grid.Column="4" Margin="8,0" Text="{Binding StatusLabel}" ToolTip="Statut du projet">
                                                     <TextBlock.Style>
                                                         <Style TargetType="TextBlock" BasedOn="{StaticResource TextCaption}">
                                                             <Setter Property="Foreground" Value="{DynamicResource BrushVerdictWarning}" />
@@ -198,9 +164,14 @@
                                                         </Style>
                                                     </TextBlock.Style>
                                                 </TextBlock>
-                                                <TextBlock Grid.Column="4" Style="{StaticResource TextCaption}">
-                                                    <Run Text="{Binding IssueCount, Mode=OneWay}" /><Run Text=" points · " /><Run Text="{Binding LastAnalysis, StringFormat=dd.MM.yyyy, Mode=OneWay}" />
-                                                </TextBlock>
+                                                <!-- Activité : points de l'analyse (Treegram), espaces à trancher (IFC, ✓ quand tout est tranché) -->
+                                                <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <ui:SymbolIcon Symbol="Checkmark16" FontSize="12" Margin="0,0,4,0" Foreground="{DynamicResource BrushStatusSeen}"
+                                                                   Visibility="{Binding IsSettled, Converter={StaticResource BoolToVisibility}}" />
+                                                    <TextBlock Style="{StaticResource TextCaption}">
+                                                        <Run Text="{Binding ActivityText, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding LastAnalysis, StringFormat=dd.MM.yyyy, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                </StackPanel>
                                             </Grid>
                                         </Button>
                                     </DockPanel>
@@ -210,10 +181,10 @@
                     </ScrollViewer>
                 </DockPanel>
 
-                <Border Grid.Column="3" Width="1" Background="{DynamicResource BrushDivider}" />
+                <Border Grid.Column="1" Width="1" Background="{DynamicResource BrushDivider}" />
 
                 <!-- Benchmark : comparer un projet à ceux qui lui ressemblent -->
-                <DockPanel Grid.Column="4" Margin="{StaticResource HomeColumnRight}" Grid.IsSharedSizeScope="True">
+                <DockPanel Grid.Column="2" Margin="{StaticResource HomeColumnRight}" Grid.IsSharedSizeScope="True">
                     <StackPanel DockPanel.Dock="Top">
                         <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Benchmark" />
                         <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"

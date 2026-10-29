@@ -8,6 +8,8 @@ namespace SiaCheck.Viewer.Controls;
 public sealed class VisibleWhenConverter : IValueConverter
 {
     public bool Invert { get; set; }
+    /// <summary>Visibilité quand la condition est fausse : Hidden garde la place (boutons alignés d'une ligne à l'autre).</summary>
+    public Visibility Off { get; set; } = Visibility.Collapsed;
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
@@ -19,7 +21,7 @@ public sealed class VisibleWhenConverter : IValueConverter
             null => false,
             _ => true,
         };
-        return on ^ Invert ? Visibility.Visible : Visibility.Collapsed;
+        return on ^ Invert ? Visibility.Visible : Off;
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>

@@ -145,68 +145,154 @@ public partial class MainWindow : FluentWindow, IShell
     private const double DialogWidth = 680;
 
     /// <summary>
-    /// Fiche projet (docs/DESIGN_PLAN.md, Évolution 3.8) : dossier Treegram en tête, contrôlé à chaque choix, puis
-    /// l'identité. Seul un dossier valide est obligatoire ; les champs * restent un rappel pour le benchmark.
+    /// Fiche projet (docs/DESIGN_PLAN.md, Évolutions 3.8 et 4.5) : l'identité d'abord, puis la source des données. À la
+    /// création, un choix Treegram | Maquette IFC ; ensuite, la source du projet seule (maquette en lecture seule pour un
+    /// projet généré). Seule une source valide est obligatoire ; les champs * restent un rappel pour le benchmark.
     /// </summary>
     public async Task<ProjectSheet?> AskProjectSheetAsync(ProjectSheet initial, IdentityLists lists, bool creating,
                                                          Func<ProjectSheet, SheetCheck> check)
     {
-        // Le dossier se choisit dans l'explorateur (champ ou bouton), jamais au clavier
-        var folder = new System.Windows.Controls.TextBox { Text = initial.Folder, IsReadOnly = true, Cursor = Cursors.Hand,
-                                                           ToolTip = "Cliquer pour choisir le dossier dans l'explorateur" };
-        var browse = new Wpf.Ui.Controls.Button { Content = "Parcourir…", Margin = new Thickness(8, 0, 0, 0) };
-        var folderState = new System.Windows.Controls.TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
-        var idWarning = new System.Windows.Controls.TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
-        idWarning.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "BrushVerdictWarning");
-        var form = new IdentityForm(initial.Identity, lists, idReadOnly: false);
-
-        var row = new DockPanel();
-        DockPanel.SetDock(browse, Dock.Right);
-        row.Children.Add(browse);
-        row.Children.Add(folder);
         System.Windows.Controls.TextBlock Section(string text, double top)
         {
             var s = new System.Windows.Controls.TextBlock { Text = text, Margin = new Thickness(0, top, 0, 6) };
             s.SetResourceReference(StyleProperty, "TextSection");
             return s;
         }
+        System.Windows.Controls.TextBlock Caption(string text)
+        {
+            var c = new System.Windows.Controls.TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+            c.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "BrushTextSecondary");
+            return c;
+        }
+        // Les chemins se choisissent dans l'explorateur (champ ou bouton), jamais au clavier
+        (DockPanel Row, System.Windows.Controls.TextBox Box) PathRow(string text, string tooltip, Action browse, bool locked = false)
+        {
+            var box = new System.Windows.Controls.TextBox { Text = text, IsReadOnly = true, Cursor = locked ? null : Cursors.Hand,
+                                                            ToolTip = locked ? text : tooltip };
+            var row = new DockPanel();
+            if (!locked)
+            {
+                var button = new Wpf.Ui.Controls.Button { Content = "Parcourir…", Margin = new Thickness(8, 0, 0, 0) };
+                button.Click += (_, _) => browse();
+                box.PreviewMouseLeftButtonUp += (_, e) => { e.Handled = true; browse(); };
+                DockPanel.SetDock(button, Dock.Right);
+                row.Children.Add(button);
+            }
+            row.Children.Add(box);
+            return (row, box);
+        }
+
+        var ifcProject = !creating && initial.IsIfc;
+        var form = new IdentityForm(initial.Identity, lists, idReadOnly: false);
+        var state = new System.Windows.Controls.TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+        var idWarning = new System.Windows.Controls.TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+        idWarning.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "BrushVerdictWarning");
+
         var panel = new StackPanel { MinWidth = 560 };
-        panel.Children.Add(Section("Dossier Treegram", 0));
-        panel.Children.Add(row);
-        panel.Children.Add(folderState);
-        panel.Children.Add(Section("Identité", 20));
+        panel.Children.Add(Section("Identité", 0));
         panel.Children.Add(form.Grid);
         panel.Children.Add(idWarning);
+        panel.Children.Add(Section(creating ? "Source des données" : ifcProject ? "Maquette IFC" : "Dossier Treegram", 20));
+
+        // Source : Treegram (dossier .tgm + VWR) ou maquette IFC ; le choix n'existe qu'à la création
+        var treegram = new System.Windows.Controls.RadioButton { Content = "Treegram", GroupName = "source", IsChecked = !initial.IsIfc, MinWidth = 120 };
+        var ifc = new System.Windows.Controls.RadioButton { Content = "Maquette IFC", GroupName = "source", IsChecked = initial.IsIfc, Margin = new Thickness(16, 0, 0, 0) };
+        if (creating)
+        {
+            var choice = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            choice.Children.Add(treegram);
+            choice.Children.Add(ifc);
+            panel.Children.Add(choice);
+        }
+
+        System.Windows.Controls.TextBox folder = null!, model = null!;
+        var outDir = initial.OutDir;
+        var (folderRow, folderBox) = PathRow(initial.Folder, "Cliquer pour choisir le dossier dans l'explorateur", () =>
+        {
+            var dir = PickFolder("Dossier du projet Treegram (contient le fichier .tgm et le dossier VWR)", folder.Text.Length > 0 ? folder.Text : null);
+            if (dir is null) return;
+            folder.Text = dir;
+            form.SuggestName(System.IO.Path.GetFileName(System.IO.Path.TrimEndingDirectorySeparator(dir)));
+            form.Refresh();
+        });
+        folder = folderBox;
+        var (modelRow, modelBox) = PathRow(initial.Ifc ?? "", "Cliquer pour choisir la maquette dans l'explorateur", () =>
+        {
+            var file = PickOpenFile("Maquette architecte IFC (avec ses IfcSpace)", "Maquette IFC|*.ifc");
+            if (file is null) return;
+            model.Text = file;
+            form.SuggestName(System.IO.Path.GetFileNameWithoutExtension(file));
+            form.Refresh();
+        }, locked: ifcProject);
+        model = modelBox;
+
+        // Dossier des projets générés (création IFC) : le projet y prend son nom
+        var outText = new System.Windows.Controls.TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        outText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "BrushTextSecondary");
+        var change = new Wpf.Ui.Controls.Button { Content = "Changer…", Margin = new Thickness(8, 0, 0, 0), Appearance = ControlAppearance.Transparent };
+        var outRow = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
+        DockPanel.SetDock(change, Dock.Right);
+        outRow.Children.Add(change);
+        outRow.Children.Add(outText);
+        void ShowOut() => outText.Text = $"Dossier des projets générés : {outDir}";
+        change.Click += (_, _) =>
+        {
+            var dir = PickFolder("Dossier des projets générés", outDir);
+            if (dir is null) return;
+            outDir = dir;
+            ShowOut();
+            form.Refresh();
+        };
+        ShowOut();
+
+        var ifcPanel = new StackPanel();
+        ifcPanel.Children.Add(modelRow);
+        if (creating)
+        {
+            ifcPanel.Children.Add(outRow);
+            ifcPanel.Children.Add(Caption("La maquette doit contenir ses IfcSpace. La génération prend de 30 s à quelques minutes."));
+        }
+        else if (ifcProject)
+            ifcPanel.Children.Add(Caption("↻ Régénérer, dans la liste des projets, relit cette maquette ; elle est redemandée si elle a été déplacée."));
+        if (creating || !ifcProject) panel.Children.Add(folderRow);
+        if (creating || ifcProject) panel.Children.Add(ifcPanel);
+        panel.Children.Add(state);
 
         var dlg = new Wpf.Ui.Controls.MessageBox
         {
             Title = creating ? "Nouveau projet" : "Fiche projet", Content = panel, Owner = this,
             PrimaryButtonText = creating ? "Créer et analyser" : "Enregistrer", CloseButtonText = "Annuler",
             Width = DialogWidth, MaxWidth = DialogWidth,
+            // La fiche grandit avec sa source (bloc IFC plus haut que le bloc Treegram) : jamais de champ coupé
+            SizeToContent = SizeToContent.Height, MaxHeight = SystemParameters.WorkArea.Height - 40,
         };
-        ProjectSheet Read() => new(folder.Text.Trim(), form.Read());
+        bool IsIfc() => ifcProject || creating && ifc.IsChecked == true;
+        ProjectSheet Read() => IsIfc()
+            ? new ProjectSheet(creating ? "" : initial.Folder, form.Read()) { Ifc = model.Text.Trim(), OutDir = creating ? outDir : null }
+            : new ProjectSheet(folder.Text.Trim(), form.Read());
+        void ShowSource()
+        {
+            if (!creating) return;
+            folderRow.Visibility = IsIfc() ? Visibility.Collapsed : Visibility.Visible;
+            ifcPanel.Visibility = IsIfc() ? Visibility.Visible : Visibility.Collapsed;
+            dlg.PrimaryButtonText = IsIfc() ? "Créer et générer" : "Créer et analyser";
+        }
         form.Changed += () =>
         {
             var c = check(Read());
-            folderState.Text = c.FolderMessage;
-            folderState.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,
-                !c.FolderOk ? "BrushVerdictError" : c.FolderWarning ? "BrushVerdictWarning" : "BrushTextSecondary");
+            state.Text = c.FolderMessage;
+            // Source pas encore choisie : une invitation, pas une erreur
+            var chosen = (IsIfc() ? model.Text : folder.Text).Trim().Length > 0;
+            state.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,
+                !c.FolderOk && chosen ? "BrushVerdictError" : c.FolderWarning ? "BrushVerdictWarning" : "BrushTextSecondary");
             idWarning.Text = c.IdWarning ?? "";
             idWarning.Visibility = c.IdWarning is null ? Visibility.Collapsed : Visibility.Visible;
             form.ShowReminder();
-            // Bouton toujours visible (WPF-UI masque un bouton désactivé) : un dossier refusé est signalé à la validation
+            // Bouton toujours visible (WPF-UI masque un bouton désactivé) : une source refusée est signalée à la validation
         };
-        void Browse()
-        {
-            var dir = PickFolder("Dossier du projet Treegram (contient le fichier .tgm et le dossier VWR)",
-                                 folder.Text.Length > 0 ? folder.Text : null);
-            if (dir is null) return;
-            folder.Text = dir;
-            form.SuggestName(System.IO.Path.GetFileName(System.IO.Path.TrimEndingDirectorySeparator(dir)));
-            form.Refresh();
-        }
-        browse.Click += (_, _) => Browse();
-        folder.PreviewMouseLeftButtonUp += (_, e) => { e.Handled = true; Browse(); };
+        treegram.Checked += (_, _) => { ShowSource(); form.Refresh(); };
+        ifc.Checked += (_, _) => { ShowSource(); form.Refresh(); };
+        ShowSource();
         form.Refresh();
         dlg.Loaded += (_, _) => form.Focus(false);
         return await dlg.ShowDialogAsync() == Wpf.Ui.Controls.MessageBoxResult.Primary ? Read() : null;

@@ -53,6 +53,16 @@ public sealed partial class MainViewModel : ObservableObject
     // ------------------------------------------------------------------ état général
 
     public ObservableCollection<RecentItem> Recents { get; } = [];
+    private ICollectionView? _recentsView;
+    /// <summary>Liste de l'accueil regroupée par statut : « En traitement », puis « Traités » (Évolution 4.6).</summary>
+    public ICollectionView RecentsView => _recentsView ??= CreateRecentsView();
+
+    private ICollectionView CreateRecentsView()
+    {
+        var v = new ListCollectionView(Recents);
+        v.GroupDescriptions.Add(new PropertyGroupDescription(nameof(RecentItem.GroupLabel)));
+        return v;
+    }
     [ObservableProperty] private string? _projectDir;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasDocument), nameof(IsHome), nameof(IsReviewing), nameof(ProjectName))] private ViewerDocument? _document;
     [ObservableProperty] private SceneController? _scene;

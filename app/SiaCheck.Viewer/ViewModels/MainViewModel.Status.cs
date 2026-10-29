@@ -20,6 +20,13 @@ public sealed class RecentItem(RecentProject project, ProjectStatus status, MdpP
     public string Source => Generated?.Source ?? "";
     /// <summary>Tous les espaces tranchés (coche) : projet IFC seulement.</summary>
     public bool IsSettled => Generated?.State.ToDecide == 0;
+    /// <summary>Espaces à trancher (pastille accent) : la seule activité qui demande une action.</summary>
+    public int ToDecide => Generated?.State.ToDecide ?? 0;
+    public bool HasToDecide => ToDecide > 0;
+    public bool ShowsPoints => !IsIfc;
+    public string ActivityTooltip => Generated is { } g
+        ? (g.State.ToDecide == 0 ? "Tous les espaces sont tranchés" : $"{g.State.ToDecide} espace{(g.State.ToDecide > 1 ? "s" : "")} à trancher (onglet Espaces)")
+        : $"{Project.IssueCount} point{(Project.IssueCount > 1 ? "s" : "")} d'attention à la dernière analyse";
     /// <summary>Colonne d'activité : les points de l'analyse, ou les espaces à trancher d'un projet généré.</summary>
     public string ActivityText => Generated is { } g
         ? (g.State.ToDecide == 0 ? "tout tranché" : $"{g.State.ToDecide} à trancher")
@@ -30,13 +37,20 @@ public sealed class RecentItem(RecentProject project, ProjectStatus status, MdpP
     /// <summary>Nom de la fiche projet, sinon celui du dossier.</summary>
     public string DisplayName => Identity?.Name is { Length: > 0 } n ? n : Project.Name;
     public string IdText => Identity?.Id is { Length: > 0 } id ? id : "—";
+    /// <summary>Liste de l'accueil : l'ID, ou rien (pas de tiret répété sur chaque ligne sans ID).</summary>
+    public string IdShort => Identity?.Id is { Length: > 0 } id ? id : "";
     public string TypologieText => ProjectIdentity.Short(Identity?.Typologie);
     public string CantonText => Identity?.Canton is { Length: > 0 } c ? c : "—";
+    /// <summary>Liste de l'accueil : typologie et canton connus, sinon rien (le ⚠ du nom dit ce qui manque).</summary>
+    public string TypologieShort => Identity?.Typologie is { Length: > 0 } t ? ProjectIdentity.Short(t) : "";
+    public string CantonShort => Identity?.Canton ?? "";
     public bool FolderMissing { get; } = !exists;
     /// <summary>Ce qui manque au projet : son dossier, sinon une partie de l'identité nécessaire au benchmark.</summary>
     public string? Warning => FolderMissing ? "Dossier introuvable"
         : Identity is null || ProjectIdentity.Missing(Identity, forBase: true).Count > 0 ? "Infos à compléter" : null;
     public bool HasWarning => Warning is not null;
+    /// <summary>Intertitre de la liste de l'accueil (Évolution 4.6) : le statut regroupe, il n'est plus redit sur chaque ligne.</summary>
+    public string GroupLabel => IsDone ? "Traités" : "En traitement";
     public string Path => Project.Path;
     public int IssueCount => Project.IssueCount;
     public DateTime LastAnalysis => Project.LastAnalysis;

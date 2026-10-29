@@ -2040,3 +2040,32 @@ Non-régression : les écrans de la Fiabilisation (barre de commande, calques, b
   - la source « Maquette IFC » montre le dossier des projets générés, « Changer… » et le rappel des IfcSpace ;
   - le bouton devient « Créer et générer ».
 - À surveiller : sur un projet IFC pas encore traité, une place vide sépare ↻ de ✎ (place réservée pour ⇥).
+
+## Évolution 4.6 — Liste des projets : des icônes plutôt que des mots (mode ÉVOLUTION)
+
+> Statut : ☑ Proposé ☑ Validé par l'utilisateur, avec la consigne « un maximum de logos plutôt que des messages écrits, un T pour Treegram » (29.10.2026) ☑ Implémenté
+> Constat (revue du 29.10.2026) :
+> - un trou de 450 px entre le nom et les données ;
+> - dix mots orange (« Infos à compléter », « En traitement ») qui noyaient la seule action utile, « 1 à trancher » ;
+> - une vingtaine de boutons à bordure ;
+> - aucun en-tête de colonnes, contrairement à la liste de la base.
+
+- **Regroupement par statut** : deux intertitres, « En traitement · 5 » et « Traités · 1 ». La colonne Statut disparaît.
+- **En-tête de colonnes** : ID, Projet, Typologie, Canton, Activité, Modifié, comme la liste de la base. Les colonnes ont des largeurs fixes, et la ligne est calée à gauche : les actions suivent les données.
+- **Icônes à la place du texte**, chacune avec son infobulle :
+  - Source : `TextT20` (T) pour Treegram, `Cube16` pour IFC ;
+  - Fiche incomplète : ⚠ `Warning16` après le nom, couleur VerdictWarning ;
+  - Dossier introuvable : `FolderProhibited16`, couleur VerdictError ;
+  - Traité puis modifié : `ArrowSyncCircle16`, couleur VerdictWarning ;
+  - Activité :
+    - `Flag16` suivi du nombre de points (Treegram) ;
+    - `CheckmarkCircle16` en StatusSeen quand tout est tranché ;
+    - espaces à trancher : une **pastille accent**, `QuestionCircle16` suivi du nombre. C'est le seul signal coloré, parce que c'est la seule action à faire.
+  - ID absent : rien, au lieu d'un tiret répété.
+- **Actions** :
+  - ↻, ✎ et 🗑 apparaissent au survol ou au focus clavier de la ligne. La place reste réservée, donc rien ne bouge ;
+  - ⇥ Ajouter à la base reste visible sur un projet traité : c'est l'action suivante.
+  - Les boutons perdent leur bordure.
+- Aucune nouvelle couleur.
+- Revue : `docs/ui-baseline/accueil-minage-light.png`. Le survol n'a pas pu être vérifié à la souris, la session Windows étant verrouillée pendant la revue.
+- **Choix rejeté** : un bouton « ⋯ » avec menu par ligne. Il cache tout, et ⇥ doit rester visible.

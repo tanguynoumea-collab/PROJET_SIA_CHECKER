@@ -521,6 +521,19 @@ Non-régression :
 - **Myonaz 2 N03** : fenêtres de toit 34,8 m², SRV 119,9 m².
 - **Test** : fond d'ébrasement plus long que la vitre, trou dans la SPT.
 
+**Vitres qui dépassent du toit (retour du 30.10.2026)** : des vitrages sortaient encore de la toiture sur Myonaz 2. Deux cas :
+
+- **Portes-fenêtres de pignon** (FS01, FS02) dont le linteau suit la pente. Elles étaient dessinées en rectangle, à la hauteur de façade lue en leur centre : le côté bas dépassait d'au plus 1,15 m, le côté haut était tronqué.
+  - Correction : sous une toiture, chaque ouverture est rognée au contour de la façade, côté par côté (`_facade`). Le vitrage dessiné et l'aire (réservations, SRV) ne gardent que la part dans la façade.
+  - Sous un pignon, l'ouverture va jusqu'en haut si la façade dépasse l'étage sur sa largeur (et non en son seul centre).
+- **Fenêtres de lucarne** (FB09, FB12), verticales, comptées en fenêtres de toit. La lucarne n'est pas dans la toiture simplifiée : debout, la vitre en dépassait.
+  - Correction : elle est couchée dans le pan sous elle, à la même aire (même largeur, le long de la pente).
+- **Toutes les fenêtres de toit** sont posées à fleur de la couverture, dans le trou de la SPT. Avant, la vitre d'un vasistas flottait 12 à 14 cm au-dessus.
+- **Myonaz 2 N03** : réservations 82,6 m², SRV 117,5 m², dont 34,8 m² de fenêtres de toit.
+- **Myonaz 1 N03** : SRV 62,4 m².
+- **Contrôle** : aucun triangle de vitrage au-dessus du toit sur Myonaz 1 et 2.
+- **Test** : porte-fenêtre de pignon rognée à la pente.
+
 ## 23. Publication de la 4.0.0 (29.10.2026)
 
 Le tag `v4.0.0` est posé sur l'état final, avec les retours des §20 à §22 :

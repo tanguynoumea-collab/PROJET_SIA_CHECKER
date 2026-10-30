@@ -163,9 +163,10 @@ def _openings(level: Level, sp: BaseGeometry, glazed_doors: str = GLAZED_DOORS, 
         if top is not None and band:   # haut de la façade sous la toiture : rive (plus bas), pignon (plus haut)
             c = p.shape.centroid
             wall = float(top([(c.x, c.y)])[0])
-            zh = min(it.z_max, wall)
-            if wall < band[1] - 0.01 and zh - zl < 0.5 * (it.z_max - zl):
+            if wall < band[1] - 0.01 and min(it.z_max, wall) - zl < 0.5 * (it.z_max - zl):
                 continue   # lucarne : au-dessus de la rive pour plus de moitié, fenêtre de toit
+            if float(np.max(top([side[0], side[1]]))) > band[1] + 0.01:
+                zh = it.z_max   # pignon sur sa largeur : jusqu'en haut de l'ouverture, rognée ensuite à la pente (_facade)
         if zh - zl <= 0.01:
             continue
         is_glass = it.ifc_class.startswith("IfcWindow") or not it.ifc_class.startswith("IfcOpeningElement") \
@@ -230,9 +231,16 @@ def facade_mesh(sp: BaseGeometry, z0: float, z1: float, holes: list, top=None) -
     return _facade(sp, z0, z1, holes, top)[0]
 
 
-def _facade(sp: BaseGeometry, z0: float, z1: float, holes: list, top=None) -> tuple[Mesh | None, float]:
-    """(maillage, aire brute) de la façade : voir facade_mesh."""
+def _facade(sp: BaseGeometry, z0: float, z1: float, holes: list, top=None,
+            panes: list = ()) -> tuple[Mesh | None, float, dict, Mesh | None]:
+    """(maillage, aire brute, part de chaque ouverture dans la façade, maillage des vitrages `panes`) : voir
+    facade_mesh. Sous une toiture, une ouverture est rognée au contour de la façade, côté par côté : une
+    porte-fenêtre de pignon dont le linteau suit la pente ne dépasse pas du toit, et ne compte que sa part dans la
+    façade (`part` : aire rognée / aire du rectangle, sur le côté le plus proche)."""
     v, idx, gross = [], [], 0.0
+    gv, gi = [], []
+    glass = {tuple(map(tuple, (q[0], q[1]))) + (q[2], q[3]) for q in panes}
+    best: dict = {}   # ouverture -> (distance au côté, part rognée, polygone rogné, origine et direction du côté)
     for ring in _rings(sp):
         pts = list(ring.coords)
         for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
@@ -247,13 +255,19 @@ def _facade(sp: BaseGeometry, z0: float, z1: float, holes: list, top=None) -> tu
                 zs = top([(x0 + ux * u, y0 + uy * u) for u in us])
                 wall = shapely.Polygon([(0.0, z0), (length, z0)] + list(zip(us[::-1], zs[::-1]))).buffer(0)
             cut = []
-            for (ax, ay), (bx, by), zl, zh in holes:
+            for hole in holes:
+                (ax, ay), (bx, by), zl, zh = hole
                 # distance au côté (normale) et position le long du côté, pour les deux bouts de l'ouverture
                 ua, ub = (ax - x0) * ux + (ay - y0) * uy, (bx - x0) * ux + (by - y0) * uy
                 da, db = abs((ax - x0) * uy - (ay - y0) * ux), abs((bx - x0) * uy - (by - y0) * ux)
                 if max(da, db) > 2 * FACADE_REACH_M or max(ua, ub) < 0 or min(ua, ub) > length:   # emprise à 0,6 m, axe un peu plus loin
                     continue
-                cut.append(box(max(min(ua, ub), 0.0), zl, min(max(ua, ub), length), zh))
+                rect = box(max(min(ua, ub), 0.0), zl, min(max(ua, ub), length), zh)
+                cut.append(rect)
+                key = tuple(map(tuple, (hole[0], hole[1]))) + (zl, zh)
+                if rect.area > 1e-9 and (key not in best or max(da, db) < best[key][0]):
+                    kept = rect.intersection(wall)
+                    best[key] = (max(da, db), kept.area / rect.area, kept, (x0, y0, ux, uy))
             gross += wall.area
             face = wall.difference(shapely.union_all(cut)) if cut else wall
             if face.is_empty:
@@ -264,7 +278,18 @@ def _facade(sp: BaseGeometry, z0: float, z1: float, holes: list, top=None) -> tu
                 for u, z in list(t.exterior.coords)[:3]:
                     idx.append(len(v) // 3)
                     v += [x0 + ux * u, y0 + uy * u, z]
-    return (Mesh(v, idx) if idx else None), gross
+    for key, (_, _, kept, (x0, y0, ux, uy)) in best.items():   # vitrages rognés au contour de la façade
+        if key not in glass or kept.is_empty:
+            continue
+        for t in getattr(shapely.constrained_delaunay_triangles(kept), "geoms", []):
+            if t.area <= 1e-9 or not kept.covers(t.representative_point()):
+                continue
+            for u, z in list(t.exterior.coords)[:3]:
+                gi.append(len(gv) // 3)
+                gv += [x0 + ux * u, y0 + uy * u, z]
+    part = {key: b[1] for key, b in best.items()}
+    loose = vertical_mesh([q for q in panes if tuple(map(tuple, (q[0], q[1]))) + (q[2], q[3]) not in best])
+    return (Mesh(v, idx) if idx else None), gross, part, _merge([Mesh(gv, gi) if gi else None, loose])
 
 
 def _top(roofs: Roofs | None, z0: float, z1: float, above: BaseGeometry | None, sp: BaseGeometry | None = None,
@@ -378,8 +403,11 @@ def build(levels: list[Level], decisions: dict[str, Decision], below_ground: set
                 lv, lv.sp, env_cfg.get("glazed_doors") or GLAZED_DOORS, (lv.z, lv.z + h),
                 env_cfg.get("not_openings") or NOT_OPENINGS, extra=loose, skip=tilted, top=top)
             taken |= used
-            lv.facade, gross = _facade(lv.sp, lv.z, lv.z + h, holes, top)
-            lv.glazing = vertical_mesh(panes)
+            lv.facade, gross, part, lv.glazing = _facade(lv.sp, lv.z, lv.z + h, holes, top, panes)
+            if top is not None:   # ouvertures rognées au contour de la façade (linteau en pente, pignon)
+                def m2(q):
+                    return ((q[1][0] - q[0][0]) ** 2 + (q[1][1] - q[0][1]) ** 2) ** 0.5 * (q[3] - q[2])                         * part.get(tuple(map(tuple, (q[0], q[1]))) + (q[2], q[3]), 1.0)
+                resa, glass = sum(m2(q) for q in holes), sum(m2(q) for q in panes)
             # sous une toiture en pente, la façade n'est plus périmètre × hauteur d'étage : la SFN porte sa hauteur
             # moyenne (contrôle E3 de la Fiabilisation), les totaux SP, SEP et SPT la hauteur d'étage
             mean = gross / lv.sp.length if top is not None and lv.sp.length > 0 else h
@@ -407,6 +435,27 @@ def _under_roof(roofs: Roofs | None, p: Placed) -> bool:
     return not np.isnan(z).all() and p.item.z_max >= np.nanmin(z) - ROOF_WINDOW_REACH_M
 
 
+def _laid(roofs: Roofs, p: Placed, area: float, quad: list) -> list | None:
+    """Vitre verticale d'une lucarne couchée dans le pan sous elle, à la même aire : même largeur, le long de la
+    pente. La lucarne (pans secondaires) n'est pas dans la toiture simplifiée : debout, la vitre en dépasserait."""
+    c = p.shape.centroid
+    n = roofs.normal_at((c.x, c.y))
+    z = roofs.top_z([(c.x, c.y)], extend=True)[0]
+    if n is None or np.isnan(z):
+        return None
+    q = np.asarray(quad, float)
+    width = float(np.linalg.norm(q[1] - q[0]))
+    if width <= 1e-6:
+        return None
+    u = np.array([q[1][0] - q[0][0], q[1][1] - q[0][1], 0.0])
+    u = u - n * (u @ n)               # largeur de la vitre, dans le pan
+    u /= np.linalg.norm(u)
+    v = np.cross(n, u)                # le long de la pente
+    length = area / width
+    o = np.array([c.x, c.y, z])
+    return [(o + u * su * width / 2 + v * sv * length / 2).tolist() for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+
+
 def _roof_windows(own: list[Level], roofs: Roofs, windows: dict, tilted: set[str], taken: set[str],
                   tops: dict | None = None) -> list:
     """Fenêtres de toit du bâtiment : inclinées, ou hors façade sous la toiture et au-dessus de la façade (de
@@ -432,6 +481,11 @@ def _roof_windows(own: list[Level], roofs: Roofs, windows: dict, tilted: set[str
             wall = min(wall, float(top([(c.x, c.y)])[0]))
         if g not in tilted and 0.5 * (p.item.z_min + p.item.z_max) < wall - 0.01:
             continue   # verticale sous le haut de la façade, hors façade : fenêtre intérieure
+        if g not in tilted and (laid := _laid(roofs, p, area, quad)) is not None:
+            quad = laid   # fenêtre de lucarne : la lucarne n'est pas dans la toiture simplifiée, la vitre y est couchée
+        # posée à fleur de la couverture (la SPT percée à son droit) : ni au-dessus, ni en dessous
+        zs = roofs.top_z([q[:2] for q in quad], extend=True)
+        quad = [[q[0], q[1], float(z) if not np.isnan(z) else q[2]] for q, z in zip(quad, zs)]
         host.glazing = _merge([host.glazing, quads_mesh([quad])])
         quads.append(quad)
         host.envelope["SRV"] = round(host.envelope.get("SRV", 0.0) + area, 2)

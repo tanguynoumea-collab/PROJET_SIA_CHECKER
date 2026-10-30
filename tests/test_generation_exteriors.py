@@ -306,6 +306,27 @@ def test_roof_window_in_its_lining_lies_in_the_roof_plane():
     assert developed == pytest.approx(200 / math.cos(s), rel=1e-3)
 
 
+def test_gable_window_is_cut_to_the_slope():
+    """Myonaz 2 FS01 (30.10.2026) : une porte-fenêtre de pignon dont le linteau suit la pente ne dépasse pas du toit ;
+    son vitrage est rogné au contour de la façade et ne compte que sa part."""
+    import math
+    import numpy as np
+    roof_mesh, ridge = _gable_roof()
+    n00 = level("N00", 0.0, 3.0, sp=box(0, 0, 10, 20))
+    ttr = level("TTR", 3.0, None)
+    roof = Item("r", "IfcRoof", "Toit", "A", "TTR", mesh=roof_mesh, z_min=1.0, z_max=ridge + 0.2)
+    ttr.plan.elements.append(plans.Placed(roof, plans.footprint(roof_mesh)))
+    # pignon y = 0 : porte-fenêtre de x 1 à 4, jusqu'à 3,5 m (le pignon monte de 1,78 à 3,51 m sur sa largeur)
+    win = Item("w", "IfcWindow", "Fenêtre", "A", "N00", z_min=0.0, z_max=3.5, props={"Pset_WindowCommon.IsExternal": True})
+    n00.plan.elements.append(plans.Placed(win, box(1, -0.1, 4, 0.1)))
+    exteriors.build([n00, ttr], {}, set(), {})
+    v = np.asarray(n00.glazing.vertices).reshape(-1, 3)
+    pan = 1.2 + v[:, 0] * math.tan(math.radians(30))
+    assert (v[:, 2] <= pan + 1e-6).all()                                          # rien au-dessus du toit
+    full = 3 * 1.2 + 0.5 * 3 * 3 * math.tan(math.radians(30)) + 3 * 1.0 * math.tan(math.radians(30))   # sous la pente, x 1 à 4
+    assert n00.envelope["SRV"] == pytest.approx(full, rel=1e-2)
+
+
 def test_construction_scp_scn_thin_bands_and_true_gaps():
     """V4.1 : murs porteurs et poteaux en SCP, autres murs en SCN, bandes minces restantes en SC (non modélisée),
     le reste est la SP non classée ; garde-corps d'un balcon en SECN."""

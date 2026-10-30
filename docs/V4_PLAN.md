@@ -584,3 +584,11 @@ C'est la première publication de la V4 : release GitHub « SIA Check Viewer 4.0
    - **Calcul :** les identifier et les modéliser comme des surfaces à part entière, avec leur propre géométrie. Les sources sont les emprises des IfcWall, IfcColumn, IfcCurtainWall et IfcRailing pleins, et les dalles de balcon hors espaces.
    - **Objectif :** que SN + SC recolle à la SP, et SEN + SEC à la SEP. Ce qui reste non couvert révèle les vraies zones de SP ou de SEP non catégorisées : un espace oublié par l'architecte, une loggia non dessinée, une trémie. Ces zones deviennent des surfaces « à classer », visibles en 3D et proposées à la classification (règles, IA ou manuel).
    - **Vérification :** comparer aux SC et SEC des MDP de la base (Myonaz, La Bâtie) et vérifier qu'aucune surface n'est comptée deux fois.
+
+## 25. Publication de la 4.1.0 (30.10.2026)
+
+Le tag `v4.1.0` est posé sur l'état final de la feuille de route du §24 (les quatre points sont livrés), avec en plus :
+- l'accueil « Minage de données » (DESIGN_PLAN Évolutions 4.5 à 4.8) ;
+- les retours sur les toitures et les fenêtres de toit (§22).
+
+Release GitHub « SIA Check Viewer 4.1.0 », avec l'installeur. Tests : 301 Python, 140 .NET.

@@ -119,6 +119,19 @@ def test_sc_hors_fourchette_ecarte_le_projet(tmp_path):
     assert b.combiner([p], b.KPI_BY_ID["SUP/SP_HS"])["n"] == 0
 
 
+def test_borne_basse_de_sc_selon_la_categorie():
+    """30.10.2026 : un parking (Autre, CGA L04 à 5 %) ou des plateaux d'activités ont peu de construction ; le logement et
+    une catégorie inconnue gardent 8 %, la borne haute reste 30 % partout. Afiro (3 %, IFC sans murs) reste écarté."""
+    def plausible(cat, sc):
+        t = {"SP": 1000.0, "SN": 1000.0 * (1 - sc)}
+        return {c.id: c for c in b._controles(t, {"categorie": cat}, [])}["plausible"].ok
+    assert plausible("Autre", 0.052) and not plausible("Logement (100-90% SU)", 0.052) and not plausible(None, 0.052)
+    assert plausible("Activités (Bureaux, Artisanat, Commerce)", 0.065)
+    assert not plausible("Activités (Bureaux, Artisanat, Commerce)", 0.032)
+    assert not plausible("Autre", 0.35) and not plausible("Logement (100-90% SU)", 0.35)
+    assert b.sc_plausible({"categorie": "Ecole"}) == b.SC_PLAUSIBLE
+
+
 def test_controles_logement_sans_objet_sans_logement():
     """CGA L04 (parking), Afiro (ateliers), 30.10.2026 : sans logement, liste des logements, chambres et SVN sont sans
     objet ; une catégorie de logement, ou non renseignée, les exige."""
@@ -197,12 +210,15 @@ def test_projet_json_sans_comparaison(projet):
 @pytest.mark.skipif(not BASE.is_dir(), reason="base MDP de référence absente (00_RESSOURCES)")
 def test_base_de_reference():
     projets, erreurs = b.lire_dossier(BASE)
-    assert not erreurs and len(projets) == 10
-    # L'Orée (1778) réexportée par SIA Check au passage en traité : fiable ; Gare Casino garde ses nettes tronquées
-    assert {p.id for p in projets if p.fiable} == {"1467", "1712", "1714", "1746", "1778", "1784"}
-    assert not next(p for p in projets if p.id == "1747").fiable     # SC / SP = 55 %
+    assert not erreurs and len(projets) == 11
+    # Base du 30.10.2026 : La Bâtie B, La Myonaz (1 + 2), Côté Gare L04 et Afiro générés depuis l'IFC et ajoutés.
+    # Côté Gare L04 (parking, SC / SP 5 %) entre avec la borne basse de sa catégorie ; Afiro (3 %, IFC sans murs) et
+    # Gare Casino (nettes tronquées, 55 %) restent écartés
+    assert {p.id for p in projets if p.fiable} == {"1023", "1467", "1712", "1714", "1746", "1778", "1784"}
+    assert not next(p for p in projets if p.id == "1747").fiable
+    assert not next(p for p in projets if p.id == "1724").fiable
     r = b.combiner(projets, b.KPI_BY_ID["SUP/SP_HS"])
-    assert r["n"] == 6 and 0.70 < r["combine"] < 0.76
+    assert r["n"] == 7 and 0.62 < r["combine"] < 0.67     # toutes typologies : le parking tire la SUP vers le bas
     # enveloppe hors-sol, sans toitures : L'Orée retrouve la part vitrée de la fiabilisation (32,7 %)
     loree = next(p for p in projets if p.id == "1778")
     assert loree.totaux["VITRE"] / loree.totaux["FACADE"] == pytest.approx(0.327, abs=0.005)

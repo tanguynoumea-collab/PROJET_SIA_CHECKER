@@ -150,7 +150,7 @@ MDP *.xlsx (dossier base) ──► sia_check.benchmark (Python)
 
 ### Phase 9 livrée (27.10.2026)
 
-- Un projet n'entre dans les références que si SP ≥ SN et SC / SP est entre 8 et 30 % : au-delà, SP et SN ne couvrent pas le même périmètre. Il reste affiché, signalé « écarté ».
+- Un projet n'entre dans les références que si SP ≥ SN et SC / SP est entre 8 et 30 % : au-delà, SP et SN ne couvrent pas le même périmètre. Il reste affiché, signalé « écarté ». Depuis le 30.10.2026, la borne basse dépend de la catégorie d'ouvrage : 6 % pour les activités et les centres commerciaux, 4 % pour l'industriel, le sport et « Autre » (parking), 8 % sinon (`benchmark.SC_MIN_CATEGORIE`). La borne haute reste 30 % partout.
 - Sur la base actuelle : **5 projets fiables sur 10** (1467, 1712, 1714, 1746, 1784). Écartés : 1023 et 1399 (pas de brutes), 1280 (SC 33 %), 1747 (SC 55 %), 1778 (SC 56 %, nettes tronquées).
 - Ratio combiné SUP / SP hors-sol des 5 : 0,73 (médiane 0,73) ; SC / SP : 0,16 ; SD hors-sol / SP hors-sol : 0,07 ; SUP par logement : 75 m².
 - À vérifier dans les données : 1714 a 1 % de SD hors-sol et une SVN supérieure à la SP hors-sol.
@@ -180,7 +180,7 @@ En parallèle (hors code) : ré-exporter par SIA Check les MDP anciens (L'Orée 
 | Identité des projets | SIA Check n'écrit ni canton, ni catégorie d'ouvrage, ni type d'intervention dans le MDP exporté ; 4 MDP sur 10 n'ont pas de canton ; la catégorie manquante est **déduite des affectations**, avec une logique pensée pour le logement | Un immeuble de bureaux serait classé « Logement mixte ». La sélection par typologie est impossible à fiabiliser |
 | Navigation | Tout part d'un projet (Comparer) ou d'une constructibilité (Programmer) ; la typologie n'est qu'un filtre de similarité | Pas de réponse directe à « montre-moi les ratios des projets de santé vaudois » |
 | KPI | Pensés pour le logement (SUP par logement, mix, onglet Typologies, similarité par nombre de logements) ; vitrage rapporté à la façade totale ; « façade / SP » comme seule compacité | Les KPI clés de l'équipe ne sont pas tous là, et ceux du logement n'ont pas de sens pour un hôpital |
-| Fiabilité | Fourchette SC / SP 8–30 % calée sur le logement | À vérifier sur les autres typologies |
+| Fiabilité | Fourchette SC / SP 8–30 % calée sur le logement | Borne basse par catégorie depuis le 30.10.2026 (parking 4 %, activités 6 %) |
 
 ### Phases ajoutées
 

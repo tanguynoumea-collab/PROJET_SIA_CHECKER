@@ -107,6 +107,10 @@ FILTRES = ("categorie", "intervention")
 # Hors de cette fourchette, SP et SN ne décrivent pas le même périmètre (nettes tronquées, brutes partielles) :
 # le projet reste affiché mais n'entre pas dans les références.
 SC_PLAUSIBLE = (0.08, 0.30)
+# Borne basse par catégorie d'ouvrage (30.10.2026) : 8 % vient du logement, cloisonné. Des plateaux ouverts (activités,
+# commerce) ou des halls et un parking (quelques poteaux) ont réellement moins de construction. La borne haute ne change
+# pas : au-delà de 30 %, il manque des surfaces nettes quelle que soit la typologie. Sans catégorie : celle du logement.
+SC_MIN_CATEGORIE = {"activités": 0.06, "centre commercial": 0.06, "industriel": 0.04, "sport": 0.04, "autre": 0.04}
 REQUIS = ("coherence", "plausible")
 
 
@@ -439,11 +443,18 @@ def _sans_logement(infos: dict) -> bool:
     return bool(cat) and not cat.startswith("logement")
 
 
+def sc_plausible(infos: dict) -> tuple[float, float]:
+    """Fourchette de SC / SP admise pour la catégorie d'ouvrage du projet (SC_MIN_CATEGORIE)."""
+    cat = str(infos.get("categorie") or "").strip().lower()
+    lo = next((v for k, v in SC_MIN_CATEGORIE.items() if cat.startswith(k)), SC_PLAUSIBLE[0])
+    return lo, SC_PLAUSIBLE[1]
+
+
 def _controles(t: dict, infos: dict, logements: list[dict]) -> list[Controle]:
     sp, sn = t.get("SP"), t.get("SN")
     coherent = sp is not None and sn is not None and sp >= sn
     sc = (sp - sn) / sp if coherent and sp else None
-    lo, hi = SC_PLAUSIBLE
+    lo, hi = sc_plausible(infos)
     ch = [lg for lg in logements if lg["chambres"] is not None]
     na = _sans_logement(infos) and not logements
     return [

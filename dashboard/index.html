@@ -10,7 +10,7 @@
   <!-- Dashboard du benchmark (docs/DESIGN_PLAN.md, Évolution 3.1). Sans dépendance : la même page tourne dans
        SIA Check (WebView2, données transmises par l'application) et sur un serveur web (benchmark.json à côté). -->
   <nav class="tabs" role="tablist" aria-label="Vues du benchmark">
-    <button role="tab" id="tab-ratios" aria-controls="vue-ratios" aria-selected="true">Ratios</button>
+    <button role="tab" id="tab-ratios" aria-controls="vue-ratios" aria-selected="true">Tendances</button>
     <button role="tab" id="tab-comparer" aria-controls="vue-comparer" aria-selected="false" tabindex="-1">Comparer</button>
     <button role="tab" id="tab-programmer" aria-controls="vue-programmer" aria-selected="false" tabindex="-1">Programmer</button>
     <button role="tab" id="tab-base" aria-controls="vue-base" aria-selected="false" tabindex="-1">Base</button>
@@ -27,18 +27,36 @@
 
   <main>
     <section id="vue-ratios" role="tabpanel" aria-labelledby="tab-ratios" hidden>
+      <!-- Tendances (DESIGN_PLAN, Évolution 4.10) : le projet type (médiane) et la répartition des projets de la sélection -->
       <header class="entete">
         <h2 id="ratios-titre" class="titre-vue"></h2>
         <p id="ratios-resume" class="secondaire"></p>
+        <div class="segments" role="radiogroup" aria-label="Représentation de la répartition" id="representation"></div>
       </header>
       <p id="ratios-bandeau" class="bandeau" hidden></p>
-      <section class="cles" aria-labelledby="titre-cles">
-        <h2 id="titre-cles">KPI clés</h2>
-        <div id="ratios-cles"></div>
+      <section class="td-cles" aria-labelledby="titre-cles">
+        <h2 id="titre-cles" class="visuellement-cache">KPI clés</h2>
+        <div id="ratios-cles" class="td-grille"></div>
       </section>
       <div id="ratios-familles" class="regles"></div>
+      <p id="ratios-legende" class="secondaire td-legende"></p>
       <h2>Projets de la sélection</h2>
       <div class="defile"><table id="ratios-projets"></table></div>
+
+      <!-- Anatomie (Évolution 4.10), en bas des Tendances : où part la SP de chaque projet, SUP, SUS, SD, SI et SC aux couleurs SIA -->
+      <section aria-labelledby="anatomie-titre" class="an-section">
+      <header class="entete">
+        <h2 id="anatomie-titre" class="titre-vue">Anatomie de la SP</h2>
+        <div class="segments" role="radiogroup" aria-label="Assiette" id="assiette"></div>
+      </header>
+      <div class="regles anatomie">
+        <ul id="anatomie-legende" class="legende"></ul>
+        <div id="anatomie-barres" class="an-barres"></div>
+        <p id="anatomie-lecture" class="secondaire"></p>
+      </div>
+      <p class="secondaire">Chaque barre fait 100 % de la SP du projet. Référence : Σ des m² des projets fiables de la sélection / Σ de leurs SP.
+        Construction (SC) = SP − SUP − SUS − SD − SI. Cliquer un projet pour le comparer.</p>
+      </section>
     </section>
 
     <p id="etat" class="etat" hidden></p>

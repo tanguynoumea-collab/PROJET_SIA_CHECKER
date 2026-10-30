@@ -2114,3 +2114,41 @@ Non-régression : les écrans de la Fiabilisation (barre de commande, calques, b
 - **Le ↻ quitte la colonne du nom** : il est désormais dans Statut, pour ne pas l'afficher deux fois.
 - **Activité d'un projet IFC** : le ✓ « tout tranché » est remplacé par la pastille « ? 0 » grise. Le ✓ ne veut plus dire que « Traité ». La pastille reste accent tant qu'il y a des espaces à trancher.
 - **Revue** : `docs/ui-baseline/accueil-statut-light.png`.
+
+## Évolution 4.10 — Dashboard : onglet Tendances et anatomie de la SP (mode ÉVOLUTION)
+
+> Statut : ☑ Étude de cas (diagnostic, quatre variantes, comparatif) validée par l'utilisateur et implémentée (30.10.2026)
+
+**Diagnostic de l'ancien onglet Ratios.**
+- Deux centres qui se contredisaient : le grand chiffre et le trait étaient le ratio combiné, alors que la ligne dessous donnait la médiane.
+- Des quartiles calculés sur 3 projets.
+- Des points anonymes, qu'il fallait survoler pour savoir quel projet était lequel.
+- Une échelle prise sur toute la base, graduée à ses deux bouts seulement.
+- Ni sens du ratio, ni lecture en clair.
+
+**Tendances** (ancien onglet Ratios, mêmes identifiants `vue-ratios`) : on y lit les tendances de la sélection.
+- **La médiane en grand** : c'est le projet type. Chaque projet pèse pareil, et les cas aberrants ne la tirent pas. Le ratio combiné (Σ / Σ) reste en petit ; l'onglet Programmer en a besoin.
+- **Une phrase « pour 100 m² »** (« Sur 100 m² de SP hors-sol, le projet type a 73,5 m² de surface utile principale »), avec la fourchette et le sens du ratio.
+- **Trois représentations de la répartition**, au choix (« Répartition : »), mémorisées dans le navigateur :
+  - **Histogramme**, par défaut ;
+  - bandes de percentiles ;
+  - courbe de densité.
+- **Des marques communes** :
+  - la médiane en trait noir ;
+  - la moitié des projets (P25–P75) en accent ;
+  - une échelle graduée calée sur les P1–P99 de la sélection.
+- **Quel que soit le nombre de projets**, la représentation choisie est dessinée (demande de l'utilisateur : l'histogramme dès 3 projets). Au survol, une barre d'histogramme nomme ses projets (jusqu'à 5). Sous 10 projets, la fourchette écrite dit « de … à … » plutôt que les quartiles, et l'échelle va du minimum au maximum.
+
+**Anatomie de la SP**, tout en bas de l'onglet Tendances (l'utilisateur l'a d'abord voulue dans un onglet à part, puis à cet endroit) : où part la SP de chaque projet fiable de la sélection.
+- Une barre empilée SUP / SUS / SD / SI / SC aux couleurs SIA de l'application, sous une barre « Référence » (Σ m² / Σ SP).
+- L'assiette au choix : SP totale, hors-sol ou sous-sol.
+- Une phrase de lecture ; un clic sur un projet ouvre la comparaison.
+
+**Revue** :
+- `docs/ui-baseline/dashboard-tendances-histogramme-light.png` : 240 projets de test, générés à partir de la base, pour montrer la forme à grande échelle ;
+- la vue sous 10 projets, les trois représentations et l'anatomie de la SP (clair et sombre) ont été vérifiés sur la base réelle.
+
+**Journal** :
+- variante « matrice projets × ratios » écartée : elle ne tient pas au-delà d'une dizaine de projets ;
+- variante « écarts relatifs » écartée de la vue principale (« −8 % de quoi ? ») : à reprendre éventuellement dans Comparer ;
+- points empilés écartés : leur hauteur varie, et il faut regrouper les points au-delà de 200 projets.

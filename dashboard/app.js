@@ -99,7 +99,7 @@ function domaine(kpi, extra) {
 const CLE_SELECTION = "benchmark.selection";
 const CRITERES = [["typologie", "categorie", "Toutes"], ["canton", "canton", "Tous"], ["intervention", "intervention", "Toutes"]];
 const NON_IDENTIFIEE = "__non_identifiee";
-const KPI_CLES = [["SUP/SP_HS", ""], ["VITRE/PLEINE", ""], ["FORME", ""]];
+const KPI_CLES = ["SUP/SP_HS", "VITRE/PLEINE", "FORME"];
 /** Groupes de ratios (DESIGN_PLAN, Évolution 4.3), dans l'ordre de l'onglet Ratios de l'application. La pastille
  *  reprend la couleur des surfaces mesurées (SP, SH, façade) ; le titre dit toujours le groupe. */
 const GROUPES = [
@@ -179,6 +179,7 @@ function majSelection() {
   try { history.replaceState(null, "", url); } catch { /* adresse non modifiable (aperçu) */ }
   remplirSelection();
   dessinerRatios();
+  dessinerAnatomie();
   if (etat.projetId) choisirProjet(etat.projetId);
   dessinerProgramme();
   dessinerBase();
@@ -195,13 +196,13 @@ function suggestionElargir() {
   return null;
 }
 
-// ------------------------------------------------------------------ Ratios
+// ------------------------------------------------------------------ Tendances (Évolution 4.10)
 
 const NOMS_CRITERES = { typologie: "la typologie", canton: "le canton", intervention: "le type d'intervention" };
 
 function dessinerRatios() {
   const fiables = fiablesSelection(), tous = projetsSelection();
-  document.getElementById("ratios-titre").textContent = `Ratios — ${libelleSelection()}`;
+  document.getElementById("ratios-titre").textContent = `Tendances — ${libelleSelection()}`;
   document.getElementById("ratios-resume").textContent =
     `${fiables.length} projet${fiables.length > 1 ? "s" : ""} fiable${fiables.length > 1 ? "s" : ""} sur ${tous.length} dans la sélection`;
 
@@ -218,27 +219,259 @@ function dessinerRatios() {
     }
   }
 
-  const cles = document.getElementById("ratios-cles");
-  cles.replaceChildren(...KPI_CLES.map(([id, provisoire]) => {
-    const kpi = etat.kpis.find((k) => k.id === id);
+  const ligne = (kpi, cle) => {
     const c = combiner(fiables, kpi);
-    const tete = el("div", { class: "cle-tete" }, el("span", { class: "cle-libelle", text: kpi.label, title: kpi.note || kpi.label }));
-    if (provisoire) tete.append(el("span", { class: "provisoire", text: provisoire }));
-    const chiffres = el("div", { class: "cle-chiffres" });
-    if (c.n) chiffres.append(el("span", { class: "cle-valeur", text: valeur(kpi, c.combine) }),
-      el("span", { class: "secondaire", text: `médiane ${valeur(kpi, c.mediane)} · quartiles ${valeur(kpi, c.q1)} – ${valeur(kpi, c.q3)} · n = ${c.n}` }));
-    else chiffres.append(el("span", { class: "absent", text: "Aucun projet de la sélection n'a ce ratio" }));
-    return el("div", { class: "cle" }, tete, chiffres, c.n ? regleGroupe(kpi, c) : null);
-  }));
-
-  const autres = kpisSelection().filter((k) => !KPI_CLES.some(([id]) => id === k.id));
-  document.getElementById("ratios-familles").replaceChildren(...blocsParGroupe(autres, (kpi) => {
-    const c = combiner(fiables, kpi);
-    const libelle = el("div", { class: "libelle", text: kpi.label, title: kpi.note || kpi.label });
-    libelle.append(el("br"), el("span", { class: "valeurs", text: c.n ? `${valeur(kpi, c.combine)} · n = ${c.n}` : "—" }));
-    return el("div", { class: "kpi compact" }, libelle, c.n ? regleGroupe(kpi, c) : el("div", { class: "absent", text: "Aucune donnée" }), el("div"));
-  }));
+    if (!c.n) return el("div", { class: cle ? "td-cle" : "td-ligne" }, el("b", { text: kpi.label }),
+      el("span", { class: "absent", text: "Aucun projet de la sélection n'a ce ratio" }));
+    const st = repartition(c.valeurs.map((x) => x.v));
+    const [phrase, court] = PHRASES[kpi.id] || ["", kpi.label];
+    const texte = phrase ? `${phrase.replace("{v}", enClair(kpi, st.mediane))} ` : "";
+    const details = `${fourchetteTexte(kpi, st)} · ${c.n} projet${c.n > 1 ? "s" : ""} · ratio combiné ${valeur(kpi, c.combine)} · ${SENS_TEXTE[kpi.sens]}`;
+    const fig = figureRepartition(kpi, c.valeurs, representation);
+    if (cle) return el("div", { class: "td-cle" },
+      el("p", { class: "td-sur", text: court, title: kpi.label }),
+      el("div", { class: "td-valeur" }, enClair(kpi, st.mediane), kpi.unite === "%" ? el("small", { text: " m² sur 100" }) : null),
+      el("p", { class: "td-phrase", text: texte.trim() || kpi.label }),
+      el("p", { class: "secondaire", text: details, title: kpi.note || kpi.label }), fig);
+    return el("div", { class: "td-ligne" },
+      el("div", {}, el("div", {}, el("b", { text: court, title: kpi.label }), " · ", el("span", { class: "td-v", text: valeur(kpi, st.mediane) })),
+        el("div", { class: "secondaire", text: texte + fourchetteTexte(kpi, st) + "." }),
+        el("div", { class: "secondaire td-petit", text: `${kpi.label} · ${c.n} projet${c.n > 1 ? "s" : ""} · ratio combiné ${valeur(kpi, c.combine)} · ${SENS_TEXTE[kpi.sens]}`, title: kpi.note || "" })),
+      fig);
+  };
+  document.getElementById("ratios-cles").replaceChildren(...KPI_CLES
+    .map((id) => etat.kpis.find((k) => k.id === id)).filter(Boolean).map((kpi) => ligne(kpi, true)));
+  const autres = kpisSelection().filter((k) => !KPI_CLES.includes(k.id));
+  document.getElementById("ratios-familles").replaceChildren(...blocsParGroupe(autres, (kpi) => ligne(kpi, false)));
+  document.getElementById("ratios-legende").textContent = "Trait noir : la médiane, le projet type. En couleur : la moitié des projets (25e au 75e percentile)" +
+      (representation === "bandes" ? " ; en clair : 8 projets sur 10 (10e au 90e)" : "") + ". Échelle : 1er au 99e percentile de la sélection.";
   dessinerProjetsSelection(tous, fiables);
+}
+
+const CLE_REPRESENTATION = "benchmark.representation";
+const REPRESENTATIONS = [["histo", "Histogramme"], ["bandes", "Bandes de percentiles"], ["densite", "Courbe de densité"]];
+const MIN_FORME = 10;     // en dessous, la fourchette dit « de … à … » plutôt que les quartiles, et l'échelle va du min au max
+let representation = "histo";
+/** Le ratio en clair, au projet type ({v} : la médiane). Le premier mot court sert de titre de carte. */
+const PHRASES = {
+  "SUP/SP_HS": ["Sur 100 m² de SP hors-sol, le projet type a {v} m² de surface utile principale.", "Utile principale hors-sol"],
+  "SVN/SP_HS": ["Sur 100 m² de SP hors-sol, le projet type vend {v} m² (SVN).", "Surface vendable"],
+  "SN/SP": ["Sur 100 m² de SP, {v} m² de surface nette.", "Surface nette"],
+  "SC/SP": ["Sur 100 m² de SP, {v} m² partent dans la construction.", "Construction"],
+  "SD/SP_HS": ["Sur 100 m² hors-sol, {v} m² de circulations.", "Circulations hors-sol"],
+  "SI/SP": ["Sur 100 m² de SP, {v} m² de locaux techniques.", "Installations"],
+  "SUS_HS/SP_HS": ["Sur 100 m² hors-sol, {v} m² d'utile secondaire.", "Utile secondaire hors-sol"],
+  "SP_SS/SUP": ["Pour 100 m² de SUP, {v} m² de sous-sol.", "Sous-sol par m² utile"],
+  "VITRE/PLEINE": ["Pour 100 m² de façade pleine, {v} m² de vitrage.", "Vitrage / façade pleine"],
+  "VITRE/FACADE": ["Sur 100 m² de façade, {v} m² vitrés.", "Part vitrée de la façade"],
+  "FORME": ["Chaque m² d'enveloppe abrite {v} m² de SP hors-sol.", "Compacité"],
+  "FACADE/SP_HS": ["Chaque m² de SP hors-sol demande {v} m² de façade.", "Façade par m² hors-sol"],
+  "VB/SP": ["Un étage fait en moyenne {v} de hauteur brute.", "Hauteur d'étage"],
+  "SUP/LOG": ["Le logement type fait {v} de SUP.", "Taille des logements"],
+  "SP_HS/LOG": ["Un logement consomme {v} de SP hors-sol.", "SP par logement"],
+  "SUP/CAGE": ["Une cage dessert {v} de SUP par étage.", "SUP par cage et par étage"],
+  "LOG/CAGE": ["Une cage dessert {v} logements par étage.", "Logements par cage"],
+};
+const SENS_TEXTE = { 1: "plus c'est haut, mieux c'est", "-1": "plus c'est bas, mieux c'est", 0: "ni bon ni mauvais : un choix de projet" };
+
+/** Valeur dans la phrase « pour 100 m² » : un % s'y lit en m² sur 100 (même décimale que la médiane de la figure). */
+function enClair(kpi, v) {
+  if (kpi.unite === "%") return F1.format(v * 100);
+  return valeur(kpi, v);
+}
+
+function quantile(s, f) {
+  const i = (s.length - 1) * f, lo = Math.floor(i), hi = Math.min(lo + 1, s.length - 1);
+  return s[lo] + (s[hi] - s[lo]) * (i - lo);
+}
+
+function repartition(valeurs) {
+  const s = [...valeurs].sort((a, b) => a - b), q = (f) => quantile(s, f);
+  return { n: s.length, s, min: s[0], max: s[s.length - 1], p01: q(0.01), p10: q(0.1), p25: q(0.25), mediane: q(0.5),
+           p75: q(0.75), p90: q(0.9), p99: q(0.99) };
+}
+
+/** Fourchette en clair : la moitié des projets à partir de 10, sinon du plus bas au plus haut (pas de quartiles sur 3 points). */
+function fourchetteTexte(kpi, st) {
+  return st.n >= MIN_FORME ? `La moitié des projets entre ${valeur(kpi, st.p25)} et ${valeur(kpi, st.p75)}`
+                           : `De ${valeur(kpi, st.min)} à ${valeur(kpi, st.max)}`;
+}
+
+/** Domaine de la figure : la sélection, du 1er au 99e percentile (les cas extrêmes sont rabattus au bord). */
+function domaineSelection(st) {
+  const lo = st.n >= MIN_FORME ? st.p01 : st.min, hi = st.n >= MIN_FORME ? st.p99 : st.max;
+  const marge = (hi - lo) * 0.12 || Math.abs(st.mediane) * 0.05 || 1;
+  return [lo - marge, hi + marge];
+}
+
+function graduations(lo, hi, n = 4) {
+  const brut = (hi - lo) / n, p = 10 ** Math.floor(Math.log10(brut)), r = brut / p;
+  const pas = (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * p, out = [];
+  for (let t = Math.ceil(lo / pas) * pas; t <= hi + pas * 1e-9; t += pas) out.push(+t.toFixed(10));
+  return { pas, valeurs: out };
+}
+
+function texteGraduation(kpi, v, pas) {
+  if (kpi.unite === "%") return `${(pas * 100 >= 1 ? F0 : F1).format(v * 100)} %`;
+  if (kpi.unite === "m²") return `${F0.format(v)} m²`;
+  const f = pas >= 1 ? F0 : pas >= 0.1 ? F1 : pas >= 0.01 ? F2 : nf(3);
+  return f.format(v) + (kpi.unite === "m" ? " m" : "");
+}
+
+const FIGURES = new Set();
+const observateur = "ResizeObserver" in window
+  ? new ResizeObserver((entrees) => entrees.forEach((e) => e.target._dessiner?.())) : null;
+
+/** Répartition d'un ratio dans la représentation choisie, quel que soit le nombre de projets : médiane (trait), moitié
+ *  des projets en accent, échelle graduée. Une barre d'histogramme nomme ses projets au survol. Dessinée à la largeur
+ *  réelle, redessinée quand elle change (onglet affiché, fenêtre redimensionnée). */
+function figureRepartition(kpi, valeurs, rep) {
+  const boite = el("div", { class: "td-figure" });
+  let largeur = 0;
+  boite._dessiner = () => {
+    const W = Math.floor(boite.clientWidth);
+    if (!W || W === largeur) return;
+    largeur = W;
+    const st = repartition(valeurs.map((x) => x.v)), [lo, hi] = domaineSelection(st);
+    const x = (v) => ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * W;
+    const forme = rep;
+    const H = { histo: 38, densite: 38, bandes: 16 }[forme], haut = 16, y0 = haut + H;
+    const g = svg("g");
+    if (forme === "bandes") {
+      g.append(svg("rect", { x: 0, y: haut + 6, width: W, height: 2, class: "td-fond" }));
+      g.append(titre(svg("rect", { x: x(st.p10), y: haut + 2, width: x(st.p90) - x(st.p10), height: 10, rx: 5, class: "td-large" }),
+        `8 projets sur 10 entre ${valeur(kpi, st.p10)} et ${valeur(kpi, st.p90)}`));
+      g.append(titre(svg("rect", { x: x(st.p25), y: haut, width: x(st.p75) - x(st.p25), height: 14, rx: 4, class: "td-moitie" }),
+        `La moitié des projets entre ${valeur(kpi, st.p25)} et ${valeur(kpi, st.p75)}`));
+    } else if (forme === "histo") {
+      const nb = Math.max(12, Math.min(40, Math.round(W / 16))), pas = (hi - lo) / nb, classes = Array.from({ length: nb }, () => []);
+      for (const it of valeurs) classes[Math.min(nb - 1, Math.max(0, Math.floor((it.v - lo) / pas)))].push(it.p);
+      const m = Math.max(...classes.map((c) => c.length)), unite = kpi.unite === "%" ? " %" : "";
+      const borne = (v) => (kpi.unite === "%" ? F1.format(v * 100) : texteGraduation(kpi, v, pas));
+      classes.forEach((projets, i) => {
+        const n = projets.length;
+        if (!n) return;
+        const a = lo + i * pas, b = a + pas, milieu = (a + b) / 2, hh = Math.max(2, (n / m) * H);
+        const qui = n <= 5 ? ` : ${projets.map((q) => q.nom).join(", ")}` : "";
+        g.append(titre(svg("rect", { x: x(a) + 1, y: y0 - hh, width: Math.max(1, x(b) - x(a) - 2), height: hh, rx: 1.5,
+          class: milieu >= st.p25 && milieu <= st.p75 ? "td-moitie" : "td-fond" }),
+          `${n} projet${n > 1 ? "s" : ""} entre ${borne(a)} et ${borne(b)}${unite}${qui}`));
+      });
+    } else if (forme === "densite") {
+      const ecart = Math.sqrt(st.s.reduce((t, v) => t + (v - st.mediane) ** 2, 0) / st.n);
+      const bande = 1.06 * ecart * st.n ** -0.2 || (hi - lo) / 20, pts = [];
+      for (let i = 0; i <= 80; i++) {
+        const v = lo + ((hi - lo) * i) / 80;
+        let d = 0;
+        for (const u of st.s) d += Math.exp(-0.5 * ((v - u) / bande) ** 2);
+        pts.push([v, d]);
+      }
+      const m = Math.max(...pts.map((q) => q[1]));
+      const trace = pts.map(([v, d], i) => `${i ? "L" : "M"}${x(v).toFixed(1)},${(y0 - (d / m) * H).toFixed(1)}`).join("") + `L${W},${y0}L0,${y0}Z`;
+      const id = `td-c${FIGURES.size}-${Math.round(Math.random() * 1e6)}`;
+      const clip = svg("clipPath", { id });
+      clip.append(svg("rect", { x: x(st.p25), y: 0, width: x(st.p75) - x(st.p25), height: y0 + 1 }));
+      g.append(svg("path", { d: trace, class: "td-fond" }), clip,
+        titre(svg("path", { d: trace, class: "td-moitie", "clip-path": `url(#${id})` }),
+          `La moitié des projets entre ${valeur(kpi, st.p25)} et ${valeur(kpi, st.p75)}`));
+    }
+    g.append(svg("rect", { x: 0, y: y0, width: W, height: 1, class: "td-axe" }));
+    // médiane : le projet type, en trait, sa valeur au-dessus
+    g.append(svg("rect", { x: x(st.mediane) - 1.5, y: haut - 3, width: 3, height: H + 3, rx: 1.5, class: "td-mediane" }));
+    g.append(svg("text", { x: Math.min(W - 30, Math.max(30, x(st.mediane))), y: haut - 6, "text-anchor": "middle", class: "td-fort" },
+      valeur(kpi, st.mediane)));
+    const yA = y0 + 18, grad = graduations(lo, hi);
+    for (const t of grad.valeurs) {
+      if (t < lo || t > hi) continue;
+      g.append(svg("rect", { x: x(t), y: y0 + 1, width: 1, height: 4, class: "td-graduation" }));
+      g.append(svg("text", { x: x(t), y: yA, "text-anchor": "middle" }, texteGraduation(kpi, t, grad.pas)));
+    }
+    const bas = yA;
+    const figure = svg("svg", { width: W, height: bas + 6, viewBox: `0 0 ${W} ${bas + 6}`, role: "img",
+      "aria-label": `${kpi.label} : projet type ${valeur(kpi, st.mediane)}, ${fourchetteTexte(kpi, st).toLowerCase()}, ${st.n} projets` });
+    figure.append(g);
+    boite.replaceChildren(figure);
+  };
+  FIGURES.add(boite);
+  observateur?.observe(boite);
+  requestAnimationFrame(() => boite._dessiner());
+  return boite;
+}
+
+function initRepresentation() {
+  try { representation = localStorage.getItem(CLE_REPRESENTATION) || representation; } catch { /* stockage indisponible */ }
+  if (!REPRESENTATIONS.some(([id]) => id === representation)) representation = "histo";
+  const groupe = document.getElementById("representation");
+  const boutons = REPRESENTATIONS.map(([id, nom]) => {
+    const b = el("button", { type: "button", role: "radio", text: nom, "aria-checked": String(id === representation) });
+    b.addEventListener("click", () => {
+      representation = id;
+      try { localStorage.setItem(CLE_REPRESENTATION, id); } catch { /* stockage indisponible */ }
+      boutons.forEach((x) => x.setAttribute("aria-checked", String(x === b)));
+      dessinerRatios();
+    });
+    return b;
+  });
+  groupe.replaceChildren(el("span", { class: "secondaire", text: "Répartition :" }), ...boutons);
+}
+
+// ------------------------------------------------------------------ Anatomie de la SP (Évolution 4.10, bas des Tendances)
+
+const PARTS_SP = ["SUP", "SUS", "SD", "SI", "SC"];
+const NOMS_SIA = { SUP: "Utile principale", SUS: "Utile secondaire", SD: "Dégagements", SI: "Installations", SC: "Construction" };
+const ASSIETTES = [["", "SP totale", "de SP"], ["_HS", "Hors-sol", "de SP hors-sol"], ["_SS", "Sous-sol", "de SP de sous-sol"]];
+let assiette = "";
+
+/** Répartition de la SP d'un projet (ou d'une assiette) : SUP, SUS, SD, SI, et SC pour le reste. */
+function partsSp(t, suffixe) {
+  const sp = t[`SP${suffixe}`] || 0;
+  const o = Object.fromEntries(PARTS_SP.slice(0, 4).map((c) => [c, t[`${c}${suffixe}`] || 0]));
+  o.SC = Math.max(0, sp - o.SUP - o.SUS - o.SD - o.SI);
+  return { sp, o };
+}
+
+function dessinerAnatomie() {
+  const [, nomAssiette, deQuoi] = ASSIETTES.find(([s]) => s === assiette);
+  const groupe = document.getElementById("assiette");
+  groupe.replaceChildren(el("span", { class: "secondaire", text: "Assiette :" }), ...ASSIETTES.map(([suffixe, nom]) => {
+    const b = el("button", { type: "button", role: "radio", text: nom, "aria-checked": String(suffixe === assiette) });
+    b.addEventListener("click", () => { assiette = suffixe; dessinerAnatomie(); });
+    return b;
+  }));
+  document.getElementById("anatomie-legende").replaceChildren(...PARTS_SP.map((c) =>
+    el("li", {}, el("i", { style: `background:${COULEURS_SIA[c]}` }), `${c} · ${NOMS_SIA[c]}`)));
+
+  const lignes = fiablesSelection().map((p) => ({ p, ...partsSp(p.totaux || {}, assiette) })).filter((l) => l.sp > 0)
+    .sort((a, b) => b.o.SUP / b.sp - a.o.SUP / a.sp);
+  const barres = document.getElementById("anatomie-barres"), lecture = document.getElementById("anatomie-lecture");
+  if (!lignes.length) {
+    barres.replaceChildren(el("p", { class: "absent", text: `Aucun projet fiable de la sélection n'a ${deQuoi === "de SP" ? "de SP" : `de ${nomAssiette.toLowerCase()}`}.` }));
+    lecture.textContent = "";
+    return;
+  }
+  const ref = { sp: 0, o: Object.fromEntries(PARTS_SP.map((c) => [c, 0])) };
+  for (const l of lignes) { ref.sp += l.sp; for (const c of PARTS_SP) ref.o[c] += l.o[c]; }
+  const pct = (l, c) => (l.o[c] / l.sp) * 100;
+  const pile = (nom, l, reference) => el("div", { class: `an-pile${reference ? " reference" : ""}`, role: "img",
+    "aria-label": `${nom} : ` + PARTS_SP.map((c) => `${c} ${F1.format(pct(l, c))} %`).join(", ") },
+    ...PARTS_SP.filter((c) => l.o[c] > 0).map((c) => el("span", {
+      class: `an-${c}`, style: `flex:${l.o[c]} 1 0;background:${COULEURS_SIA[c]}`, text: pct(l, c) >= 6 ? `${F0.format(pct(l, c))} %` : "",
+      title: `${nom} · ${c} ${NOMS_SIA[c]} : ${F1.format(pct(l, c))} % (${F0.format(l.o[c])} m²)` })));
+  const rangees = [el("div", { class: "an-nom reference", text: "Référence" }), pile("Référence", ref, true),
+                   el("div", { class: "secondaire", text: `${lignes.length} projet${lignes.length > 1 ? "s" : ""}` }), el("div", { class: "an-sep" })];
+  for (const l of lignes) {
+    const nom = el("button", { type: "button", class: "an-nom lien-projet", text: l.p.nom, title: `${nomProjet(l.p)} · cliquer pour le comparer` });
+    nom.addEventListener("click", () => { montrerVue("comparer"); choisirProjet(l.p.id); });
+    rangees.push(nom, pile(nomProjet(l.p), l, false), el("div", { class: "secondaire", text: `${F0.format(l.sp)} m²` }));
+  }
+  barres.replaceChildren(...rangees);
+  const premier = lignes[0], dernier = lignes[lignes.length - 1];
+  const sc = [...lignes].sort((a, b) => pct(b, "SC") - pct(a, "SC"))[0];
+  lecture.textContent = lignes.length < 2
+    ? `Sur 100 m² ${deQuoi}, ${premier.p.nom} met ${F0.format(pct(premier, "SUP"))} m² en utile principale.`
+    : `Sur 100 m² ${deQuoi}, la sélection met ${F0.format(pct(ref, "SUP"))} m² en utile principale : ${premier.p.nom} le plus ` +
+      `(${F0.format(pct(premier, "SUP"))} m²), ${dernier.p.nom} le moins (${F0.format(pct(dernier, "SUP"))} m²). ` +
+      `La construction pèse le plus chez ${sc.p.nom} (${F0.format(pct(sc, "SC"))} m² sur 100).`;
 }
 
 /** KPI rangés par groupe (SIA 416, USPI 2014, Enveloppe, Programme), puis par famille sous-titrée quand le groupe en
@@ -263,25 +496,6 @@ function blocsParGroupe(kpis, ligne) {
     blocs.push(bloc);
   }
   return blocs;
-}
-
-/** Règle d'une sélection : chaque projet en point (clic : le comparer), quartiles et ratio combiné. */
-function regleGroupe(kpi, c) {
-  const dom = domaine(kpi);
-  const x = (t) => `${((t - dom[0]) / (dom[1] - dom[0])) * 100}%`;
-  const r = el("div", { class: "regle", role: "img", "aria-label": `${kpi.label} : ${valeur(kpi, c.combine)}, ${c.n} projets` });
-  r.append(el("span", { class: "axe" }), el("span", { class: "graduation debut", text: valeur(kpi, Math.max(dom[0], 0)) }),
-           el("span", { class: "graduation fin", text: valeur(kpi, dom[1]) }));
-  r.append(el("span", { class: "quartiles", title: `Quartiles : ${valeur(kpi, c.q1)} à ${valeur(kpi, c.q3)}`,
-                        style: `left:${x(c.q1)};width:calc(${x(c.q3)} - ${x(c.q1)})` }));
-  r.append(el("span", { class: "reference" + (c.n < MIN_REFERENCE ? " fragile" : ""), style: `left:${x(c.combine)}`,
-                        title: `Ratio combiné de ${c.n} projet${c.n > 1 ? "s" : ""} : ${valeur(kpi, c.combine)}` }));
-  for (const { p, v } of c.valeurs) {
-    const point = el("span", { class: "pair cliquable", style: `left:${x(v)}`, title: `${nomProjet(p)} : ${valeur(kpi, v)} · cliquer pour le comparer` });
-    point.addEventListener("click", () => { montrerVue("comparer"); choisirProjet(p.id); });
-    r.append(point);
-  }
-  return r;
 }
 
 /** Position d'un projet dans la sélection sur SUP / SP hors-sol, dans le sens favorable du ratio. */
@@ -790,7 +1004,8 @@ window.verifierDistances = verifierDistances;
 // ------------------------------------------------------------------ Programmer (programmation inverse, Évolution 3.3)
 
 const CLE_PROGRAMME = "benchmark.programme";
-const COULEURS_SIA = { SUP: "#D5003B", SD: "#F2E900", SUS: "#F0A900" };     // légende SIA 416, comme dans l'application
+// Légende SIA 416, comme dans l'application (report.py, SIA_COLORS)
+const COULEURS_SIA = { SUP: "#D5003B", SUS: "#F0A900", SD: "#F2E900", SI: "#0C9DDA", SC: "#A3AAB6" };
 const progEtat = { coches: new Set(), cle: "" };
 
 function initProgrammer() {
@@ -1020,7 +1235,9 @@ function demarrer(data) {
   if (ecart > 0.002) console.warn(`Distances de la page et du moteur différentes (écart max ${ecart}) : formules à réaligner.`);
   dessinerBase();
   dessinerTypologies();
+  initRepresentation();
   dessinerRatios();
+  dessinerAnatomie();
   const premier = data.projets.find((p) => p.fiable) || data.projets[0];
   const demande = PARAMS.get("projet");
   const direct = demande === MIEN || etat.projets.has(demande);

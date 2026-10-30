@@ -179,19 +179,57 @@ td .signe { display: inline-block; width: 12px; margin-left: 4px; font-size: 10p
 
 /* Ratios */
 .titre-vue { margin: 0; font: 16px var(--police-forte); color: var(--texte); font-variant-caps: normal; }
-.cles { background: var(--surface); border-radius: 6px; padding: 4px 16px 12px; margin-bottom: 16px; }
-.cle { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, 2fr); grid-template-rows: auto auto; gap: 2px 24px;
-       padding: 10px 0; border-bottom: 1px solid var(--filet); align-items: center; }
-.cle:last-child { border-bottom: 0; }
-.cle-tete { display: flex; flex-direction: column; }
-.cle-libelle { font: 14px var(--police-forte); }
-.provisoire { font-size: 11px; color: var(--alerte); }
-.cle-chiffres { grid-row: 2; display: flex; flex-direction: column; }
-.cle-valeur { font: 24px var(--police-forte); font-variant-numeric: tabular-nums; }
-.cle .regle { grid-column: 2; grid-row: 1 / span 2; }
-.kpi.compact { min-height: 36px; }
-.regle .pair.cliquable { cursor: pointer; }
-.regle .pair.cliquable:hover { background: var(--accent); }
+/* Tendances (Évolution 4.10) : le projet type et la répartition, en SVG dessiné à la largeur réelle (app.js, figureRepartition) */
+.visuellement-cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.segments { display: inline-flex; align-items: center; gap: 0; margin-left: auto; }
+.segments > .secondaire { margin-right: 8px; }
+.segments button {
+  border: 1px solid var(--filet); background: var(--surface); color: var(--texte); font: 13px var(--police);
+  padding: 5px 12px; min-height: 32px; cursor: pointer; margin-left: -1px;
+}
+.segments button:nth-child(2) { border-radius: 4px 0 0 4px; margin-left: 0; }
+.segments button:last-child { border-radius: 0 4px 4px 0; }
+.segments button[aria-checked="true"] { background: var(--accent); color: var(--sur-accent); border-color: var(--accent); position: relative; }
+.td-grille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.td-cle { background: var(--surface); border-radius: 6px; padding: 14px 16px 10px; min-width: 0; }
+.td-sur { margin: 0; font: 12px var(--police-forte); color: var(--texte-2); font-variant-caps: all-small-caps; letter-spacing: .03em; }
+.td-valeur { font: 32px var(--police-forte); line-height: 1.15; }
+.td-valeur small { font: 14px var(--police); color: var(--texte-2); }
+.td-phrase { margin: 2px 0; font-size: 13px; }
+.td-cle .secondaire { margin: 0 0 8px; }
+.td-ligne { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.6fr); gap: 4px 28px; align-items: center;
+            padding: 10px 0; border-top: 1px solid var(--filet); }
+.famille h2 + .td-ligne, .famille h3 + .td-ligne { border-top: 0; }
+.td-v { font: 18px var(--police-forte); }
+.td-petit { font-size: 11px; }
+.td-figure { min-width: 0; }
+.td-figure svg { display: block; overflow: visible; }
+.td-figure text { font: 11px var(--police); fill: var(--texte-2); }
+.td-figure .td-fort { font-family: var(--police-forte); fill: var(--texte); }
+.td-fond { fill: var(--surface-2); }
+.td-moitie { fill: color-mix(in srgb, var(--accent) 38%, transparent); }
+.td-large { fill: color-mix(in srgb, var(--accent) 16%, transparent); }
+.td-mediane { fill: var(--texte); }
+.td-axe { fill: var(--filet); }
+.td-graduation { fill: var(--texte-2); }
+.td-legende { margin: 8px 0 16px; }
+/* Anatomie de la SP (bas des Tendances) : une barre empilée par projet, aux couleurs SIA */
+.an-section { margin-top: 32px; }
+.anatomie { padding: 12px 16px; margin-bottom: 8px; }
+.an-barres { display: grid; grid-template-columns: minmax(120px, 220px) 1fr 80px; gap: 8px 12px; align-items: center; margin-top: 12px; }
+.an-nom { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.an-nom.reference { font-family: var(--police-forte); }
+button.an-nom { border: 0; background: none; color: var(--texte); font: 13px var(--police); cursor: pointer; padding: 0; min-height: 26px; }
+button.an-nom:hover { color: var(--accent); text-decoration: underline; }
+.an-pile { display: flex; gap: 2px; height: 26px; min-width: 0; }
+.an-pile.reference { height: 34px; }
+.an-pile span { display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; font-size: 11px;
+                border-radius: 2px; color: #1B1E24; }
+.an-pile span:first-child { border-radius: 4px 2px 2px 4px; }
+.an-pile span:last-child { border-radius: 2px 4px 4px 2px; }
+.an-pile .an-SUP, .an-pile .an-SI { color: #FFFFFF; }
+.an-sep { grid-column: 1 / -1; height: 1px; background: var(--filet); }
+#anatomie-lecture { margin: 12px 0 0; }
 #ratios-projets td.lien-ligne { color: var(--accent); }
 #vue-ratios .defile { margin-bottom: 8px; }
 @media (max-width: 1000px) {
@@ -200,8 +238,10 @@ td .signe { display: inline-block; width: 12px; margin-left: 4px; font-size: 10p
   .selection { position: static; padding: 8px 16px; }
   .selection select { min-width: 0; max-width: 100%; }
   .selection #selection-resume { margin-left: 0; }
-  .cle { grid-template-columns: 1fr; }
-  .cle .regle { grid-column: 1; grid-row: 3; }
+  .td-grille { grid-template-columns: 1fr; }
+  .td-ligne { grid-template-columns: 1fr; }
+  .segments { margin-left: 0; flex-wrap: wrap; }
+  .an-barres { grid-template-columns: 90px 1fr 64px; }
 }
 
 /* Programmer */

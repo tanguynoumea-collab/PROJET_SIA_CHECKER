@@ -2101,3 +2101,16 @@ Non-régression : les écrans de la Fiabilisation (barre de commande, calques, b
 - **Revue** :
   - `docs/ui-baseline/accueil-minage-light.png` ;
   - `docs/ui-baseline/accueil-menu-projet-light.jpg` : le menu de L'Orée (traité) commence par « Ajouter à la base ».
+
+## Évolution 4.9 — Colonne Statut (mode ÉVOLUTION)
+
+> Statut : ☑ Demandé par l'utilisateur et implémenté (30.10.2026)
+
+- **Colonne « Statut »**, entre Activité et Modifié, avec une icône par état du registre des projets. Depuis l'Évolution 4.8, on ne voyait plus quel projet était traité.
+  - En traitement : horloge grise.
+  - Traité : ✓ plein vert (son MDP est dans la base).
+  - Traité puis modifié : flèches orange (à republier).
+  - Le statut est aussi en infobulle et dans le nom accessible.
+- **Le ↻ quitte la colonne du nom** : il est désormais dans Statut, pour ne pas l'afficher deux fois.
+- **Activité d'un projet IFC** : le ✓ « tout tranché » est remplacé par la pastille « ? 0 » grise. Le ✓ ne veut plus dire que « Traité ». La pastille reste accent tant qu'il y a des espaces à trancher.
+- **Revue** : `docs/ui-baseline/accueil-statut-light.png`.

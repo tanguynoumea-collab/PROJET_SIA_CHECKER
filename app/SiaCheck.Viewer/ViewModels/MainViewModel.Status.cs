@@ -18,14 +18,12 @@ public sealed class RecentItem(RecentProject project, ProjectStatus status, MdpP
     public string SourceTooltip => IsIfc ? $"Généré depuis un IFC : {Generated!.Source}" : "Projet Treegram";
     /// <summary>Maquette dont le projet est tiré (infobulle de Régénérer).</summary>
     public string Source => Generated?.Source ?? "";
-    /// <summary>Tous les espaces tranchés (coche) : projet IFC seulement.</summary>
-    public bool IsSettled => Generated?.State.ToDecide == 0;
-    /// <summary>Espaces à trancher (pastille accent) : la seule activité qui demande une action.</summary>
+    /// <summary>Espaces à trancher (pastille accent s'il en reste, grise sinon) : la seule activité qui demande une action.</summary>
     public int ToDecide => Generated?.State.ToDecide ?? 0;
     public bool HasToDecide => ToDecide > 0;
     public bool ShowsPoints => !IsIfc;
     public string ActivityTooltip => Generated is { } g
-        ? (g.State.ToDecide == 0 ? "Tous les espaces sont tranchés" : $"{g.State.ToDecide} espace{(g.State.ToDecide > 1 ? "s" : "")} à trancher (onglet Espaces)")
+        ? (g.State.ToDecide == 0 ? "Aucun espace à trancher" : $"{g.State.ToDecide} espace{(g.State.ToDecide > 1 ? "s" : "")} à trancher (onglet Espaces)")
         : $"{Project.IssueCount} point{(Project.IssueCount > 1 ? "s" : "")} d'attention à la dernière analyse";
     /// <summary>Colonne d'activité : les points de l'analyse, ou les espaces à trancher d'un projet généré.</summary>
     public string ActivityText => Generated is { } g
@@ -57,6 +55,14 @@ public sealed class RecentItem(RecentProject project, ProjectStatus status, MdpP
     /// <summary>Modifié depuis son passage en traité : son MDP de la base n'est plus à jour.</summary>
     public bool IsModified { get; } = status == ProjectStatus.DoneModified;
     public string StatusLabel { get; } = ProjectRecord.Label(status);
+    /// <summary>Colonne Statut : horloge (en traitement), ✓ plein (traité), flèches (traité puis modifié).</summary>
+    public string StatusTooltip { get; } = status switch
+    {
+        ProjectStatus.Done => "Traité : son MDP est dans la base du benchmark",
+        ProjectStatus.DoneModified => "Modifié depuis son passage en traité : le MDP de la base n'est plus à jour " +
+                                      "(clic droit, Ajouter à la base, pour republier)",
+        _ => "En traitement : vérification en cours",
+    };
 }
 
 /// <summary>

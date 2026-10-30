@@ -429,12 +429,23 @@ def _logements(df: pd.DataFrame, nettes: pd.DataFrame) -> list[dict]:
     return out
 
 
+SANS_LOGEMENT = "sans objet : pas de logement"
+
+
+def _sans_logement(infos: dict) -> bool:
+    """Catégorie d'ouvrage renseignée et sans logement (activités, parking, école…) : la liste des logements, leurs
+    chambres et les surfaces USPI de vente n'existent pas, leurs contrôles sont sans objet (réussis, avec la mention)."""
+    cat = str(infos.get("categorie") or "").strip().lower()
+    return bool(cat) and not cat.startswith("logement")
+
+
 def _controles(t: dict, infos: dict, logements: list[dict]) -> list[Controle]:
     sp, sn = t.get("SP"), t.get("SN")
     coherent = sp is not None and sn is not None and sp >= sn
     sc = (sp - sn) / sp if coherent and sp else None
     lo, hi = SC_PLAUSIBLE
     ch = [lg for lg in logements if lg["chambres"] is not None]
+    na = _sans_logement(infos) and not logements
     return [
         Controle("brutes", "Surfaces brutes (SP)", sp is not None),
         Controle("decoupage", "SP découpée hors-sol / sous-sol", t.get("SP_HS") is not None),
@@ -443,10 +454,10 @@ def _controles(t: dict, infos: dict, logements: list[dict]) -> list[Controle]:
                  "" if coherent or sp is None or sn is None else f"SP {sp:,.0f} < SN {sn:,.0f} m²"),
         Controle("plausible", f"Part de construction SC / SP entre {lo:.0%} et {hi:.0%}", sc is not None and lo <= sc <= hi,
                  "" if sc is None else f"SC / SP = {sc:.0%}"),
-        Controle("logements", "Liste des logements", bool(logements)),
-        Controle("chambres", "Nombre de chambres par logement", bool(logements) and len(ch) == len(logements),
-                 f"{len(ch)}/{len(logements)}" if logements else ""),
-        Controle("uspi", "Surfaces USPI (SVN)", bool(t.get("SVN"))),
+        Controle("logements", "Liste des logements", na or bool(logements), SANS_LOGEMENT if na else ""),
+        Controle("chambres", "Nombre de chambres par logement", na or bool(logements) and len(ch) == len(logements),
+                 SANS_LOGEMENT if na else f"{len(ch)}/{len(logements)}" if logements else ""),
+        Controle("uspi", "Surfaces USPI (SVN)", na or bool(t.get("SVN")), SANS_LOGEMENT if na and not t.get("SVN") else ""),
         Controle("enveloppe", "Surfaces d'enveloppe", bool(t.get("FACADE"))),
         Controle("infos", "Canton, catégorie, type d'intervention",
                  all(infos.get(k) for k in ("canton", "categorie", "intervention"))),

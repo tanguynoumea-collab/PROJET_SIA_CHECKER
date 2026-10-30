@@ -592,3 +592,21 @@ Le tag `v4.1.0` est posé sur l'état final de la feuille de route du §24 (les 
 - les retours sur les toitures et les fenêtres de toit (§22).
 
 Release GitHub « SIA Check Viewer 4.1.0 », avec l'installeur. Tests : 301 Python, 140 .NET.
+
+## 26. Données manquantes des projets (30.10.2026)
+
+- **Fiches des projets générés** (réglages de l'app), d'après les IFC et les MDP de la base :
+  - La Myonaz 1 et 2 : 1712, Logement, VD, Oron ;
+  - La Bâtie B : 1467, Logement, GE, Petit-Lancy ;
+  - Côté Gare L04 : 1023, Autre (parking silo), VD, Bussigny ;
+  - Afiro – Ateliers protégés : 1724, Activités, VD, Ecublens ;
+  - tous en nouvelle construction, phase 31, sur décision de l'utilisateur.
+- **Base** : phase 31 écrite dans les MDP du Clos des Hêtres, des Patios, d'Avallons et de Sauvabelines.
+- **En attente** :
+  - canton, commune, catégorie et intervention des Patios (1280), d'Avallons (1746) et de Sauvabelines (1784) ;
+  - le canton de Côté Gare (VS dans le MDP, alors que Bussigny est vaudoise).
+- **Benchmark** (`benchmark._sans_logement`) : pour une catégorie d'ouvrage renseignée sans logement, la liste des logements, les chambres et la SVN sont sans objet. Les contrôles sont réussis, avec la mention. CGA L04 et Afiro passent de 0,6 à 0,9.
+- **Reste hors de la plage 8–30 % de SC / SP** :
+  - CGA L04 (5 %) : un parking silo ouvert, plausible ;
+  - Afiro (3 %) : l'IFC n'exporte que les pièces (« ALO_PIECES », aucun mur). Il faut une maquette avec ses murs.
+- **Non comblées** : les surfaces manquantes de la base (SP brutes, logements, chambres, SVN, enveloppe). Les projets générés n'en sont que des parties : Myonaz 1 + 2 font 3 274 m² de SP pour 7 004 m² au MDP 1712, La Bâtie B 4 516 m² pour 8 178 m² au MDP 1467.

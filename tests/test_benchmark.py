@@ -119,6 +119,17 @@ def test_sc_hors_fourchette_ecarte_le_projet(tmp_path):
     assert b.combiner([p], b.KPI_BY_ID["SUP/SP_HS"])["n"] == 0
 
 
+def test_controles_logement_sans_objet_sans_logement():
+    """CGA L04 (parking), Afiro (ateliers), 30.10.2026 : sans logement, liste des logements, chambres et SVN sont sans
+    objet ; une catégorie de logement, ou non renseignée, les exige."""
+    t = {"SP": 1000.0, "SN": 850.0}
+    ok = {c.id: c for c in b._controles(t, {"categorie": "Autre"}, [])}
+    assert all(ok[k].ok and ok[k].detail == b.SANS_LOGEMENT for k in ("logements", "chambres", "uspi"))
+    for cat in ("Logement (100-90% SU)", "Logement Mixte (>10% autres affectations)", None):
+        ko = {c.id: c for c in b._controles(t, {"categorie": cat}, [])}
+        assert not any(ko[k].ok for k in ("logements", "chambres", "uspi"))
+
+
 def test_sens_et_objet_des_kpis():
     for k in b.KPIS:
         assert k.sens in (-1, 0, 1)

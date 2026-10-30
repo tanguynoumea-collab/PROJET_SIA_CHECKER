@@ -37,31 +37,35 @@ def failing(res, rule):
 
 @needs_tgm
 def test_counts_match_viewer(loree):
-    # Compteurs du viewer Treegram : 80 SP, 80 SEP (un total par niveau).
+    # Compteurs du viewer Treegram : 80 SP, 80 SEP (un total par niveau). Projet repris dans Treegram le 30.10.2026 :
+    # 8 des 9 totaux SEP des niveaux Toiture n'ont plus de surface élémentaire, le lecteur les ignore (71 SEP lues).
     df, _ = loree
-    assert (~df.category.isin(["SFN", "SRV"])).sum() == 6090
+    assert (~df.category.isin(["SFN", "SRV"])).sum() == 6076
     sfn = df[df.category == "SFN"]  # façade de chaque niveau, même hauteur brute que la SP du niveau
     assert len(sfn) == 80 and len(sfn[["building", "level"]].drop_duplicates()) == 80
     assert sfn.gross_area.sum() == pytest.approx(30138.23, abs=0.01)
     srv = df[df.category == "SRV"]  # vitrages : la SRV qui suit chaque SFN, pas celles de l'arbre de quantités
     assert len(srv) == 80 and srv.area.sum() == pytest.approx(7108, abs=1)
     nodes = df[df.kind == "node"].category.value_counts()
-    assert nodes["SP"] == 80 and nodes["SEP"] == 80
+    assert nodes["SP"] == 80 and nodes["SEP"] == 71
     assert set(df.building) == BUILDINGS
     assert df[(df.kind == "node") & (df.category == "SP")].area.sum() == pytest.approx(56210.12, abs=0.01)
 
 
 @needs_tgm
 def test_known_anomaly_level_without_su(loree):
-    # Anomalie connue « niveau avec SP sans SU » (I18 N00) : en norme stricte elle sort en R5 ;
-    # avec la règle personnalisée P1 (SU = SUP + SUS + SUT), ses 284 m² de SUT forment sa surface utile.
+    # Ancienne anomalie « niveau avec SP sans SU » (I18 N00) : ses 284 m² étaient de la SUT, que seule la règle
+    # personnalisée P1 (SU = SUP + SUS + SUT) comptait. Reprise dans Treegram le 30.10.2026 en SUP : plus de R5,
+    # avec ou sans P1.
     import yaml
     from sia_check import config
     df, res = loree
+    i18 = df[(df.building == "I18") & (df.level == "N00") & (df.kind == "leaf")].groupby("category").area.sum()
+    assert i18["SUP"] == pytest.approx(284.2, abs=0.1) and "SUT" not in i18
     assert ("I18", "N00") not in failing(res, "R5")
     raw = yaml.safe_load((Path(__file__).resolve().parents[1] / "config.yaml").read_text(encoding="utf-8"))
     raw.pop("custom_rules")
-    assert ("I18", "N00") in failing(rules.run(df, config.from_dict(raw)), "R5")
+    assert ("I18", "N00") not in failing(rules.run(df, config.from_dict(raw)), "R5")
 
 
 @needs_tgm
@@ -112,19 +116,21 @@ def test_promoter_ifc_only_unknown_codes():
 @needs_tgm
 def test_treegram_exports_match_treegram(loree):
     # Comparé le 22.10.2026 aux exports Treegram 1778-SurfacesNettes / -SurfacesBrutes : mêmes lignes, mêmes
-    # valeurs, même ordre ; s'y ajoutent les 26 SED et 47 SUT que l'export Treegram omet.
+    # valeurs, même ordre ; s'y ajoutent les 26 SED et 47 SUT que l'export Treegram omet. Reprise du 30.10.2026 :
+    # 46 de ces SUT sont devenues des SUP, il en reste une.
     from sia_check import config
     cfg = config.load(Path(__file__).resolve().parents[1] / "config.yaml")
     _, res = loree
     n, b = treegram.nettes(res, cfg), treegram.brutes(res, cfg)
-    assert len(n) == 3221 + 26 + 47 and len(b) == 160
-    assert n["Catégorie SIA"].value_counts()[["SED", "SUT"]].tolist() == [26, 47]
+    assert len(n) == 3221 + 26 + 47 and len(b) == 151   # 160 avant la reprise du 30.10 : 9 totaux de toiture en moins
+    assert n["Catégorie SIA"].value_counts()[["SED", "SUT"]].tolist() == [26, 1]
     assert n["ID TGM"].iloc[0] == "H170::H2527" and n["ID TGM"].is_unique and n["ID TGM"].notna().all()
     # Aires brutes de Treegram (74 518,54 m²) moins les 7 280,38 m² de toitures SPT que Treegram compte dans la SEP.
-    assert b.Area.sum() == pytest.approx(74518.54 - 7280.38, abs=0.05)
+    # Reprise du 30.10.2026 : 18,22 m² de moins avec les totaux de toiture ignorés (67 238,16 avant).
+    assert b.Area.sum() == pytest.approx(67219.94, abs=0.05)
     sep = b[b["Catégorie SIA"] == "SEP"].set_index(["BuildingByTgm", "StoreyByTgm"]).Area
     assert sep[("E09", "Toiture")] == 0 and sep[("E09", "N04")] == pytest.approx(166.85, abs=0.01)
-    assert b.Perimeter.sum() == pytest.approx(17233.96, abs=0.01)
+    assert b.Perimeter.sum() == pytest.approx(16494.94, abs=0.01)   # 17 233,96 avant la reprise du 30.10 (lignes de toiture)
 
 
 @needs_tgm
@@ -141,7 +147,7 @@ def test_mdp_from_blank_template(loree, tmp_path):
         warnings.simplefilter("ignore")
         wb = openpyxl.load_workbook(out)
     refs = {t: ws.tables[t].ref for ws in wb.worksheets for t in ws.tables}
-    assert refs["SurfacesSIA4168"] == "A1:L152" and refs["SurfacesSIA41610"] == "A1:I3295"   # sans les 9 SP Toiture à 0 m²
+    assert refs["SurfacesSIA4168"] == "A1:L143" and refs["SurfacesSIA41610"] == "A1:I3295"   # sans les 9 SP Toiture à 0 m²
     assert refs["Logements"] == "A1:K316"                       # 315 lots
     env = list(wb["SurfacesEnveloppe"].iter_rows(min_row=2, max_col=9, values_only=True))
     assert sum(1 for r in env if r[1] == mdp.FACADE) == 80
@@ -163,7 +169,7 @@ def test_corrections_s1_s2(loree):
          "cible": {"ids": ["B03_N00_SEP#total"]}},
     ]}
     applied, before, after = corrections.run(df, journal, cfg)
-    assert applied.log.set_index("id").loc["s2", "surfaces"] == 9
+    assert applied.log.set_index("id").loc["s2", "surfaces"] == 1   # 9 avant la reprise du 30.10 : seule I18 en a encore une
     toit = lambda r: {x.rule for x in r.failing.itertuples() if x.level == "Toiture"}  # noqa: E731
     assert not toit(before) & {"R3", "A2"} and not toit(after) & {"R3", "A2"}
     r3 = lambda r: r.residuals.query("rule == 'R3' and building == 'B03' and level == 'N00'").diff_m2.iloc[0]  # noqa: E731

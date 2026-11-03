@@ -9,6 +9,9 @@ public partial class App : Application
 {
     private const int ColorsDictionaryIndex = 3;   // position de Colors.*.xaml dans App.xaml
     private static readonly List<string> _fluentOverrides = [];   // clés WPF-UI posées par le thème courant
+    /// <summary>Pinceaux WPF-UI peints à l'accent, réalignés sur celui du thème à chaque application (App.ApplyTheme).</summary>
+    private static readonly string[] AccentBrushKeys =
+        ["AccentButtonBackground", "BadgeBackground", "ProgressBarForeground", "ProgressRingForegroundThemeBrush", "SliderThumbBackground"];
 
     private static string CrashLog => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SiaCheckViewer", "crash.log");
@@ -185,6 +188,11 @@ public partial class App : Application
         // imposées : la surcharge « thème » éclaircit l'accent en sombre jusqu'à le rendre presque blanc.
         var accent = (System.Windows.Media.Color)Current.Resources["ColorAccent"];
         ApplicationAccentColorManager.Apply(accent, accent, accent, accent);
+        // Pinceaux du thème Fluent figés sur l'accent de Windows quand ApplicationThemeManager recharge le thème
+        // (tout changement après le démarrage) : le bouton d'accent devenait gris foncé.
+        var accentBrush = new System.Windows.Media.SolidColorBrush(accent);
+        accentBrush.Freeze();
+        foreach (var key in AccentBrushKeys) Current.Resources[key] = accentBrush;
         // Thèmes de palette (Mint, Amber) : les clés Fluent de WPF-UI qu'ils redéfinissent passent au premier niveau,
         // devant le thème Fluent et l'accent, qui écrivent eux aussi des pinceaux (texte sur accent blanc, etc.).
         var colors = dicts[ColorsDictionaryIndex];

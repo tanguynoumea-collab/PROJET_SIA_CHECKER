@@ -8,12 +8,18 @@ public sealed record AppTheme(string Id, string Label, string File, bool IsDark,
 {
     public const string DefaultId = "Pervenche.Dark";
 
+    /// <summary>Palette du thème (« Mint » pour « Mint sombre ») : une ligne du sélecteur de thème.</summary>
+    public string Family => Label.Split(' ')[0];
+
     public static IReadOnlyList<AppTheme> All { get; } =
     [
         new("Pervenche.Dark", "Pervenche sombre", "Pervenche.Dark", true, "dark"),
         new("Pervenche.Light", "Pervenche clair", "Pervenche.Light", false, "light"),
-        new("Mint", "Mint", "Mint", false, "mint"),
-        new("Amber", "Amber", "Amber", false, "amber"),
+        // « Mint » et « Amber » : identifiants des versions claires, enregistrés avant l'ajout des sombres
+        new("Mint", "Mint clair", "Mint.Light", false, "mint"),
+        new("Mint.Dark", "Mint sombre", "Mint.Dark", true, "mint-dark"),
+        new("Amber", "Amber clair", "Amber.Light", false, "amber"),
+        new("Amber.Dark", "Amber sombre", "Amber.Dark", true, "amber-dark"),
     ];
 
     /// <summary>Thème d'un identifiant enregistré ; « Dark » et « Light » (avant les thèmes nommés) désignent Pervenche.</summary>

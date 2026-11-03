@@ -30,8 +30,9 @@
   --accent: #8B83FF; --sur-accent: #15171C; --filet: #2E323B; --ok: #59C28F; --alerte: #E8B04A; --erreur: #F27272;
 }
 /* Thèmes nommés de l'application (Services/AppTheme.cs, Themes/Colors.*.xaml) ; ci-dessus : Pervenche clair et sombre.
-   Mint et Amber (source : @uiuxaadi · DfKLpS_FLbN), clairs, structure de Pervenche clair (surfaces
-   blanches) : mêmes valeurs que Themes/Colors.Mint.xaml et Colors.Amber.xaml ; hors palette, seules les couleurs d'état. */
+   Mint et Amber (source : @uiuxaadi · DfKLpS_FLbN), clairs sur la structure de Pervenche clair (surfaces blanches),
+   puis leurs inverses sombres : mêmes valeurs que Themes/Colors.{Mint,Amber}.{Light,Dark}.xaml ; hors palette,
+   seules les couleurs d'état. */
 :root[data-theme="mint"] {
   color-scheme: light;
   --fond: #F5FEFC; --surface: #FFFFFF; --surface-2: #E0FCF7; --texte: #0B3D3B; --texte-2: #4A6F6E;
@@ -41,6 +42,16 @@
   color-scheme: light;
   --fond: #FFFBF6; --surface: #FFFFFF; --surface-2: #FFEEDB; --texte: #1F1D2B; --texte-2: #595862;
   --accent: #FF7A00; --accent-texte: #8F4C16; --sur-accent: #1F1D2B; --filet: #DDDDDF; --ok: #1E7F52; --alerte: #9A6700; --erreur: #C62F2F;
+}
+:root[data-theme="mint-dark"] {
+  color-scheme: dark;
+  --fond: #041716; --surface: #062220; --surface-2: #09302E; --texte: #E6FFFB; --texte-2: #99B0AD;
+  --accent: #14B8A6; --accent-texte: #56D7C5; --sur-accent: #0B3D3B; --filet: #233F3C; --ok: #59C28F; --alerte: #E8B04A; --erreur: #F27272;
+}
+:root[data-theme="amber-dark"] {
+  color-scheme: dark;
+  --fond: #14131C; --surface: #1F1D2B; --surface-2: #2F2B36; --texte: #FFF8EF; --texte-2: #AFAAA7;
+  --accent: #FF7A00; --accent-texte: #FF9226; --sur-accent: #1F1D2B; --filet: #3C3944; --ok: #59C28F; --alerte: #E8B04A; --erreur: #F27272;
 }
 
 * { box-sizing: border-box; }

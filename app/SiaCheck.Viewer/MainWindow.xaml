@@ -414,6 +414,8 @@
                     </ScrollViewer>
                 </DockPanel>
             </Grid>
+            <!-- Thème : coin haut-droit, au-dessus du contenu -->
+            <c:ThemePicker HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,16,0" />
         </Grid>
 
         <!-- ================================================================ PAGE D'UN MDP DE LA BASE : identité d'abord, puis ce qui manque -->
@@ -595,31 +597,7 @@
                                 </ContextMenu>
                             </ui:DropDownButton.Flyout>
                         </ui:DropDownButton>
-                        <!-- Thèmes nommés (AppTheme.All) : la coche suit le thème enregistré -->
-                        <ui:DropDownButton Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon DarkTheme20}"
-                                           ToolTip="Thème de l'interface" AutomationProperties.Name="Thème"
-                                           MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}">
-                            <ui:DropDownButton.Flyout>
-                                <ContextMenu x:Name="ThemeMenu" DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
-                                             ItemsSource="{Binding Themes}">
-                                    <ContextMenu.ItemContainerStyle>
-                                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                                            <Setter Property="Header" Value="{Binding Label}" />
-                                            <Setter Property="Command" Value="{Binding DataContext.SetThemeCommand, ElementName=ThemeMenu}" />
-                                            <Setter Property="CommandParameter" Value="{Binding}" />
-                                            <Setter Property="IsChecked">
-                                                <Setter.Value>
-                                                    <MultiBinding Converter="{StaticResource Same}">
-                                                        <Binding />
-                                                        <Binding Path="DataContext.CurrentTheme" ElementName="ThemeMenu" />
-                                                    </MultiBinding>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Style>
-                                    </ContextMenu.ItemContainerStyle>
-                                </ContextMenu>
-                            </ui:DropDownButton.Flyout>
-                        </ui:DropDownButton>
+                        <c:ThemePicker Margin="8,0,0,0" />
                         <ui:Button Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Home20}"
                                    Command="{Binding GoHomeCommand}" ToolTip="Ouvrir un autre projet"
                                    AutomationProperties.Name="Accueil" MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />

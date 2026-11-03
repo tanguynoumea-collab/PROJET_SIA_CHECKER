@@ -21,7 +21,6 @@
             <c:VisibleWhenConverter x:Key="VisibleOrHidden" Off="Hidden" />
             <c:NotConverter x:Key="Not" />
             <c:EqualsConverter x:Key="EqualsTo" />
-            <c:SameConverter x:Key="Same" />
             <c:AreaConverter x:Key="Area" />
         </ResourceDictionary>
     </Application.Resources>

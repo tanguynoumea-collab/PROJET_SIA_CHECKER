@@ -38,7 +38,7 @@ public sealed class AppSettings
 {
     public const int MaxRecents = 8;
 
-    public string Theme { get; set; } = "Dark";
+    public string Theme { get; set; } = AppTheme.DefaultId;
     public bool BalanceCollapsed { get; set; }
     /// <summary>Zone bilan sur l'onglet Ratios.</summary>
     public bool ShowRatios { get; set; }

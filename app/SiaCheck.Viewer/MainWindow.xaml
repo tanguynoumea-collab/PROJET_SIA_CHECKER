@@ -595,9 +595,31 @@
                                 </ContextMenu>
                             </ui:DropDownButton.Flyout>
                         </ui:DropDownButton>
-                        <ui:Button Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon DarkTheme20}"
-                                   Command="{Binding ToggleThemeCommand}" ToolTip="Basculer thème sombre / clair"
-                                   AutomationProperties.Name="Basculer le thème" MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
+                        <!-- Thèmes nommés (AppTheme.All) : la coche suit le thème enregistré -->
+                        <ui:DropDownButton Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon DarkTheme20}"
+                                           ToolTip="Thème de l'interface" AutomationProperties.Name="Thème"
+                                           MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}">
+                            <ui:DropDownButton.Flyout>
+                                <ContextMenu x:Name="ThemeMenu" DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                             ItemsSource="{Binding Themes}">
+                                    <ContextMenu.ItemContainerStyle>
+                                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                            <Setter Property="Header" Value="{Binding Label}" />
+                                            <Setter Property="Command" Value="{Binding DataContext.SetThemeCommand, ElementName=ThemeMenu}" />
+                                            <Setter Property="CommandParameter" Value="{Binding}" />
+                                            <Setter Property="IsChecked">
+                                                <Setter.Value>
+                                                    <MultiBinding Converter="{StaticResource Same}">
+                                                        <Binding />
+                                                        <Binding Path="DataContext.CurrentTheme" ElementName="ThemeMenu" />
+                                                    </MultiBinding>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ContextMenu.ItemContainerStyle>
+                                </ContextMenu>
+                            </ui:DropDownButton.Flyout>
+                        </ui:DropDownButton>
                         <ui:Button Margin="4,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Home20}"
                                    Command="{Binding GoHomeCommand}" ToolTip="Ouvrir un autre projet"
                                    AutomationProperties.Name="Accueil" MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
@@ -673,7 +695,7 @@
                         <Button Style="{StaticResource RowButton}" Padding="6,2" Margin="4,0,0,0" VerticalAlignment="Center"
                                 Command="{Binding ShowAppliedCorrectionsCommand}" ToolTip="Voir les corrections appliquées (onglet Sujets)"
                                 Visibility="{Binding HasAppliedCorrections, Converter={StaticResource BoolToVisibility}}">
-                            <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}">
+                            <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccentText}">
                                 <Run Text="· " /><Run Text="{Binding AppliedText, Mode=OneWay}" />
                             </TextBlock>
                         </Button>
@@ -682,8 +704,8 @@
                                 Command="{Binding ShowAiReportCommand}" ToolTip="{Binding AiReportTitle}"
                                 Visibility="{Binding HasAiReview, Converter={StaticResource BoolToVisibility}}">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="{Binding AiSummary}" />
-                                <ui:SymbolIcon Margin="4,0,0,0" Symbol="Open16" Foreground="{DynamicResource BrushAccent}"
+                                <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccentText}" Text="{Binding AiSummary}" />
+                                <ui:SymbolIcon Margin="4,0,0,0" Symbol="Open16" Foreground="{DynamicResource BrushAccentText}"
                                                Visibility="{Binding HasAiReport, Converter={StaticResource BoolToVisibility}}" />
                             </StackPanel>
                         </Button>
@@ -790,7 +812,7 @@
                             <DockPanel>
                                 <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" Margin="{StaticResource SectionGap}"
                                         Command="{Binding SelectAllBuildingsCommand}">
-                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Tous" />
+                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccentText}" Text="Tous" />
                                 </Button>
                                 <TextBlock Style="{StaticResource TextSection}" Text="Bâtiments" />
                             </DockPanel>
@@ -1328,6 +1350,7 @@
                             <c:TracePlan x:Name="TracePlanControl" Session="{Binding Trace}"
                                          Palette="{Binding Palette}" Accent="{DynamicResource BrushAccent}" Primary="{DynamicResource BrushTextPrimary}"
                                          Secondary="{DynamicResource BrushTextSecondary}" Error="{DynamicResource BrushVerdictError}"
+                                         Surface="{DynamicResource BrushSurface}"
                                          AutomationProperties.Name="Plan du niveau pour le tracé" />
                         </DockPanel>
                     </Border>
@@ -1373,7 +1396,7 @@
                                     Visibility="{Binding HasReviewProblems, Converter={StaticResource BoolToVisibility}}">
                                 <DockPanel>
                                     <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" Command="{Binding ShowReviewProblemsCommand}">
-                                        <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Voir" />
+                                        <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccentText}" Text="Voir" />
                                     </Button>
                                     <c:VerdictGlyph Verdict="ALERTE" />
                                     <TextBlock Margin="6,0,0,0" Style="{StaticResource TextCaption}" VerticalAlignment="Center" Text="{Binding ReviewProblemsText}" />
@@ -1462,7 +1485,7 @@
                                 <Button Margin="0,2,0,0" HorizontalAlignment="Right" Style="{StaticResource RowButton}" Padding="4,0"
                                         Command="{Binding ShowAiReportCommand}"
                                         Visibility="{Binding SelectedSubject.IsAi, Converter={StaticResource BoolToVisibility}}">
-                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Voir le rapport ↗" />
+                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccentText}" Text="Voir le rapport ↗" />
                                 </Button>
                                 <DockPanel Margin="0,6,0,0" Visibility="{Binding SelectedSubject.CanDecide, Converter={StaticResource BoolToVisibility}}">
                                     <StackPanel Orientation="Horizontal">
@@ -1669,7 +1692,7 @@
                                 <TextBlock Style="{StaticResource TextBody}" HorizontalAlignment="Center" Text="{Binding SubjectsEmptyMessage}" />
                                 <Button Style="{StaticResource RowButton}" Padding="4,2" HorizontalAlignment="Center" Margin="0,6,0,0"
                                         Command="{Binding ResetSubjectFilterCommand}">
-                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Tout afficher" />
+                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccentText}" Text="Tout afficher" />
                                 </Button>
                             </StackPanel>
                         </Grid>
@@ -1748,7 +1771,7 @@
                                             <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" VerticalAlignment="Center"
                                                     Command="{Binding DataContext.ShowAiReportCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     Visibility="{Binding DataContext.HasAiReport, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibility}}">
-                                                <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Voir le rapport ↗" />
+                                                <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccentText}" Text="Voir le rapport ↗" />
                                             </Button>
                                             <TextBlock Style="{StaticResource TextSection}" Margin="0,0,8,0" VerticalAlignment="Center" Text="Revue IA" />
                                             <c:AiVerdictTag Kind="{Binding AiKind}" Text="{Binding AiTag}" HorizontalAlignment="Left" />
@@ -1757,7 +1780,7 @@
                                         <Button Margin="0,4,0,0" HorizontalAlignment="Right" Style="{StaticResource RowButton}" Padding="4,0"
                                                 Command="{Binding DataContext.ShowSubjectOfCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
                                                 Visibility="{Binding HasSubjectLink, Converter={StaticResource BoolToVisibility}}">
-                                            <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Voir le sujet et ses corrections" />
+                                            <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccentText}" Text="Voir le sujet et ses corrections" />
                                         </Button>
                                     </StackPanel>
                                 </Border>
@@ -1833,9 +1856,9 @@
                                             <TextBlock Grid.Column="2" Style="{StaticResource TextMono}" Text="{Binding Location}" VerticalAlignment="Center" />
                                             <!-- Point isolé dans la 3D / point qui cite la surface cliquée -->
                                             <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="4,0">
-                                                <ui:SymbolIcon Symbol="Eye16" Foreground="{DynamicResource BrushAccent}" ToolTip="Isolé dans la 3D — recliquer pour quitter"
+                                                <ui:SymbolIcon Symbol="Eye16" Foreground="{DynamicResource BrushAccentText}" ToolTip="Isolé dans la 3D — recliquer pour quitter"
                                                                Visibility="{Binding IsFocused, Converter={StaticResource BoolToVisibility}}" />
-                                                <ui:SymbolIcon Symbol="Link16" Foreground="{DynamicResource BrushAccent}" ToolTip="Cite la surface sélectionnée dans la 3D"
+                                                <ui:SymbolIcon Symbol="Link16" Foreground="{DynamicResource BrushAccentText}" ToolTip="Cite la surface sélectionnée dans la 3D"
                                                                Visibility="{Binding IsLinked, Converter={StaticResource BoolToVisibility}}" />
                                             </StackPanel>
                                             <TextBlock Grid.Column="4" Style="{StaticResource TextNumber}" VerticalAlignment="Center"
@@ -1856,7 +1879,7 @@
                                 <TextBlock Style="{StaticResource TextBody}" HorizontalAlignment="Center" Text="{Binding IssuesEmptyMessage}" />
                                 <Button Style="{StaticResource RowButton}" Padding="4,2" HorizontalAlignment="Center" Margin="0,6,0,0"
                                         Command="{Binding ResetFiltersCommand}">
-                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Réinitialiser les filtres" />
+                                    <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccentText}" Text="Réinitialiser les filtres" />
                                 </Button>
                             </StackPanel>
                         </Grid>
@@ -1967,7 +1990,7 @@
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Style="{StaticResource RowButton}" Padding="4,0" VerticalAlignment="Top" Command="{Binding OpenAiErrorLogCommand}"
                                     ToolTip="Message, détail technique et réponse brute du modèle (derniere-erreur.log), sinon journal du moteur">
-                                <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccent}" Text="Voir le journal" />
+                                <TextBlock Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushAccentText}" Text="Voir le journal" />
                             </Button>
                             <TextBlock Style="{StaticResource TextBody}" TextWrapping="Wrap" Text="{Binding AiError}" />
                         </DockPanel>

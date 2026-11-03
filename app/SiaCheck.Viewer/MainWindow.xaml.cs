@@ -402,6 +402,8 @@ public partial class MainWindow : FluentWindow, IShell
 
     public Color GhostColor => (Color)FindResource("ColorGhost");
 
+    public Color ContextColor => (Color)FindResource("ColorContext");
+
     public Color AccentColor => (Color)FindResource("ColorAccent");
 
     // ------------------------------------------------------------------ 3D

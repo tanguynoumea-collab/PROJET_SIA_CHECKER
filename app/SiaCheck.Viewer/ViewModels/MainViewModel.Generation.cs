@@ -271,7 +271,7 @@ public sealed partial class MainViewModel
             ContextModel? context = null;
             try { context = ContextModel.Load(ProjectDir); }
             catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException or FormatException) { /* calque grisé */ }
-            Scene.SetContext(context, Color.FromArgb(0x38, 0x9B, 0xA1, 0xAD));
+            Scene.SetContext(context, _shell.ContextColor);
             _ifcContextTooltip = context is null ? "Régénérez le projet pour afficher sa maquette."
                 : context.Elements.Count == 0 ? "La maquette ne contient ni murs, ni dalles, ni toits, ni poteaux (export des seules pièces ?)."
                 : "Murs, dalles, toits et poteaux de la maquette, en gris translucide.";

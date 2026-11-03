@@ -15,7 +15,7 @@ public partial class MainWindow
 
     private async void OnDashboardChanged(string? property)
     {
-        if (property is not (nameof(MainViewModel.IsDashboard) or nameof(MainViewModel.DashboardVersion)) || !ViewModel.IsDashboard)
+        if (property is not (nameof(MainViewModel.IsDashboard) or nameof(MainViewModel.DashboardVersion) or nameof(MainViewModel.DashboardTheme)) || !ViewModel.IsDashboard)
             return;
         try
         {

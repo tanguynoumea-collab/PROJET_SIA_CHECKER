@@ -266,6 +266,7 @@ internal sealed class FakeShell : IShell
     public void Frame(Rect3D? bounds) { }
     public void ApplyTheme(string theme) { }
     public Color GhostColor => Colors.Gray;
+    public Color ContextColor => Colors.Gray;
     public Color AccentColor => Colors.SlateBlue;
 }
 

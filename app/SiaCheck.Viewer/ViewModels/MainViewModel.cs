@@ -974,11 +974,16 @@ public sealed partial class MainViewModel : ObservableObject
 
     // ------------------------------------------------------------------ thème
 
+    public IReadOnlyList<AppTheme> Themes => AppTheme.All;
+    public AppTheme CurrentTheme => AppTheme.Find(_settings.Theme);
+
     [RelayCommand]
-    private void ToggleTheme()
+    private void SetTheme(AppTheme theme)
     {
-        _settings.Theme = _settings.Theme == "Dark" ? "Light" : "Dark";
+        _settings.Theme = theme.Id;
         _settings.Save(_paths);
-        _shell.ApplyTheme(_settings.Theme);
+        _shell.ApplyTheme(theme.Id);
+        OnPropertyChanged(nameof(CurrentTheme));
+        OnPropertyChanged(nameof(DashboardTheme));
     }
 }

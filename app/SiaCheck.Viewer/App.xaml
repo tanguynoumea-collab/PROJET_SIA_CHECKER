@@ -10,8 +10,8 @@
                 <ui:ThemesDictionary Theme="Dark" />
                 <ui:ControlsDictionary />
                 <ResourceDictionary Source="Themes/Tokens.xaml" />
-                <!-- Remplacé à l'exécution par Colors.Light.xaml selon le thème (App.ApplyTheme) -->
-                <ResourceDictionary Source="Themes/Colors.Dark.xaml" />
+                <!-- Remplacé à l'exécution par le Colors.*.xaml du thème choisi (App.ApplyTheme, AppTheme.All) -->
+                <ResourceDictionary Source="Themes/Colors.Pervenche.Dark.xaml" />
                 <ResourceDictionary Source="Themes/Styles.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
@@ -21,6 +21,7 @@
             <c:VisibleWhenConverter x:Key="VisibleOrHidden" Off="Hidden" />
             <c:NotConverter x:Key="Not" />
             <c:EqualsConverter x:Key="EqualsTo" />
+            <c:SameConverter x:Key="Same" />
             <c:AreaConverter x:Key="Area" />
         </ResourceDictionary>
     </Application.Resources>

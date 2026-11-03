@@ -107,7 +107,7 @@ public sealed partial class MainViewModel
     private BenchmarkData? _benchmarkData;
     /// <summary>Listes de la fiche Identité : celles du gabarit transmises par le moteur, sinon la copie livrée.</summary>
     internal IdentityLists IdentityLists => IdentityLists.From(_benchmarkData?.Lists);
-    public string DashboardTheme => _settings.Theme == "Dark" ? "dark" : "light";
+    public string DashboardTheme => AppTheme.Find(_settings.Theme).DashboardId;
 
     public bool HasBenchmarkFolder => BenchmarkFolder.Length > 0;
     /// <summary>Base à relire : un MDP a changé, ou le moteur est plus récent que la dernière lecture (comme une analyse).</summary>

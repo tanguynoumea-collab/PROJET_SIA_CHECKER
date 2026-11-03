@@ -28,6 +28,8 @@ public interface IShell
     void Frame(Rect3D? bounds);
     void ApplyTheme(string theme);
     Color GhostColor { get; }
+    /// <summary>Calque de contexte 3D (maquette IFC) : ColorContext du thème.</summary>
+    Color ContextColor { get; }
     /// <summary>Accent (sélection 3D) : tracé de la correction sélectionnée.</summary>
     Color AccentColor { get; }
 }

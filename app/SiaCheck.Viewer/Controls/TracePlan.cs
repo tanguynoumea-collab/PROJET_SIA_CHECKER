@@ -32,11 +32,15 @@ public sealed class TracePlan : FrameworkElement
         nameof(Secondary), typeof(Brush), typeof(TracePlan), new FrameworkPropertyMetadata(Brushes.Gray, FrameworkPropertyMetadataOptions.AffectsRender));
     public static readonly DependencyProperty ErrorProperty = DependencyProperty.Register(
         nameof(Error), typeof(Brush), typeof(TracePlan), new FrameworkPropertyMetadata(Brushes.Red, FrameworkPropertyMetadataOptions.AffectsRender));
+    /// <summary>Remplissage des poignées et sommets non sélectionnés.</summary>
+    public static readonly DependencyProperty SurfaceProperty = DependencyProperty.Register(
+        nameof(Surface), typeof(Brush), typeof(TracePlan), new FrameworkPropertyMetadata(Brushes.White, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public TraceSession? Session { get => (TraceSession?)GetValue(SessionProperty); set => SetValue(SessionProperty, value); }
     public SiaPalette? Palette { get => (SiaPalette?)GetValue(PaletteProperty); set => SetValue(PaletteProperty, value); }
     public Brush Accent { get => (Brush)GetValue(AccentProperty); set => SetValue(AccentProperty, value); }
     public Brush Primary { get => (Brush)GetValue(PrimaryProperty); set => SetValue(PrimaryProperty, value); }
+    public Brush Surface { get => (Brush)GetValue(SurfaceProperty); set => SetValue(SurfaceProperty, value); }
     public Brush Secondary { get => (Brush)GetValue(SecondaryProperty); set => SetValue(SecondaryProperty, value); }
     public Brush Error { get => (Brush)GetValue(ErrorProperty); set => SetValue(ErrorProperty, value); }
 
@@ -152,7 +156,7 @@ public sealed class TracePlan : FrameworkElement
                 var p = ToScreen(poly[i]);
                 var sel = _selected == new TraceSelection(k, i, false) || _dragVertex == (k, i);
                 var size = sel ? VertexSize + 4 : VertexSize;
-                dc.DrawRectangle(sel ? Accent : Brushes.White, Pen(Accent, 1.5), new Rect(p.X - size / 2, p.Y - size / 2, size, size));
+                dc.DrawRectangle(sel ? Accent : Surface, Pen(Accent, 1.5), new Rect(p.X - size / 2, p.Y - size / 2, size, size));
             }
         }
         if (_snap is { } sp)   // losange : point d'accrochage sous le curseur
@@ -203,7 +207,7 @@ public sealed class TracePlan : FrameworkElement
         pen.Freeze();
         dc.DrawGeometry(null, pen, g);
         foreach (var p in s.SplitLine.Select(ToScreen))
-            dc.DrawEllipse(Brushes.White, Pen(Accent, 1.5), p, VertexSize / 2, VertexSize / 2);
+            dc.DrawEllipse(Surface, Pen(Accent, 1.5), p, VertexSize / 2, VertexSize / 2);
     }
 
     /// <summary>Repère d'angle droit : petit carré à l'angle, côtés le long des deux arêtes.</summary>

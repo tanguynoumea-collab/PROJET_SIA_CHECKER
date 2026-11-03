@@ -78,7 +78,8 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="B" Property="BorderBrush" Value="{DynamicResource BrushAccent}" />
-                            <Setter Property="Foreground" Value="{DynamicResource BrushAccent}" />
+                            <Setter TargetName="B" Property="Background" Value="{DynamicResource BrushSelected}" />
+                            <Setter Property="Foreground" Value="{DynamicResource BrushOnSelected}" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="B" Property="BorderBrush" Value="{DynamicResource BrushAccent}" />

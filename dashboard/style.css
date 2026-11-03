@@ -18,7 +18,7 @@
   --mono: "Cascadia Mono", Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) {
+  :root:where(:not([data-theme])) {
     color-scheme: dark;
     --fond: #15171C; --surface: #1E2128; --surface-2: #272B33; --texte: #E7E9EE; --texte-2: #9BA1AD;
     --accent: #8B83FF; --sur-accent: #15171C; --filet: #2E323B; --ok: #59C28F; --alerte: #E8B04A; --erreur: #F27272;
@@ -28,6 +28,19 @@
   color-scheme: dark;
   --fond: #15171C; --surface: #1E2128; --surface-2: #272B33; --texte: #E7E9EE; --texte-2: #9BA1AD;
   --accent: #8B83FF; --sur-accent: #15171C; --filet: #2E323B; --ok: #59C28F; --alerte: #E8B04A; --erreur: #F27272;
+}
+/* Thèmes nommés de l'application (Services/AppTheme.cs, Themes/Colors.*.xaml) ; ci-dessus : Pervenche clair et sombre.
+   Mint et Amber (source : @uiuxaadi · DfKLpS_FLbN), clairs, structure de Pervenche clair (surfaces
+   blanches) : mêmes valeurs que Themes/Colors.Mint.xaml et Colors.Amber.xaml ; hors palette, seules les couleurs d'état. */
+:root[data-theme="mint"] {
+  color-scheme: light;
+  --fond: #F5FEFC; --surface: #FFFFFF; --surface-2: #E0FCF7; --texte: #0B3D3B; --texte-2: #4A6F6E;
+  --accent: #14B8A6; --accent-texte: #107A70; --sur-accent: #0B3D3B; --filet: #DAE2E2; --ok: #1E7F52; --alerte: #9A6700; --erreur: #C62F2F;
+}
+:root[data-theme="amber"] {
+  color-scheme: light;
+  --fond: #FFFBF6; --surface: #FFFFFF; --surface-2: #FFEEDB; --texte: #1F1D2B; --texte-2: #595862;
+  --accent: #FF7A00; --accent-texte: #8F4C16; --sur-accent: #1F1D2B; --filet: #DDDDDF; --ok: #1E7F52; --alerte: #9A6700; --erreur: #C62F2F;
 }
 
 * { box-sizing: border-box; }
@@ -220,7 +233,7 @@ td .signe { display: inline-block; width: 12px; margin-left: 4px; font-size: 10p
 .an-nom { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .an-nom.reference { font-family: var(--police-forte); }
 button.an-nom { border: 0; background: none; color: var(--texte); font: 13px var(--police); cursor: pointer; padding: 0; min-height: 26px; }
-button.an-nom:hover { color: var(--accent); text-decoration: underline; }
+button.an-nom:hover { color: var(--accent-texte, var(--accent)); text-decoration: underline; }
 .an-pile { display: flex; gap: 2px; height: 26px; min-width: 0; }
 .an-pile.reference { height: 34px; }
 .an-pile span { display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; font-size: 11px;
@@ -230,7 +243,7 @@ button.an-nom:hover { color: var(--accent); text-decoration: underline; }
 .an-pile .an-SUP, .an-pile .an-SI { color: #FFFFFF; }
 .an-sep { grid-column: 1 / -1; height: 1px; background: var(--filet); }
 #anatomie-lecture { margin: 12px 0 0; }
-#ratios-projets td.lien-ligne { color: var(--accent); }
+#ratios-projets td.lien-ligne { color: var(--accent-texte, var(--accent)); }
 #vue-ratios .defile { margin-bottom: 8px; }
 @media (max-width: 1000px) {
   .tabs { gap: 16px; padding: 0 16px; overflow-x: auto; }
@@ -262,7 +275,7 @@ table.programme th:nth-child(2), table.programme td:nth-child(2) { text-align: r
 table.programme th:last-child { text-align: left; }
 table.programme .detail { display: block; color: var(--texte-2); font-size: 12px; }
 table.programme tbody tr { cursor: default; }
-.lien { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
+.lien { border: 0; background: none; padding: 0; color: var(--accent-texte, var(--accent)); font: inherit; cursor: pointer; text-decoration: underline; }
 
 /* Programmer : vitrée et pleine sous la façade (Évolution 3.7) */
 table.programme td.sous { padding-left: 1.5rem; color: var(--texte-2); }

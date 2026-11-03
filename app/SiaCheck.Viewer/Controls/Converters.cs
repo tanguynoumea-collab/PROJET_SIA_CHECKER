@@ -40,6 +40,16 @@ public sealed class EqualsConverter : IValueConverter
             : Binding.DoNothing;
 }
 
+/// <summary>Vrai si toutes les valeurs liées sont égales (élément d'une liste et sélection courante, p. ex. le thème coché).</summary>
+public sealed class SameConverter : IMultiValueConverter
+{
+    public object Convert(object?[] values, Type targetType, object? parameter, CultureInfo culture) =>
+        values.Length > 0 && values.All(v => Equals(v, values[0]));
+
+    public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>m² au format suisse (espace fine comme séparateur de milliers), vide si null.</summary>
 public sealed class AreaConverter : IValueConverter
 {

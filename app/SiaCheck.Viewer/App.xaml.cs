@@ -1,4 +1,4 @@
-﻿using System.IO;
+﻿﻿﻿﻿using System.IO;
 using System.Windows;
 using SiaCheck.Viewer.Services;
 using Wpf.Ui.Appearance;
@@ -8,6 +8,7 @@ namespace SiaCheck.Viewer;
 public partial class App : Application
 {
     private const int ColorsDictionaryIndex = 3;   // position de Colors.*.xaml dans App.xaml
+    private static readonly List<string> _fluentOverrides = [];   // clés WPF-UI posées par le thème courant
 
     private static string CrashLog => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SiaCheckViewer", "crash.log");
@@ -171,16 +172,26 @@ public partial class App : Application
 
     public static void ApplyTheme(string theme)
     {
-        var dark = theme != "Light";
+        var t = AppTheme.Find(theme);
         var dicts = Current.Resources.MergedDictionaries;
         dicts[ColorsDictionaryIndex] = new ResourceDictionary
         {
-            Source = new Uri($"Themes/Colors.{(dark ? "Dark" : "Light")}.xaml", UriKind.Relative),
+            Source = new Uri($"Themes/Colors.{t.File}.xaml", UriKind.Relative),
         };
-        ApplicationThemeManager.Apply(dark ? ApplicationTheme.Dark : ApplicationTheme.Light);
+        foreach (var key in _fluentOverrides) Current.Resources.Remove(key);
+        _fluentOverrides.Clear();
+        ApplicationThemeManager.Apply(t.IsDark ? ApplicationTheme.Dark : ApplicationTheme.Light);
         // Accent Fluent = token Accent du plan (pervenche), pas le bleu système. Les quatre teintes sont
         // imposées : la surcharge « thème » éclaircit l'accent en sombre jusqu'à le rendre presque blanc.
         var accent = (System.Windows.Media.Color)Current.Resources["ColorAccent"];
         ApplicationAccentColorManager.Apply(accent, accent, accent, accent);
+        // Thèmes de palette (Mint, Amber) : les clés Fluent de WPF-UI qu'ils redéfinissent passent au premier niveau,
+        // devant le thème Fluent et l'accent, qui écrivent eux aussi des pinceaux (texte sur accent blanc, etc.).
+        var colors = dicts[ColorsDictionaryIndex];
+        foreach (var key in colors.Keys.OfType<string>().Where(k => !k.StartsWith("Color") && !k.StartsWith("Brush")).ToList())
+        {
+            Current.Resources[key] = colors[key];
+            _fluentOverrides.Add(key);
+        }
     }
 }

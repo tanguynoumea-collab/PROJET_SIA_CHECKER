@@ -3,6 +3,37 @@
 Idées validées pour les prochaines versions, pas encore développées. Les versions livrées ont leur plan propre
 (docs/V2_PLAN.md à docs/V5_PLAN.md).
 
+## V6 (idées du 17.11.2026)
+
+### Version locale HTML, ouverte depuis SharePoint
+
+- **But :** consulter le benchmark sans installer SIA Check. Un fichier HTML déposé dans une bibliothèque
+  SharePoint lance l'interface du dashboard dans le navigateur (Tendances, Programmer, carte, vue 3D, export
+  Excel), avec les données de la base.
+- **Point de départ :** le dashboard est déjà une page web autonome (dashboard/), qui fonctionne sur un serveur
+  en lisant benchmark.json à côté d'elle (`?data=`), et les maquettes 3D sur un autre hôte (`?maquettes=`).
+- **À trancher :**
+  - comment la page lit benchmark.json et les maquettes MAQ-*.json.gz dans SharePoint (Microsoft Graph avec
+    les droits de l'utilisateur, ou fichiers posés à côté de la page) ;
+  - qui y a accès ;
+  - un fichier HTML seul (scripts et données intégrés) ou un dossier.
+  - Rejoint la piste de mise en ligne étudiée le 02.11.2026 (Static Web Apps, groupe Entra, données SharePoint).
+- **Contraintes :** les surfaces des projets sont confidentielles. benchmark.json ne va jamais dans le dépôt
+  public ni sur un hébergement public ; rien n'est déployé sans feu vert explicite, ni sans l'accord de l'IT.
+
+### Onglet « Contexte » du benchmark (cartes et données SIG)
+
+- **But :** un onglet à part, dédié aux données SIG des projets (voir « Données SIG des projets du benchmark »
+  ci-dessous, qui en est la source).
+- **Contenu envisagé :**
+  - la carte, en grand, avec les projets et leurs calques ;
+  - pour chaque projet, sa fiche de contexte : zone, quartier, densités, bruit, desserte, énergie, plan
+    d'affectation ;
+  - les ratios du benchmark croisés avec ces données (KPI par contexte, nuages de points ratio × densité ou
+    desserte) ;
+  - les indicateurs du portefeuille (part en pleine ville, en site ISOS, en zone bien desservie).
+- **Dépend de :** la collecte des données SIG à l'intégration (étape 1 ci-dessous).
+
 ## Données SIG des projets du benchmark
 
 Idée du 17.11.2026, née de la carte du benchmark (V5, partie 3) : chaque projet a désormais une position (son

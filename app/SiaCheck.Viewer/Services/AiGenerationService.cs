@@ -32,6 +32,7 @@ public sealed class AiGenerationService(AnalysisService engine)
             System = (string?)doc["system"] ?? throw new AiReviewException("Prompt de l'analyse IA sans « system »."),
             User = (string?)doc["user"] ?? throw new AiReviewException("Prompt de l'analyse IA sans « user »."),
             IssueCount = (int?)doc["questions"] ?? 0,
+            BuildingCount = (int?)doc["batiments"] ?? 0,
             Output = output is [var lo, var hi] ? ((long)lo!, (long)hi!) : null,
         };
     }

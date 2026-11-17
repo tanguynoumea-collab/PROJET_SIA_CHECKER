@@ -26,6 +26,17 @@ public sealed class BenchmarkProject
 
     public string? Info(string key) =>
         Infos.TryGetValue(key, out var v) && v.ValueKind is JsonValueKind.String or JsonValueKind.Number ? v.ToString() : null;
+
+    /// <summary>Bâtiments du MDP (feuille InfosBatiment), pour la forme par bâtiment.</summary>
+    public IReadOnlyList<string> Buildings =>
+        Infos.TryGetValue("batiments", out var v) && v.ValueKind == JsonValueKind.Array
+            ? v.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).ToList() : [];
+
+    /// <summary>Forme des bâtiments, texte du MDP (BuildingShapes), d'après « formes » du moteur.</summary>
+    public string Shapes =>
+        Infos.TryGetValue("formes", out var v) && v.ValueKind == JsonValueKind.Object
+            ? BuildingShapes.Encode(v.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String)
+                                     .ToDictionary(p => p.Name, p => p.Value.GetString()!)) : "";
 }
 
 /// <summary>benchmark.json, écrit par <c>sia-check --benchmark</c> ; seuls les champs de l'accueil sont lus ici.</summary>

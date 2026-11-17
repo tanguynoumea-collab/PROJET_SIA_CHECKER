@@ -4,14 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Benchmark des surfaces</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=5.0-18">
+  <!-- three.js livré avec la page (vendor/, MIT) : la vue 3D des maquettes n'a besoin d'aucun réseau -->
+  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
 </head>
 <body>
   <!-- Dashboard du benchmark (docs/DESIGN_PLAN.md, Évolution 3.1). Sans dépendance : la même page tourne dans
        SIA Check (WebView2, données transmises par l'application) et sur un serveur web (benchmark.json à côté). -->
+  <!-- Une seule barre (V5_PLAN, partie 1) : les onglets puis le pré-filtre, pour laisser la hauteur aux vues -->
+  <header class="entete-page">
   <nav class="tabs" role="tablist" aria-label="Vues du benchmark">
     <button role="tab" id="tab-ratios" aria-controls="vue-ratios" aria-selected="true">Tendances</button>
-    <button role="tab" id="tab-comparer" aria-controls="vue-comparer" aria-selected="false" tabindex="-1">Comparer</button>
     <button role="tab" id="tab-programmer" aria-controls="vue-programmer" aria-selected="false" tabindex="-1">Programmer</button>
     <button role="tab" id="tab-base" aria-controls="vue-base" aria-selected="false" tabindex="-1">Base</button>
     <button role="tab" id="tab-typologies" aria-controls="vue-typologies" aria-selected="false" tabindex="-1">Typologies</button>
@@ -22,71 +25,142 @@
     <label>Canton <select name="canton"></select></label>
     <label>Intervention <select name="intervention"></select></label>
     <span id="selection-resume" class="secondaire"></span>
-    <button type="button" id="selection-reinit" class="lien" hidden>Réinitialiser</button>
+    <button type="button" id="selection-reinit" class="icone-btn" data-icone="reinit" title="Réinitialiser le pré-filtre" aria-label="Réinitialiser le pré-filtre" hidden></button>
   </form>
+  </header>
 
   <main>
     <section id="vue-ratios" role="tabpanel" aria-labelledby="tab-ratios" hidden>
-      <!-- Tendances (DESIGN_PLAN, Évolution 4.10) : le projet type (médiane) et la répartition des projets de la sélection -->
-      <header class="entete">
-        <h2 id="ratios-titre" class="titre-vue"></h2>
-        <p id="ratios-resume" class="secondaire"></p>
-        <div class="segments" role="radiogroup" aria-label="Représentation de la répartition" id="representation"></div>
-      </header>
-      <p id="ratios-bandeau" class="bandeau" hidden></p>
-      <section class="td-cles" aria-labelledby="titre-cles">
-        <h2 id="titre-cles" class="visuellement-cache">KPI clés</h2>
-        <div id="ratios-cles" class="td-grille"></div>
-      </section>
-      <div id="ratios-familles" class="regles"></div>
-      <p id="ratios-legende" class="secondaire td-legende"></p>
-      <h2>Projets de la sélection</h2>
-      <div class="defile"><table id="ratios-projets"></table></div>
-
-      <!-- Anatomie (Évolution 4.10), en bas des Tendances : où part la SP de chaque projet, SUP, SUS, SD, SI et SC aux couleurs SIA -->
-      <section aria-labelledby="anatomie-titre" class="an-section">
-      <header class="entete">
-        <h2 id="anatomie-titre" class="titre-vue">Anatomie de la SP</h2>
-        <div class="segments" role="radiogroup" aria-label="Assiette" id="assiette"></div>
-      </header>
-      <div class="regles anatomie">
-        <ul id="anatomie-legende" class="legende"></ul>
-        <div id="anatomie-barres" class="an-barres"></div>
-        <p id="anatomie-lecture" class="secondaire"></p>
-      </div>
-      <p class="secondaire">Chaque barre fait 100 % de la SP du projet. Référence : Σ des m² des projets fiables de la sélection / Σ de leurs SP.
-        Construction (SC) = SP − SUP − SUS − SD − SI. Cliquer un projet pour le comparer.</p>
-      </section>
-    </section>
-
-    <p id="etat" class="etat" hidden></p>
-
-    <section id="vue-comparer" role="tabpanel" aria-labelledby="tab-comparer" hidden>
-      <header class="entete">
-        <label class="choix">Projet
-          <select id="projet"></select>
-        </label>
-        <p id="resume-reference" class="secondaire"></p>
-      </header>
-      <p id="bandeau-projet" class="bandeau" hidden></p>
-      <div class="comparer">
-        <aside class="groupe" aria-label="Projets similaires">
-          <h2>Projets similaires</h2>
-          <ul id="similaires" class="liste"></ul>
-          <p id="aucun-similaire" class="secondaire" hidden></p>
-          <p class="secondaire">Cherchés parmi les projets fiables de la sélection.</p>
-          <details id="ecartes">
-            <summary></summary>
-            <ul class="liste secondaire"></ul>
+      <!-- Tendances et comparaison (docs/V5_PLAN.md, partie 1) : à gauche, les maquettes comparées et les projets de
+           référence ; au centre, le projet type (médiane) et la répartition des seuls projets cochés -->
+      <div class="benchmark">
+        <aside class="volets" aria-label="Maquettes comparées et projets de référence">
+          <div class="volets-haut">
+          <label class="recherche"><span data-icone="loupe" class="icone-seule" aria-hidden="true"></span><input id="recherche" type="search" placeholder="Chercher un projet (ID, nom, commune)" aria-label="Chercher un projet dans les deux listes"></label>
+          <button type="button" id="bouton-carte" class="bouton-carte" aria-pressed="false" title="Choisir les projets de référence sur une carte de la Suisse"><span data-icone="carte" aria-hidden="true"></span>Carte</button>
+          </div>
+          <!-- menu dépliant : fermé, il montre les pastilles des maquettes comparées -->
+          <details id="volet-comparees" class="volet volet-depliant">
+            <summary>
+              <span class="titre-depliant">Maquettes à comparer</span>
+              <span id="comparees-pastilles" class="pastilles"></span>
+              <span id="comparees-compte" class="secondaire"></span>
+            </summary>
+            <ul id="comparees" class="liste choix-comparees"></ul>
+            <p class="secondaire volet-note">Situées sur les graphiques, sans entrer dans la référence.</p>
           </details>
+          <section class="volet" aria-labelledby="titre-references">
+            <div class="volet-entete">
+              <h2 id="titre-references">Projets de référence</h2>
+              <span id="references-compte" class="secondaire"></span>
+            </div>
+            <div class="volet-actions">
+              <label class="tri" title="Trier les projets de référence"><span data-icone="tri" class="icone-seule" aria-hidden="true"></span><select id="references-tri" aria-label="Trier les projets de référence">
+                <option value="id">ID</option><option value="nom">Nom</option><option value="sp">SP hors-sol</option><option value="forme">Forme</option>
+              </select></label>
+              <label class="tri filtre-forme" title="Montrer les projets d'une forme ; le bouton à droite coche ou décoche alors ces projets seulement"><span data-icone="forme" class="icone-seule" aria-hidden="true"></span><select id="references-forme" aria-label="Filtrer les projets par forme des bâtiments"></select></label>
+              <button type="button" id="references-bascule" class="icone-btn" data-icone="tout" title="Tout décocher" aria-label="Décocher tous les projets de référence"></button>
+            </div>
+            <ul id="references" class="liste"></ul>
+            <p id="references-vide" class="secondaire" hidden></p>
+            <details id="ecartes">
+              <summary></summary>
+              <ul class="liste secondaire"></ul>
+            </details>
+          </section>
         </aside>
-        <div class="colonne">
-          <!-- Mon projet : saisie rapide ou projet envoyé par SIA Check (DESIGN_PLAN, Évolution 3.2) -->
+
+        <div class="centre">
+          <!-- Carte de la Suisse (V5_PLAN, partie 3) : remplace les graphiques comme la maquette 3D ; un clic coche un projet -->
+          <section id="vue-carte" class="vue-3d vue-carte" hidden aria-labelledby="carte-titre">
+            <header class="v3-entete">
+              <span data-icone="carte" class="icone-seule" aria-hidden="true"></span>
+              <h2 id="carte-titre" class="titre-vue">Carte des projets</h2>
+              <span id="carte-compte" class="secondaire"></span>
+              <span class="v3-outils">
+                <button type="button" id="carte-zone-cocher" class="icone-btn" data-icone="zonePlus" aria-pressed="false" title="Cocher une zone : glisser sur la carte pour ajouter les projets du rectangle à la référence" aria-label="Cocher une zone"></button>
+                <button type="button" id="carte-zone-decocher" class="icone-btn" data-icone="zoneMoins" aria-pressed="false" title="Décocher une zone : glisser sur la carte pour retirer les projets du rectangle de la référence" aria-label="Décocher une zone"></button>
+                <button type="button" id="carte-plus" class="icone-btn" data-icone="ajouter" title="Zoomer" aria-label="Zoomer"></button>
+                <button type="button" id="carte-moins" class="icone-btn" data-icone="moins" title="Dézoomer" aria-label="Dézoomer"></button>
+                <button type="button" id="carte-cadrer" class="icone-btn" data-icone="cadrer" title="Toute la Suisse" aria-label="Toute la Suisse"></button>
+                <button type="button" id="carte-fermer" class="icone-btn fermer" data-icone="retirer" title="Fermer la carte et revenir aux graphiques (Échap)" aria-label="Fermer la carte et revenir aux graphiques"></button>
+              </span>
+            </header>
+            <div class="v3-corps">
+              <div id="carte-scene" class="v3-scene carte-scene">
+                <div id="carte-leaflet" class="carte-leaflet"></div>
+                <p class="v3-aide secondaire carte-aide">Clic sur un projet : le cocher ou le décocher · clic ailleurs : commune et calques à cet endroit · clic dans la carte, puis molette pour zoomer (ou Ctrl + molette)</p>
+                <p id="carte-hors-ligne" class="carte-hors-ligne" hidden>Hors ligne : fond minimum (cantons, communes, lacs). Les fonds et calques de swisstopo reviennent avec le réseau.</p>
+                <p id="carte-etat" class="v3-etat" hidden></p>
+              </div>
+              <aside class="v3-panneau" aria-label="Légende et filtres de la carte">
+                <details open><summary>Fond de carte</summary><div id="carte-fonds" class="carte-filtres"></div></details>
+                <details><summary>Calques</summary><ul id="carte-calques" class="carte-calques"></ul></details>
+                <details><summary>Projets</summary><ul id="carte-legende" class="carte-legende"></ul></details>
+                <details><summary>Filtres de la carte</summary>
+                  <div class="carte-filtres">
+                    <label>Phase <select id="carte-phase"></select></label>
+                    <label>Forme des bâtiments <select id="carte-forme"></select></label>
+                    <label>Position <select id="carte-precision">
+                      <option value="">Toutes</option><option value="adresse">À l'adresse</option><option value="commune">Au centre de la commune</option>
+                    </select></label>
+                    <label>SP hors-sol (m²) <span class="carte-plage"><input id="carte-sp-min" type="number" min="0" step="500" placeholder="min" inputmode="numeric">
+                      <span aria-hidden="true">–</span><input id="carte-sp-max" type="number" min="0" step="500" placeholder="max" inputmode="numeric"></span></label>
+                    <label class="case"><input id="carte-fiables" type="checkbox"> Fiables seulement</label>
+                    <label class="case"><input id="carte-maquette" type="checkbox"> Avec maquette 3D</label>
+                    <p class="secondaire">Ils ne changent que l'affichage ; le pré-filtre, en haut, choisit les projets.</p>
+                  </div>
+                </details>
+                <details><summary>Rayon autour d'une maquette</summary>
+                  <div class="carte-filtres">
+                    <select id="carte-rayon-centre" aria-label="Maquette comparée au centre du cercle"></select>
+                    <label class="carte-km"><input id="carte-rayon-km" type="number" min="1" step="1" value="10" inputmode="numeric" aria-label="Rayon en kilomètres"> km</label>
+                    <button type="button" id="carte-rayon-appliquer" class="bouton-secondaire" disabled>Ne garder que ce rayon</button>
+                    <p class="secondaire">La référence devient : les projets fiables du pré-filtre situés dans le cercle.</p>
+                  </div>
+                </details>
+                <details id="carte-sans-bloc"><summary id="carte-sans-titre">Sans position</summary>
+                  <ul id="carte-sans" class="liste"></ul>
+                  <p class="secondaire">Ni adresse ni commune dans leur MDP : pas de point sur la carte. L'adresse se saisit dans l'identité du projet.</p>
+                </details>
+              </aside>
+            </div>
+          </section>
+
+          <!-- Maquette 3D d'un projet (V5_PLAN, partie 2) : remplace les graphiques, fixée à l'écran ; les volets restent actifs -->
+          <section id="vue-3d" class="vue-3d" hidden aria-labelledby="v3-titre">
+            <header class="v3-entete">
+              <span data-icone="cube" class="icone-seule" aria-hidden="true"></span>
+              <h2 id="v3-titre" class="titre-vue"></h2>
+              <label class="v3-ref" id="v3-ref-label"><input type="checkbox" id="v3-ref"> Dans la référence</label>
+              <span id="v3-pastille"></span>
+              <span class="v3-outils">
+                <button type="button" id="v3-dessus" class="icone-btn" data-icone="dessus" title="Vue de dessus" aria-label="Vue de dessus"></button>
+                <button type="button" id="v3-perspective" class="icone-btn" data-icone="cube" title="Vue 3D" aria-label="Vue 3D"></button>
+                <button type="button" id="v3-fermer" class="icone-btn fermer" data-icone="retirer" title="Fermer la maquette et revenir aux graphiques (Échap)" aria-label="Fermer la maquette et revenir aux graphiques"></button>
+              </span>
+            </header>
+            <div class="v3-corps">
+              <div id="v3-scene" class="v3-scene">
+                <p class="v3-aide secondaire"></p>
+                <p id="v3-etat" class="v3-etat" hidden></p>
+                <div class="v3-info" hidden></div>
+              </div>
+              <aside class="v3-panneau" aria-label="Calques et KPI de la maquette">
+                <details open><summary>Calques</summary><div id="v3-calques"></div></details>
+                <details open><summary>KPI du projet</summary><div id="v3-kpi"></div></details>
+              </aside>
+            </div>
+          </section>
+
+          <p id="ratios-bandeau" class="bandeau" hidden></p>
+
+          <!-- Mon projet : saisie rapide ou projet envoyé par SIA Check (DESIGN_PLAN, Évolution 3.2), quand il est comparé -->
           <section id="saisie" class="saisie" hidden aria-labelledby="titre-saisie">
             <div class="saisie-entete">
               <h2 id="titre-saisie">Mon projet</h2>
               <span id="saisie-source" class="secondaire"></span>
-              <button type="button" id="saisie-replier" class="lien" aria-expanded="true">Replier</button>
+              <button type="button" id="saisie-replier" class="icone-btn" data-icone="replier" title="Replier" aria-label="Replier la saisie" aria-expanded="true"></button>
             </div>
             <form id="saisie-form" autocomplete="off">
               <div class="champs">
@@ -104,27 +178,57 @@
                 <label>CHF / m² de SVN <input name="prix" type="number" min="0" step="100" inputmode="numeric"></label>
               </div>
               <p id="saisie-bilan" class="secondaire"></p>
-              <button type="button" id="saisie-effacer" class="lien">Effacer la saisie</button>
+              <button type="button" id="saisie-effacer" class="icone-btn" data-icone="effacer" title="Effacer la saisie" aria-label="Effacer la saisie"></button>
             </form>
           </section>
-          <div id="regles" class="regles"></div>
-          <!-- Cages d'escalier par bâtiment et par étage de logements (V3.1) -->
+
+          <section class="td-cles" aria-labelledby="titre-cles">
+            <h2 id="titre-cles" class="visuellement-cache">KPI clés</h2>
+            <div id="ratios-cles" class="td-grille"></div>
+          </section>
+          <div id="ratios-familles" class="regles"></div>
+          <p id="ratios-legende" class="secondaire td-legende"></p>
+
+          <!-- Cages d'escalier des maquettes comparées, par bâtiment et par étage (V3.1) -->
           <section id="cages" hidden aria-labelledby="titre-cages">
             <h2 id="titre-cages">Cages d'escalier par étage</h2>
             <p class="secondaire">Étages de logements (SUP et appartements) ; une cage = un local SD nommé escalier.</p>
-            <div class="defile"><table id="table-cages"></table></div>
+            <div id="cages-tables"></div>
+          </section>
+
+          <h2>Projets du pré-filtre</h2>
+          <div class="defile"><table id="ratios-projets"></table></div>
+
+          <!-- Anatomie (Évolution 4.10), en bas des Tendances : où part la SP de chaque projet, SUP, SUS, SD, SI et SC aux couleurs SIA -->
+          <section aria-labelledby="anatomie-titre" class="an-section">
+          <header class="entete">
+            <h2 id="anatomie-titre" class="titre-vue">Anatomie de la SP</h2>
+            <div class="segments" role="radiogroup" aria-label="Assiette" id="assiette"></div>
+          </header>
+          <div class="regles anatomie">
+            <ul id="anatomie-legende" class="legende"></ul>
+            <div id="anatomie-barres" class="an-barres"></div>
+            <p id="anatomie-lecture" class="secondaire"></p>
+          </div>
+          <p class="secondaire">Chaque barre fait 100 % de la SP du projet. Référence : Σ des m² des projets cochés / Σ de leurs SP.
+            Construction (SC) = SP − SUP − SUS − SD − SI. Cliquer un projet pour l'ajouter aux maquettes comparées.</p>
           </section>
         </div>
       </div>
     </section>
 
+    <p id="etat" class="etat" hidden></p>
+
     <!-- Programmation inverse : d'une constructibilité au programme attendu (DESIGN_PLAN, Évolution 3.3) -->
     <section id="vue-programmer" role="tabpanel" aria-labelledby="tab-programmer" hidden>
       <form id="prog-form" class="saisie" autocomplete="off">
-        <h2>Hypothèses</h2>
+        <div class="prog-tete">
+          <h2>Hypothèses</h2>
+          <button type="button" id="prog-export" class="bouton-export" title="KPI, projets de référence, détail par projet et programme attendu, tels qu'à l'écran">
+            <span data-icone="excel" aria-hidden="true"></span>Exporter en Excel</button>
+        </div>
         <div class="champs">
           <label>SP hors-sol (m²) <input name="SP_HS" type="number" min="0" step="any" inputmode="decimal"></label>
-          <label>Étages hors-sol <input name="ETAGES_HS" type="number" min="0" step="1" inputmode="numeric"></label>
         </div>
         <h3 id="prog-mix-titre">Mix visé</h3>
         <div class="champs" id="prog-mix"></div>
@@ -142,13 +246,13 @@
         <div id="prog-barre"></div>
         <h2>Programme attendu</h2>
         <div class="defile"><table id="prog-table" class="programme"></table></div>
-        <p class="secondaire">Central : ratio combiné des projets cochés ; bas et haut : 1er et 3e quartiles de leurs ratios.
+        <p class="secondaire">Central : médiane des projets de référence, comme dans Tendances ; bas et haut : 1er et 3e quartiles de leurs ratios.
           Bas et haut sont des valeurs, pas un jugement favorable ou défavorable.</p>
       </div>
     </section>
 
     <section id="vue-base" role="tabpanel" aria-labelledby="tab-base" hidden>
-      <p class="secondaire">Une ligne par MDP. « Ensemble » : ratios combinés des projets fiables (Σ numérateurs / Σ dénominateurs).
+      <p class="secondaire">Une ligne par MDP. « Ensemble » : ratios combinés des projets de référence cochés (Σ numérateurs / Σ dénominateurs).
         ▲ / ▼ : au-dessus ou au-dessous de l'ensemble, dans le sens favorable ou défavorable du ratio.</p>
       <div class="defile"><table id="table-base"></table></div>
     </section>
@@ -160,6 +264,9 @@
     </section>
   </main>
 
-  <script src="app.js"></script>
+  <!-- ?v= : à changer à chaque version de la page, pour qu'aucun navigateur ne garde l'ancienne en cache -->
+  <script src="xlsx.js?v=5.0-18" defer></script>
+  <script src="app.js?v=5.0-18"></script>
+  <script src="carte.js?v=5.0-18"></script>
 </body>
 </html>

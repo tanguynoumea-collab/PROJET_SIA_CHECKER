@@ -2152,3 +2152,22 @@ Non-régression : les écrans de la Fiabilisation (barre de commande, calques, b
 - variante « matrice projets × ratios » écartée : elle ne tient pas au-delà d'une dizaine de projets ;
 - variante « écarts relatifs » écartée de la vue principale (« −8 % de quoi ? ») : à reprendre éventuellement dans Comparer ;
 - points empilés écartés : leur hauteur varie, et il faut regrouper les points au-delà de 200 projets.
+
+## Évolution 4.11 — Thèmes nommés et sélecteur de thème (mode ÉVOLUTION)
+
+**Demande** : configurer des thèmes. Le thème d'origine est sauvegardé sous un nom, et deux palettes sont ajoutées, Mint et Amber (source : @uiuxaadi · DfKLpS_FLbN). On choisit le thème depuis l'accueil comme depuis un projet.
+
+**Thèmes** (`Services/AppTheme.cs`, `Themes/Colors.*.xaml`, mêmes clés partout) :
+- **Pervenche sombre / clair** : le thème d'origine, inchangé. Les réglages « Dark » / « Light » enregistrés y sont rattachés.
+- **Mint clair / Amber clair** : la structure de Pervenche clair (panneaux et menus blancs, vue 3D à peine teintée), la palette pour l'accent et de légères teintes. Les tons clairs sont la primaire (ou le texte) diluée dans du blanc. Le texte des boutons sur l'accent est le texte de la palette.
+- **Mint sombre / Amber sombre** : dérivés des mêmes teintes. Les fonds sont le texte de la palette assombri, le texte est sa surface (ou son fond), l'accent ne change pas.
+- **Contrastes** : texte secondaire, liens et texte sur l'accent à 4,5:1 au moins. L'accent seul, trop clair pour du texte, est assombri (clair) ou éclairci (sombre) pour les liens (`BrushAccentText`).
+- **Hors palette** : seules les couleurs d'état (succès, alerte, erreur) et la couleur de contenu SA.
+- **Contrôles WPF-UI** : les thèmes de palette redéfinissent les clés Fluent (fonds, bordures, texte, texte sur accent), qu'`App.ApplyTheme` place au premier niveau. Les pinceaux d'accent que WPF-UI repeint à l'accent de Windows au rechargement (bouton d'accent, badge, progression, curseur) sont réalignés sur l'accent du thème.
+- **Le dashboard** suit le thème (`data-theme` : light, dark, mint, mint-dark, amber, amber-dark).
+
+**Sélecteur** (`Controls/ThemePicker`) : un bouton-icône (palette), en haut à droite de l'accueil et dans la barre du projet. Il ouvre un volet de vignettes, une ligne par palette, Clair puis Sombre. Chaque vignette est un aperçu lu dans le dictionnaire du thème (fond, panneau, lignes de texte, bouton d'accent). Le thème actif est bordé d'accent et coché. Un clic applique le thème, l'enregistre et ferme le volet ; Échap ou un clic à côté le ferment aussi.
+
+**Journal** :
+- première version de Mint et Amber avec les cinq teintes à plat (panneaux teintés, primaire saturée sur les filets et les survols, texte secondaire égal au texte) : jugée « ne fonctionne pas », puis trop lourde ; remplacée par la structure claire de Pervenche ;
+- menu déroulant de la barre remplacé par le volet de vignettes, commun à l'accueil et au projet.

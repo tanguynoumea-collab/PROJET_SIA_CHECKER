@@ -4,10 +4,13 @@ L'algorithme classe tout ce qu'il peut ; l'IA ne reçoit que les espaces où il 
 engine.SURE, sources en désaccord, aucune source), avec des preuves compactes tirées de `generation/rapport.json` :
 noms, propriétés de classement, aire, logement, voisins, décision des règles et sources en désaccord.
 
-    questions(rapport)       -> generation/questions-ia.json   (les cas, lisibles)
+    questions(rapport, emprises=…) -> generation/questions-ia.json (les cas, lisibles, et l'emprise de chaque
+                                bâtiment généré, sia_check.emprise)
     prompt(questions)        -> generation/prompt-ia.json      (system + user, ce que l'app envoie à l'API)
     parse(réponse, questions) -> décisions du journal (journal.py) : « proposée », ou « confirmée » si l'IA garde
                                 le classement des règles
+    formes(réponse, questions) -> generation/formes-ia.json    (une forme par bâtiment, formes.FORMES ; bloc
+                                <formes> facultatif : sans lui, rien n'est écrit)
 
 L'app (C#, AiGenerationService) estime le coût, demande l'accord, appelle l'API avec la clé chiffrée DPAPI et
 enregistre la réponse brute dans `generation/reponse-ia.txt` ; `sia-check --reponse-ia` la lit. Rien n'est
@@ -20,12 +23,15 @@ import json
 import re
 from pathlib import Path
 
+from .. import formes as _formes
 from . import journal
 from .classify import EXTERIEUR, PIECE
 
 FORMAT, VERSION = "sia-check-questions-ia", 1
-QUESTIONS, PROMPT, RESPONSE, SUMMARY = (Path("generation") / f for f in
-                                        ("questions-ia.json", "prompt-ia.json", "reponse-ia.txt", "synthese-ia.md"))
+QUESTIONS, PROMPT, RESPONSE, SUMMARY, FORMES = (Path("generation") / f for f in
+                                                ("questions-ia.json", "prompt-ia.json", "reponse-ia.txt",
+                                                 "synthese-ia.md", "formes-ia.json"))
+FORMES_FORMAT, FORMES_VERSION = "sia-check-formes-ia", 1
 SURE = 0.8
 MAX_QUESTIONS = 300
 CERTAINTIES = ("sûr", "probable", "incertain")
@@ -87,7 +93,14 @@ Conventions de Treegram, à respecter :
 Garde la décision des règles quand rien ne permet de mieux faire. Certitude : « sûr » si les preuves sont
 nettes, « probable » si un doute raisonnable demeure, « incertain » si c'est une hypothèse à vérifier sur plan.
 
-Réponds exactement dans ce format, sans rien d'autre hors des deux balises :
+Tu reçois aussi l'emprise de chaque bâtiment (<emprises>) : union des SP hors-sol en plan, aire, longueur et
+largeur du rectangle minimal orienté, élancement, rectangularité (aire / rectangle minimal), convexité (aire /
+enveloppe convexe), cours, parties disjointes, angles rentrants, contour simplifié (m, centré, axe long = x) et une
+forme estimée par heuristique, qui n'est qu'un indice. Choisis la forme de chaque bâtiment, recopiée exactement
+dans cette liste : {formes}. Rectangle compact : élancement ≤ 2 ; Barre : > 2. Corrige la forme estimée si le
+contour la dément, et dis-le dans la raison.
+
+Réponds exactement dans ce format, sans rien d'autre hors des trois balises :
 
 <decisions>
 {{"<id>": {{"code": "SUP", "type": "Distribution", "certitude": "sûr|probable|incertain", "raison": "une phrase"}}, …}}
@@ -96,9 +109,14 @@ Réponds exactement dans ce format, sans rien d'autre hors des deux balises :
 (quelques lignes en français : ce que tu as changé, ce qui reste à vérifier sur plan, en regroupant les cas
 semblables)
 </synthese>
+<formes>
+{{"<bâtiment>": {{"forme": "Barre", "raison": "une phrase"}}, …}}
+</formes>
 
 Le bloc <decisions> est un objet JSON valide qui contient chacun des identifiants des questions, recopiés
 caractère pour caractère, et seulement eux. « type » est l'un des sous-types listés pour le code, ou null.
+Le bloc <formes> est un objet JSON valide qui contient chacun des bâtiments des emprises, noms recopiés tels quels
+({{}} sans emprise).
 """
 
 
@@ -106,8 +124,9 @@ def _codes_text() -> str:
     return "\n".join(f"- {c} : {NAMES[c]}. Sous-types : {', '.join(t) if t else 'aucun'}." for c, t in TYPES.items())
 
 
-def questions(rapport: dict, limit: int = MAX_QUESTIONS) -> dict:
-    """Espaces où les règles hésitent, de la confiance la plus basse à la plus haute, avec leurs preuves."""
+def questions(rapport: dict, limit: int = MAX_QUESTIONS, emprises: dict | None = None) -> dict:
+    """Espaces où les règles hésitent, de la confiance la plus basse à la plus haute, avec leurs preuves ; et
+    l'emprise de chaque bâtiment (emprise.emprises_siagen), pour sa forme."""
     spaces = rapport.get("spaces") or []
     mates: dict[str, list[str]] = {}
     for s in spaces:
@@ -131,21 +150,29 @@ def questions(rapport: dict, limit: int = MAX_QUESTIONS) -> dict:
                        "raison": s["reason"], "desaccords": s["conflicts"]},
         })
     return {"format": FORMAT, "version": VERSION, "project": rapport.get("project"),
-            "total": len(doubt), "questions": out}
+            "total": len(doubt), "questions": out, "emprises": emprises or {}}
 
 
-def output_tokens(n: int) -> tuple[int, int]:
-    """Sortie attendue : ~600 jetons de synthèse + ~90 par décision ; jusqu'à trois fois plus avec la réflexion."""
-    text = 600 + 90 * n
+def output_tokens(n: int, batiments: int = 0) -> tuple[int, int]:
+    """Sortie attendue : ~600 jetons de synthèse + ~90 par décision + ~50 par forme de bâtiment ; jusqu'à trois
+    fois plus avec la réflexion."""
+    text = 600 + 90 * n + 50 * batiments
     return text, 3 * text
 
 
 def prompt(q: dict) -> dict:
-    lo, hi = output_tokens(len(q["questions"]))
+    emprises = q.get("emprises") or {}
+    lo, hi = output_tokens(len(q["questions"]), len(emprises))
     user = (f"Projet : {q.get('project')}\n{len(q['questions'])} espaces à décider"
             + (f" (sur {q['total']} incertains, les plus douteux d'abord)" if q["total"] > len(q["questions"]) else "")
             + ".\n\n<questions>\n" + json.dumps(q["questions"], ensure_ascii=False, indent=1) + "\n</questions>\n")
-    return {"system": SYSTEM.format(codes=_codes_text()), "user": user, "questions": len(q["questions"]),
+    if emprises:
+        user += (f"\n{len(emprises)} bâtiment(s) dont choisir la forme.\n\n<emprises>\n"
+                 + json.dumps(emprises, ensure_ascii=False, separators=(",", ":")) + "\n</emprises>\n")
+    else:
+        user += "\nAucune emprise de bâtiment : bloc <formes> vide, {}.\n"
+    system = SYSTEM.format(codes=_codes_text(), formes=", ".join(f"« {f} »" for f in _formes.FORMES))
+    return {"system": system, "user": user, "questions": len(q["questions"]), "batiments": len(emprises),
             "output_tokens": [lo, hi]}
 
 
@@ -196,3 +223,37 @@ def parse(text: str, q: dict) -> tuple[list[dict], str, list[str]]:
     answered = {d["id"] for d in out}
     missing = [g for g in by_id if g not in answered]
     return out, (_between(text, "synthese") or "").strip(), missing
+
+
+def formes(text: str, q: dict | None = None) -> dict[str, dict]:
+    """{bâtiment: {"forme", "raison"}} du bloc <formes> ; {} sans bloc ou s'il est illisible (il ne bloque jamais
+    les décisions). Seules les formes de formes.FORMES sont gardées, normalisées ; si les questions portent des
+    emprises, seuls leurs bâtiments."""
+    raw = _between(text, "formes")
+    if raw is None:
+        return {}
+    try:
+        answers = json.loads(_unfence(raw))
+    except ValueError:
+        return {}
+    if not isinstance(answers, dict):
+        return {}
+    known = set((q or {}).get("emprises") or {})
+    out = {}
+    for b, a in answers.items():
+        if isinstance(a, str):
+            a = {"forme": a}
+        if not isinstance(a, dict) or (known and str(b) not in known):
+            continue
+        if (f := _formes.normaliser(a.get("forme"))) is not None:
+            out[str(b)] = {"forme": f, "raison": str(a.get("raison") or "").strip()}
+    return out
+
+
+def write_formes(folder: Path, found: dict[str, dict]) -> Path:
+    """generation/formes-ia.json : {"format": "sia-check-formes-ia", "version": 1, "formes": {bâtiment: …}}."""
+    path = Path(folder) / FORMES
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"format": FORMES_FORMAT, "version": FORMES_VERSION, "formes": found},
+                               ensure_ascii=False, indent=1), encoding="utf-8")
+    return path

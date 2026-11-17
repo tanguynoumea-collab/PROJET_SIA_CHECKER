@@ -18,10 +18,18 @@ public sealed class MdpProject
     public string Name { get; set; } = "";
     public string Canton { get; set; } = "";
     public string Commune { get; set; } = "";
+    /// <summary>Rue et numéro (« Avenue de Morges 26, 1004 Lausanne ») : place le projet exactement sur la carte du dashboard.</summary>
+    public string Adresse { get; set; } = "";
     /// <summary>« Catégorie d'ouvrage » du MDP, appelée typologie dans l'application.</summary>
     public string Typologie { get; set; } = "";
     public string Intervention { get; set; } = "";
     public string Phase { get; set; } = "";
+    /// <summary>Forme des bâtiments, texte du MDP (BuildingShapes) : « Rectangle compact » ou « A : Carré ; B : En L ».</summary>
+    public string Forme { get; set; } = "";
+    /// <summary>Qui a renseigné la forme : « saisie » ou « IA » ; l'IA ne remplace une saisie qu'avec l'accord de l'utilisateur.</summary>
+    public string FormeOrigine { get; set; } = "";
+    /// <summary>Bâtiments du projet, pour la fiche (une forme par bâtiment) : non enregistrés.</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public IReadOnlyList<string> Buildings { get; set; } = [];
 }
 
 public sealed class WindowPlacement

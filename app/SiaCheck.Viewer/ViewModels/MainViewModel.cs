@@ -14,7 +14,6 @@ namespace SiaCheck.Viewer.ViewModels;
 public sealed partial class MainViewModel : ObservableObject
 {
     public const string AllLevels = "Tous les niveaux";
-    private static readonly string[] InteriorCodes = ["SP", "SN", "SU", "SUP", "SUT", "SUS", "SD", "SI", "SC", "SCP", "SCN"];
 
     private readonly IShell _shell;
     private readonly AppPaths _paths;
@@ -209,11 +208,14 @@ public sealed partial class MainViewModel : ObservableObject
     private MdpProject KnownIdentity(string path, string folderName)
     {
         var known = _settings.FindMdpProject(path) is { } f
-            ? new MdpProject { Id = f.Id, Name = f.Name, Canton = f.Canton, Commune = f.Commune, Typologie = f.Typologie,
-                               Intervention = f.Intervention, Phase = f.Phase }
+            ? new MdpProject { Id = f.Id, Name = f.Name, Canton = f.Canton, Commune = f.Commune, Adresse = f.Adresse, Typologie = f.Typologie,
+                               Intervention = f.Intervention, Phase = f.Phase, Forme = f.Forme, FormeOrigine = f.FormeOrigine }
             : new MdpProject { Name = folderName };
         if (BaseProject(known.Id) is { } inBase) FillFromBase(known, inBase);
         if (known.Name.Length == 0) known.Name = folderName;
+        // bâtiments du projet ouvert (sa dernière analyse), sinon ceux du MDP de la base : une forme par bâtiment
+        if (ProjectDir is not null && ProjectFolder.Same(ProjectDir, path) && Document is { } doc)
+            known.Buildings = doc.Levels.Select(l => l.Building).Distinct().Order(StringComparer.Ordinal).ToList();
         return known;
     }
 
@@ -494,21 +496,14 @@ public sealed partial class MainViewModel : ObservableObject
         var withGeometry = Scene.Codes.ToHashSet();
         foreach (var cat in doc.Categories)
         {
-            var surfaces = doc.Surfaces.Where(s => s.DisplayCode == cat.Code && !s.IsExcluded).ToList();
-            if (surfaces.Count == 0) continue;   // ex. SHA, normalisé en SH par le moteur
-            // Même règle que le moteur : le détail fait foi, le total de niveau sert quand il n'y a pas de détail.
-            var counted = surfaces.Any(s => !s.IsLevelTotal) ? surfaces.Where(s => !s.IsLevelTotal).ToList() : surfaces;
+            var counted = LayerRules.Counted(doc, cat.Code);
+            if (counted.Count == 0) continue;   // ex. SHA, normalisé en SH par le moteur
             // Totaux sans aire ni géométrie (façades SFN : données d'enveloppe pour le MDP) : rien à montrer en calque.
             if (!withGeometry.Contains(cat.Code) && counted.All(s => (s.Area ?? 0) == 0)) continue;
-            var group = cat.Status == "unknown" ? "Codes inconnus"
-                : cat.Family == "enveloppe" ? "Enveloppe"     // façades, vitrages : verticales, hors sommes
-                : cat.Status != "ignored" && InteriorCodes.Contains(cat.Code) ? "Intérieur"   // SUT : code maison compté dans la SU
-                : cat.Status == "ignored" || cat.Family == "custom" ? "USPI · Maison"
-                : cat.Family == "uspi" ? "USPI · Maison"
-                : InteriorCodes.Contains(cat.Code) ? "Intérieur" : "Extérieur";
+            var group = LayerRules.Group(cat);
             var (title, definition) = palette.Describe(cat.Code);
             var layer = new LayerItem(cat.Code, group, palette.BrushOf(cat.Code), counted.Count,
-                                      counted.Sum(s => s.Area ?? 0), group is "Intérieur" or "Extérieur" || cat.Code == "SPT",   // toitures visibles d'emblée
+                                      counted.Sum(s => s.Area ?? 0), LayerRules.VisibleByDefault(group, cat.Code),
                                       withGeometry.Contains(cat.Code), title, definition);
             layer.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(LayerItem.IsVisible)) UpdateLayers(); };
             Layers.Add(layer);

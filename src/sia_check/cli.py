@@ -31,8 +31,8 @@ avec --generer, la maquette devient un projet généré <--out>/<projet>/<projet
 avec son rapport de génération (sia_check.generation.engine) ; le dossier s'ouvre comme un projet Treegram ;
 avec --questions-ia, les espaces où les règles hésitent deviennent les questions et le prompt de l'analyse IA
 (sia_check.generation.ia) ; --reponse-ia lit la réponse enregistrée par l'app et ajoute ses propositions au
-journal des décisions ; --accepter-ia / --rejeter-ia les tranchent (toutes, ou --ids) ; la génération suivante
-applique les décisions acceptées.
+journal des décisions, et la forme de chaque bâtiment à generation/formes-ia.json ; --accepter-ia / --rejeter-ia
+les tranchent (toutes, ou --ids) ; la génération suivante applique les décisions acceptées.
 Les lignes de journal « ÉTAPE n/N » servent d'indicateur de progression à la visionneuse.
 """
 
@@ -41,8 +41,10 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sqlite3
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 import pandas as pd
@@ -76,6 +78,8 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--apercu", type=Path, help="bilan par niveau et ratios (JSON), avec --depuis-cache et --corrections")
     ap.add_argument("--benchmark", type=Path, help="dossier des tableaux MDP de la base du benchmark")
     ap.add_argument("--benchmark-json", type=Path, help="fichier du benchmark à écrire (avec --benchmark)")
+    ap.add_argument("--adresses", type=Path,
+                    help="registre des adresses de swisstopo (CSV zippé) : place les projets à leur adresse sur la carte")
     ap.add_argument("--identite", type=Path, help="fiche « Identité du projet » (JSON) écrite dans InfosProjet du MDP")
     ap.add_argument("--mdp-identite", type=Path, help="MDP existant dont l'identité est remplacée par --identite")
     ap.add_argument("--benchmark-projet", type=Path, help="totaux et ratios du projet lu, au format du benchmark (JSON)")
@@ -411,12 +415,25 @@ def _questions_ia(folder: Path) -> int:
     except (OSError, ValueError) as ex:
         log.error("rapport de génération illisible : %s", ex)
         return 2
-    q = ia.questions(rapport)
+    q = ia.questions(rapport, emprises=_emprises_generees(folder))
     for path, data in ((ia.QUESTIONS, q), (ia.PROMPT, ia.prompt(q))):
         (folder / path).write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     log.info("%d questions pour l'analyse IA (sur %d espaces incertains) : %s", len(q["questions"]), q["total"],
              folder / ia.PROMPT)
     return 0
+
+
+def _emprises_generees(folder: Path) -> dict:
+    """Emprise de chaque bâtiment du projet généré (`<projet>.siagen.json`), pour sa forme ; {} si illisible."""
+    from . import emprise, siagen
+    found = sorted(folder.glob(f"*{siagen.SUFFIX}"))
+    if not found:
+        return {}
+    try:
+        return emprise.emprises_siagen(siagen.load(found[0])[1])
+    except (OSError, ValueError) as ex:   # siagen.FormatError
+        log.warning("emprises des bâtiments indisponibles : %s", ex)
+        return {}
 
 
 def _reponse_ia(folder: Path) -> int:
@@ -431,6 +448,8 @@ def _reponse_ia(folder: Path) -> int:
         log.error("réponse de l'analyse IA inexploitable : %s", ex)
         return 2
     (folder / ia.SUMMARY).write_text(summary + "\n", encoding="utf-8")
+    if found := ia.formes(text, q):   # bloc facultatif : une réponse sans formes n'écrit rien
+        log.info("analyse IA : forme de %d bâtiment(s) : %s", len(found), ia.write_formes(folder, found))
     open_ = sum(1 for d in decisions if d["statut"] == "proposée")
     log.info("analyse IA : %d propositions, %d classements confirmés, %d questions sans réponse", open_,
              len(decisions) - open_, len(missing))
@@ -494,6 +513,18 @@ def _comparer_mdp(args: argparse.Namespace) -> int:
     return 0
 
 
+def _registre(args: argparse.Namespace):
+    """Registre des adresses (--adresses), indexé au premier usage ; None s'il manque ou est illisible (centre de commune)."""
+    if not args.adresses:
+        return None
+    from . import adresses
+    try:
+        return adresses.Registre(args.adresses)
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile, sqlite3.Error) as ex:
+        log.warning("registre des adresses illisible (%s) : projets placés au centre de leur commune", ex)
+        return None
+
+
 def _benchmark(args: argparse.Namespace) -> int:
     if not args.benchmark.is_dir():
         log.error("dossier de la base introuvable : %s", args.benchmark)
@@ -503,7 +534,12 @@ def _benchmark(args: argparse.Namespace) -> int:
         log.warning("%s", e)
     out = args.benchmark_json or (args.out or Path(".")) / "benchmark.json"
     try:
-        benchmark.ecrire(benchmark.construire(projets, erreurs), out)
+        registre = _registre(args)
+        try:
+            benchmark.ecrire(benchmark.construire(projets, erreurs, dossier=args.benchmark, registre=registre), out)
+        finally:
+            if registre is not None:
+                registre.close()
     except OSError as ex:
         log.error("%s", ex)
         return 2

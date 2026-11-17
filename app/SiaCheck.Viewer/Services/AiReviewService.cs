@@ -46,6 +46,9 @@ public sealed class AiReviewPrompt
     public required string System { get; init; }
     public required string User { get; init; }
     public required int IssueCount { get; init; }
+    /// <summary>Bâtiments dont l'IA propose la forme (analyse IA de la génération, partie 5) : un appel sans question
+    /// reste utile tant qu'il y en a.</summary>
+    public int BuildingCount { get; init; }
     /// <summary>Sortie attendue (jetons) quand elle ne suit pas la revue de la Fiabilisation (analyse IA de la génération).</summary>
     public (long Min, long Max)? Output { get; init; }
 
@@ -73,7 +76,7 @@ public sealed class AiReviewPrompt
             <exemple_rapport> est un rapport réel d'un autre passage, donné pour sa forme et son niveau d'exigence :
             ne recopie aucun de ses constats, qui doivent tous venir des preuves fournies.
 
-            Réponds exactement dans ce format, sans rien d'autre hors des trois balises :
+            Réponds exactement dans ce format, sans rien d'autre hors des quatre balises :
 
             <rapport>
             (le rapport markdown complet de l'étape 5, titre compris)
@@ -86,12 +89,20 @@ public sealed class AiReviewPrompt
                     "explication": "…", "base": ["<id d'un sujet de propositions>"], "par_defaut": "garder|rejeter",
                     "decisions": [{"id": "<id d'une correction proposée>", "decision": "garder|modifier|rejeter|ajouter", "explication": "…"}]}, …}
             </sujets>
+            <formes>
+            {"<bâtiment>": {"forme": "<une forme de la liste>", "raison": "une phrase"}, …}
+            </formes>
 
             Le bloc <verdicts> est un objet JSON valide qui contient chacune des {{issueCount}} clés de la liste
             `issues` des preuves, recopiées caractère pour caractère, et seulement elles. Le bloc <sujets> est un
             objet JSON valide au format de l'étape 6 de la procédure : il décide des corrections de `propositions`
             (identifiants recopiés tels quels), et chaque sujet S… cité dans <verdicts> y figure. Les métadonnées du
             fichier (projet, dates, modèle) sont ajoutées par l'application.
+
+            Le bloc <formes> donne la forme en plan de chaque bâtiment du bloc `emprises` des preuves (noms recopiés
+            tels quels), choisie mot pour mot dans cette liste : {{string.Join(" · ", BuildingShapes.Default)}}.
+            La forme estimée des preuves n'est qu'un indice : juge sur le contour, les ailes et les cours. Sans bloc
+            `emprises` dans les preuves, écris un objet vide.
 
             <procedure>
             {{Resource("revue-ia.SKILL.md")}}
@@ -206,7 +217,7 @@ public sealed class AiReviewClient(string apiKey)
 /// <summary>Résultat exploitable de la réponse du modèle.</summary>
 public sealed record AiReviewOutput(string ReportMarkdown, Dictionary<string, AiVerdict> Points,
                                     IReadOnlyList<string> MissingKeys, IReadOnlyList<string> UnknownKeys,
-                                    JsonObject? Subjects = null);
+                                    JsonObject? Subjects = null, IReadOnlyDictionary<string, string>? Shapes = null);
 
 public static class AiReviewParser
 {
@@ -243,7 +254,29 @@ public static class AiReviewParser
         foreach (var k in missing)
             points[k] = new AiVerdict { Verdict = AiVerdict.Label(AiVerdictKind.ToConfirm), Reason = MissingReason };
         return new AiReviewOutput(report.Trim() + "\n", points, missing, raw.Keys.Where(k => !known.Contains(k)).ToList(),
-                                  ParseSubjects(text));
+                                  ParseSubjects(text), ParseShapes(Between(text, "formes")));
+    }
+
+    /// <summary>
+    /// Formes proposées par bâtiment (bloc &lt;formes&gt; de la revue, ou generation/formes-ia.json de l'analyse IFC),
+    /// limitées à la liste : {bâtiment: forme}. Bloc absent ou illisible : aucune forme, la revue n'échoue pas pour si peu.
+    /// </summary>
+    public static Dictionary<string, string> ParseShapes(string? json)
+    {
+        var shapes = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(json)) return shapes;
+        try
+        {
+            if (JsonNode.Parse(Unfence(json)) is not JsonObject o) return shapes;
+            if (o["formes"] is JsonObject inner) o = inner;     // fichier formes-ia.json : {"format": …, "formes": {…}}
+            foreach (var (building, v) in o)
+            {
+                var shape = v is JsonObject d ? (string?)d["forme"] : v is JsonValue ? v.GetValue<string>() : null;
+                if (BuildingShapes.Normalize(shape) is { } f) shapes[building.Trim()] = f;
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException) { shapes.Clear(); }
+        return shapes;
     }
 
     /// <summary>

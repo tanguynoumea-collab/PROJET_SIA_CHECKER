@@ -149,3 +149,32 @@ def test_listes_of_the_template():
     assert "Santé" in listes["Categorie d'Ouvrage"] and "x" not in listes["Categorie d'Ouvrage"]
     assert "VD" in listes["Canton"] and "Abreviation" not in listes["Canton"]
     assert listes["Phase du projet"][0] == "21"
+
+
+def test_adresse_ajoutee_a_infos_projet(filled):
+    """Champ ajouté en V5 : sa ligne est créée à la fin du tableau InfosProjet, le reste du classeur intact."""
+    before = _ext(filled)
+    mdp.ecrire_identite(filled, {"Adresse": "Avenue de Morges 26, 1004 Lausanne"})
+    infos = _infos(filled)
+    assert infos["Adresse"] == "Avenue de Morges 26, 1004 Lausanne"
+    assert infos["Nom Projet HRS"] == "Synth" and infos["ID projet"] == 42
+    assert _ext(filled) == before
+    ws = _load(filled)["InfosProjet"]
+    table = next(iter(ws.tables.values()))
+    assert table.ref.endswith(str(ws.max_row))                             # le tableau englobe la nouvelle ligne
+    mdp.ecrire_identite(filled, {"Adresse": "Rue du Lac 3"})               # deuxième écriture : même ligne, pas de doublon
+    assert _infos(filled)["Adresse"] == "Rue du Lac 3"
+    assert sum(1 for r in _load(filled)["InfosProjet"].iter_rows(values_only=True) if r[1] == "Adresse") == 1
+
+
+def test_forme_ajoutee_a_infos_projet(filled):
+    """Partie 5 : Forme et son origine, lignes ajoutées comme l'adresse, relues par le benchmark."""
+    mdp.ecrire_identite(filled, {"Forme": "A : Rectangle compact ; B : Carré", "Forme (origine)": "IA"})
+    infos = _infos(filled)
+    assert infos["Forme"] == "A : Rectangle compact ; B : Carré" and infos["Forme (origine)"] == "IA"
+    from sia_check import benchmark
+    import pandas as pd
+    df = pd.read_excel(filled, sheet_name="InfosProjet", header=None)
+    lu = benchmark._infos(df)
+    assert lu["formes"] == {"A": "Rectangle compact", "B": "Carré"}
+    assert lu["forme"] == "Îlot de bâtiments : Carré, Rectangle compact" and lu["forme_origine"] == "IA"

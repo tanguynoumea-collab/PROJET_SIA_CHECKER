@@ -52,6 +52,10 @@ public sealed class AiVerdictFile
 
     [JsonPropertyName("sujets"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public JsonObject? Subjects { get; set; }
+
+    /// <summary>Forme proposée par bâtiment (partie 5), comme la revue l'a rendue ; la fiche décide de la garder.</summary>
+    [JsonPropertyName("formes"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? Shapes { get; set; }
 }
 
 /// <summary>Une revue IA trouvée sur disque : verdicts, et rapport markdown s'il est à côté.</summary>

@@ -303,9 +303,11 @@ public partial class MainWindow : FluentWindow, IShell
     {
         public Grid Grid { get; } = new() { MinWidth = 560 };
         public event Action? Changed;
-        private readonly System.Windows.Controls.TextBox _id, _nom, _commune;
+        private readonly System.Windows.Controls.TextBox _id, _nom, _commune, _adresse;
         private readonly System.Windows.Controls.ComboBox _typologie, _canton, _intervention, _phase;
         private readonly System.Windows.Controls.TextBlock _rappel;
+        private readonly List<(string Building, System.Windows.Controls.ComboBox Box)> _formes = [];
+        private string _formeOrigine;
         private bool _nameTouched;
 
         public IdentityForm(MdpProject initial, IdentityLists lists, bool idReadOnly)
@@ -317,8 +319,16 @@ public partial class MainWindow : FluentWindow, IShell
             _typologie = Add("Typologie *", Liste(lists.Typologies, initial.Typologie, false));
             _canton = Add("Canton *", Liste(lists.Cantons, initial.Canton, false));
             _commune = Add("Commune", new System.Windows.Controls.TextBox { Text = initial.Commune });
+            _adresse = Add("Adresse", new System.Windows.Controls.TextBox
+            {
+                Text = initial.Adresse,
+                ToolTip = "Rue et numéro, puis NPA et localité (« Avenue de Morges 26, 1004 Lausanne ») : le projet est placé " +
+                          "exactement sur la carte du benchmark. Sans adresse, il est placé au centre de sa commune.",
+            });
             _intervention = Add("Type d'intervention *", Liste(lists.Interventions, initial.Intervention, false));
             _phase = Add("Phase SIA", Liste(lists.Phases, initial.Phase, true));
+            _formeOrigine = initial.FormeOrigine;
+            Add("Forme", FormeRows(initial, lists));
             if (idReadOnly) _id.ToolTip = "L'ID relie toutes les tables du MDP : il ne se modifie pas ici.";
             _nameTouched = initial.Name.Length > 0;
 
@@ -329,7 +339,7 @@ public partial class MainWindow : FluentWindow, IShell
             Grid.SetColumnSpan(_rappel, 2);
             Grid.Children.Add(_rappel);
 
-            foreach (var box in new[] { _id, _nom, _commune }) box.TextChanged += (_, _) => Changed?.Invoke();
+            foreach (var box in new[] { _id, _nom, _commune, _adresse }) box.TextChanged += (_, _) => Changed?.Invoke();
             _nom.TextChanged += (_, _) => { if (_nom.IsKeyboardFocusWithin) _nameTouched = true; };
             foreach (var list in new[] { _typologie, _canton, _intervention, _phase }) list.SelectionChanged += (_, _) => Changed?.Invoke();
         }
@@ -348,6 +358,61 @@ public partial class MainWindow : FluentWindow, IShell
             return control;
         }
 
+        /// <summary>
+        /// Une liste de formes par bâtiment (docs/V5_PLAN.md, partie 5) ; une seule sans bâtiment connu. Une forme
+        /// proposée par l'IA est signalée ; la modifier en fait une saisie, que l'IA ne remplacera plus sans accord.
+        /// </summary>
+        private StackPanel FormeRows(MdpProject initial, IdentityLists lists)
+        {
+            var shapes = BuildingShapes.Decode(initial.Forme);
+            var buildings = initial.Buildings.Concat(shapes.Keys.Where(k => k.Length > 0)).Distinct().Order(StringComparer.Ordinal).ToList();
+            var panel = new StackPanel();
+            if (buildings.Count <= 1)
+            {
+                var only = buildings.FirstOrDefault() ?? "";
+                var value = shapes.GetValueOrDefault(only) ?? shapes.Values.FirstOrDefault() ?? "";
+                var box = Liste(lists.Formes, value, true);
+                _formes.Add((only, box));
+                panel.Children.Add(box);
+            }
+            else
+            {
+                var grid = new Grid();
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                foreach (var b in buildings)
+                {
+                    grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                    var label = new System.Windows.Controls.TextBlock { Text = $"Bâtiment {b}", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 2, 12, 2) };
+                    var box = Liste(lists.Formes, shapes.GetValueOrDefault(b) ?? "", true);
+                    box.Margin = new Thickness(0, 2, 0, 2);
+                    Grid.SetRow(label, grid.RowDefinitions.Count - 1);
+                    Grid.SetRow(box, grid.RowDefinitions.Count - 1);
+                    Grid.SetColumn(box, 1);
+                    grid.Children.Add(label);
+                    grid.Children.Add(box);
+                    _formes.Add((b, box));
+                }
+                panel.Children.Add(grid);
+            }
+            var note = new System.Windows.Controls.TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
+            note.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "BrushTextSecondary");
+            void ShowNote() => note.Text = _formeOrigine == BuildingShapes.Ai && Read().Forme.Length > 0
+                ? "Proposée par l'IA : corrigez-la si besoin."
+                : buildings.Count > 1 ? "Plusieurs bâtiments : le projet est un îlot de bâtiments de ces formes." : "";
+            foreach (var (_, box) in _formes)
+                box.SelectionChanged += (_, _) =>
+                {
+                    if (box.IsKeyboardFocusWithin || box.IsDropDownOpen) _formeOrigine = BuildingShapes.Manual;
+                    ShowNote();
+                    Changed?.Invoke();
+                };
+            ShowNote();
+            panel.Children.Add(note);
+            panel.ToolTip = "Forme en plan de chaque bâtiment : filtre du benchmark et de la carte. La revue IA et l'analyse IA la proposent.";
+            return panel;
+        }
+
         private static System.Windows.Controls.ComboBox Liste(IReadOnlyList<string> items, string value, bool optional)
         {
             // Une ancienne valeur hors liste (MDP rempli à la main) reste visible, en tête, pour être corrigée
@@ -361,8 +426,12 @@ public partial class MainWindow : FluentWindow, IShell
         public MdpProject Read() => new()
         {
             Id = _id.Text.Trim(), Name = _nom.Text.Trim(), Typologie = _typologie.SelectedItem as string ?? "",
-            Canton = _canton.SelectedItem as string ?? "", Commune = _commune.Text.Trim(),
+            Canton = _canton.SelectedItem as string ?? "", Commune = _commune.Text.Trim(), Adresse = _adresse.Text.Trim(),
             Intervention = _intervention.SelectedItem as string ?? "", Phase = _phase.SelectedItem as string ?? "",
+            Forme = BuildingShapes.Encode(_formes.Where(f => f.Box.SelectedItem is string { Length: > 0 })
+                                                 .ToDictionary(f => f.Building, f => (string)f.Box.SelectedItem!)),
+            FormeOrigine = _formes.Any(f => f.Box.SelectedItem is string { Length: > 0 })
+                ? (_formeOrigine.Length > 0 ? _formeOrigine : BuildingShapes.Manual) : "",
         };
 
         /// <summary>Nom du projet tiré du dossier, tant que l'utilisateur ne l'a pas saisi lui-même.</summary>

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SiaCheck.Viewer.Models;
 using SiaCheck.Viewer.Services;
 
 namespace SiaCheck.Viewer.ViewModels;
@@ -119,7 +120,97 @@ public sealed partial class MainViewModel
     {
         BenchmarkFolder = _settings.BenchmarkFolder;
         ShowBenchmark(BenchmarkBase.Load(_paths.BenchmarkFile));
-        if (IsBenchmarkStale) _ = RefreshBenchmarkAsync();
+        _ = InitBenchmarkAsync();
+    }
+
+    /// <summary>Maquettes 3D manquantes ou en retard écrites d'abord : la base relue les annonce au dashboard.</summary>
+    private async Task InitBenchmarkAsync()
+    {
+        await SyncBaseModelsAsync();
+        if (IsBenchmarkStale) await RefreshBenchmarkAsync();
+    }
+
+    /// <summary>
+    /// Maquettes 3D web de la base (docs/V5_PLAN.md, partie 2) : pour chaque projet de ce poste dont le MDP est dans la
+    /// base (même ID), la maquette MAQ-&lt;id&gt;.json.gz est écrite à côté si elle manque ou si l'analyse est plus récente.
+    /// Le nombre de maquettes écrites ; une maquette impossible à écrire n'empêche pas la lecture de la base.
+    /// </summary>
+    private async Task<int> SyncBaseModelsAsync()
+    {
+        if (!HasBenchmarkFolder || !Directory.Exists(BenchmarkFolder)) return 0;
+        var folder = BenchmarkFolder;
+        var todo = _settings.MdpProjects
+            .Where(kv => !string.IsNullOrWhiteSpace(kv.Value.Id) && BenchmarkBase.FindById(folder, kv.Value.Id) is not null)
+            .Select(kv => (Analysis: _paths.AnalysisFile(kv.Key), Model: Path.Combine(folder, WebModel.FileName(kv.Value.Id)), kv.Value.Id))
+            .Where(x => File.Exists(x.Analysis) &&
+                        (!File.Exists(x.Model) || File.GetLastWriteTime(x.Model) < File.GetLastWriteTime(x.Analysis)))
+            .ToList();
+        if (todo.Count == 0) return 0;
+        var previous = BenchmarkActivity;
+        BenchmarkActivity = $"Maquettes 3D de la base ({todo.Count})…";
+        var written = 0;
+        foreach (var (analysis, model, id) in todo)
+            if (await Task.Run(() => TryWriteModel(analysis, model, id))) written++;
+        BenchmarkActivity = previous;
+        return written;
+    }
+
+    private const string AddressRegisterUrl = "https://data.geo.admin.ch/ch.swisstopo.amtliches-gebaeudeadressverzeichnis/" +
+                                              "amtliches-gebaeudeadressverzeichnis_ch/amtliches-gebaeudeadressverzeichnis_ch_2056.csv.zip";
+    /// <summary>Une adresse vient d'être saisie : le registre est à télécharger à la prochaine lecture de la base.</summary>
+    private bool _addressWanted;
+
+    /// <summary>
+    /// Registre des adresses de swisstopo (carte du benchmark, partie 3) : téléchargé une fois sur ce poste dès qu'un projet
+    /// de la base a une adresse, puis indexé hors ligne par le moteur. Sans réseau, les projets restent au centre de leur
+    /// commune et le téléchargement est retenté à la lecture suivante. Le chemin du registre, ou null.
+    /// </summary>
+    private async Task<string?> EnsureAddressRegisterAsync()
+    {
+        var path = _paths.AddressRegisterFile;
+        if (File.Exists(path)) return path;
+        var wanted = _addressWanted || (_benchmarkData?.Projects.Any(p => !string.IsNullOrWhiteSpace(p.Info("adresse"))) ?? false);
+        if (!wanted) return null;
+        var previous = BenchmarkActivity;
+        BenchmarkActivity = "Téléchargement du registre des adresses de swisstopo (~140 Mo, une seule fois)…";
+        var tmp = path + ".part";
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(20) };
+            using (var src = await http.GetStreamAsync(AddressRegisterUrl))
+            using (var dst = File.Create(tmp))
+                await src.CopyToAsync(dst);
+            File.Move(tmp, path, overwrite: true);
+            _addressWanted = false;
+            return path;
+        }
+        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or IOException or TaskCanceledException
+                                       or UnauthorizedAccessException)
+        {
+            if (File.Exists(tmp)) File.Delete(tmp);
+            _shell.Notify("Registre des adresses non téléchargé (réseau ?) : les projets restent au centre de leur commune sur la carte.",
+                          isError: true);
+            return null;
+        }
+        finally
+        {
+            BenchmarkActivity = previous;
+        }
+    }
+
+    private static bool TryWriteModel(string analysis, string model, string id)
+    {
+        try
+        {
+            WebModel.Write(ViewerDocument.Load(analysis), id, model);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException
+                                       or InvalidDataException or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanOpenBenchmark))]
@@ -259,10 +350,12 @@ public sealed partial class MainViewModel
             return;
         }
         IsBenchmarkLoading = true;
-        BenchmarkActivity = "Lecture de la base…";
         try
         {
-            var r = await _engine.BenchmarkAsync(BenchmarkFolder, _paths.BenchmarkFile, CancellationToken.None);
+            await SyncBaseModelsAsync();
+            var addresses = await EnsureAddressRegisterAsync();
+            BenchmarkActivity = "Lecture de la base…";
+            var r = await _engine.BenchmarkAsync(BenchmarkFolder, _paths.BenchmarkFile, addresses, CancellationToken.None);
             if (!r.Succeeded)
             {
                 BenchmarkError = r.ErrorMessage ?? "Lecture de la base impossible.";
@@ -394,8 +487,13 @@ public sealed partial class MainViewModel
             NotAdded(r.ErrorMessage ?? "export du MDP impossible.");
             return false;
         }
+        // Maquette 3D web à côté du MDP, depuis la dernière analyse (sans elle, le dashboard n'a pas de vue 3D du projet)
+        var model = Path.Combine(BenchmarkFolder, WebModel.FileName(hrs.Id));
+        if (File.Exists(_paths.AnalysisFile(projectDir)) && !await Task.Run(() => TryWriteModel(_paths.AnalysisFile(projectDir), model, hrs.Id)))
+            _shell.Notify($"Maquette 3D de « {label} » non écrite dans la base : la vue 3D du dashboard manquera.", isError: true);
         _shell.Notify(republish ? $"« {label} » republié dans la base : {Path.GetFileName(path)}."
                       : $"{(onValidation ? done + "et ajouté" : $"« {label} » ajouté")} à la base : {Path.GetFileName(path)}.");
+        if (hrs.Adresse.Length > 0) _addressWanted = true;     // adresse saisie : registre à télécharger pour la carte
         // MDP de la base à jour : un projet « Traité · modifié » redevient « Traité »
         if (_registry.StatusOf(projectDir) == ProjectStatus.DoneModified)
         {
@@ -418,9 +516,12 @@ public sealed partial class MainViewModel
         if (id.Name.Length == 0) id.Name = p.Name;
         if (id.Canton.Length == 0) id.Canton = Clean(p.Info("canton"));
         if (id.Commune.Length == 0) id.Commune = Clean(p.Info("commune"));
+        if (id.Adresse.Length == 0) id.Adresse = Clean(p.Info("adresse"));
         if (id.Typologie.Length == 0) id.Typologie = Clean(p.Info("categorie"));
         if (id.Intervention.Length == 0) id.Intervention = Clean(p.Info("intervention"));
         if (id.Phase.Length == 0) id.Phase = Clean(p.Info("phase"));
+        if (id.Forme.Length == 0) { id.Forme = p.Shapes; id.FormeOrigine = p.Info("forme_origine") ?? ""; }
+        if (id.Buildings.Count == 0) id.Buildings = p.Buildings;
     }
 
     /// <summary>
@@ -460,6 +561,7 @@ public sealed partial class MainViewModel
             return;
         }
         _shell.Notify($"Identité de « {hrs.Name} » enregistrée dans {item.Project.File}.");
+        if (hrs.Adresse.Length > 0) _addressWanted = true;
         await RefreshBenchmarkAsync();
     }
 }

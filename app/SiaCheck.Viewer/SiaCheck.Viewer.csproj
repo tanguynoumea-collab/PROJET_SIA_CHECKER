@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <Version>4.2.0</Version>
+    <Version>4.3.0</Version>
     <Product>SIA Check Viewer</Product>
     <Company>HRS Real Estate AG</Company>
     <Description>Contrôle par sommation des surfaces SIA 416 / USPI des projets Treegram</Description>
@@ -32,8 +32,12 @@
 
   <ItemGroup>
     <!-- Dashboard du benchmark : la page web du dépôt (dashboard/), affichée par WebView2 et publiée telle quelle sur le web -->
-    <Content Include="..\..\dashboard\*.html;..\..\dashboard\*.css;..\..\dashboard\*.js" Link="dashboard\%(Filename)%(Extension)"
+    <Content Include="..\..\dashboard\*.html;..\..\dashboard\*.css;..\..\dashboard\*.js;..\..\dashboard\carte-suisse.json" Link="dashboard\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
+    <!-- three.js (MIT), livré avec la page : la vue 3D des maquettes fonctionne sans réseau (docs/V5_PLAN.md, partie 2) -->
+    <Content Include="..\..\dashboard\vendor\*" Link="dashboard\vendor\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Leaflet (BSD-2) pour la carte ; fonds et calques en ligne depuis geo.admin.ch (docs/V5_PLAN.md, partie 3) -->
+    <Content Include="..\..\dashboard\vendor\leaflet\*" Link="dashboard\vendor\leaflet\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

@@ -255,6 +255,33 @@ class Workbook:
         else:
             row.cells[col] = xml
 
+    def append_row(self, name: str, record: dict) -> int:
+        """Ajoute une ligne à la fin du tableau `name` (sans ligne de totaux), le reste intact : styles de la dernière
+        ligne de données, plage et filtre du tableau agrandis d'une ligne. Rend le numéro de la ligne écrite."""
+        t = self.tables[name]
+        if t.totals:
+            raise TemplateError(f"tableau {name} : ligne de totaux, ajout non pris en charge")
+        rows = self._sheet_rows(t.sheet_part)
+        cols = range(t.first_col, t.first_col + len(t.columns))
+        last = rows.get(t.last_row)
+        n = t.last_row + 1
+        row = rows.setdefault(n, Row(f' r="{n}"'))
+        for j, col_name in enumerate(t.columns):
+            c = t.first_col + j
+            style = _cell_style(last.cells[c]) if last and c in last.cells else None
+            xml = _value_xml(f"{col_letters(c)}{n}", _plain(record.get(col_name)), style)
+            if xml:
+                row.cells[c] = xml
+            elif style:
+                row.cells[c] = f'<c r="{col_letters(c)}{n}" s="{style}"/>'
+        ref = f"{col_letters(t.first_col)}{t.header_row}:{col_letters(cols[-1])}{n}"
+        x = self.parts[t.part].decode("utf-8")
+        x = re.sub(r'(<table\b[^>]*?\sref=")[^"]*"', rf'\g<1>{ref}"', x, count=1)
+        x = re.sub(r'(<autoFilter\b[^>]*?\sref=")[^"]*"', rf'\g<1>{ref}"', x, count=1)
+        self.parts[t.part] = x.encode("utf-8")
+        t.last_row = n
+        return n
+
     def fill_table(self, name: str, records: list[dict]) -> None:
         """Remplace les lignes de données du tableau `name` par `records` (clé = en-tête de colonne).
 

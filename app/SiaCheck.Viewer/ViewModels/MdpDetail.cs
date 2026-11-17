@@ -37,7 +37,10 @@ public sealed class MdpDetail
             Field("Canton", Info("canton"), true, "Deuxième sélection du benchmark."),
             Field("Type d'intervention", Info("intervention"), true, "Sélection du benchmark (neuf, rénovation…)."),
             Field("Commune", Info("commune"), false, "Facultatif."),
+            Field("Adresse", Info("adresse"), false, "Rue et numéro : le projet est placé exactement sur la carte ; sinon au centre de sa commune."),
             Field("Phase SIA", Info("phase"), false, "Facultatif."),
+            Field("Forme", Info("forme") + (Info("forme_origine") == BuildingShapes.Ai ? " (proposée par l'IA)" : ""), false,
+                  "Forme en plan de chaque bâtiment : filtre du benchmark et de la carte. La revue IA et l'analyse IA la proposent."),
         ];
         IdentityMissing = Identity.Count(d => d.Required && !d.Ok);
 

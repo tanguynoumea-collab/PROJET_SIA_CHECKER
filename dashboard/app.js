@@ -1,18 +1,25 @@
-// Dashboard du benchmark (docs/DESIGN_PLAN.md, Évolutions 3.1 à 3.5 ; docs/V3_PLAN.md §4 et §9).
+// Dashboard du benchmark (docs/DESIGN_PLAN.md, Évolutions 3.1 à 3.5 ; docs/V3_PLAN.md §4 et §9 ; docs/V5_PLAN.md).
 // Données : benchmark.json de `sia-check --benchmark`. Dans SIA Check, l'application les transmet par WebView2
 // (window.chrome.webview) ; sur un serveur, la page les lit à côté d'elle (?data=… pour un autre chemin).
-// Le moteur fait foi pour les totaux, la fiabilité et les distances ; la page ne refait que les ratios combinés
-// (Σ numérateurs / Σ dénominateurs) du groupe que l'utilisateur coche.
+// Le moteur fait foi pour les totaux, la fiabilité et les distances ; la page refait les médianes, quartiles et
+// ratios combinés sur la référence que l'utilisateur coche.
+//
+// Deux ensembles distincts (V5_PLAN, partie 1) :
+//   référence  : projets fiables du pré-filtre, moins ceux que l'utilisateur décoche (etat.exclus). Tous les calculs.
+//   comparées  : maquettes situées sur les graphiques, chacune à sa couleur (etat.comparees). Aucun calcul de référence.
 "use strict";
 
 const PARAMS = new URLSearchParams(location.search);
 const MIN_REFERENCE = 3;     // en dessous, la référence est fragile (V3_PLAN §4.4)
 const TAILLE_GROUPE = 5;
+const MAX_COMPAREES = 6;     // une couleur chacune (style.css, --cmp1 à --cmp6)
 const SVG = "http://www.w3.org/2000/svg";
 const MIEN = "mien";
 
-const etat = { data: null, projets: new Map(), kpis: [], projetId: null, coches: new Set(), tri: null,
-                mien: null, mienSource: "saisie", prix: null, groupeCle: "" };
+const etat = { data: null, projets: new Map(), kpis: [], tri: null, mien: null, mienSource: "saisie", prix: null,
+                exclus: new Set(), comparees: [], recherche: "", forme: "", triReference: "id", vue3d: null, carte: false, defilement: 0 };
+/** Dossier des maquettes 3D (MAQ-*.json.gz) : donné par SIA Check (?maquettes=base/), sinon celui de benchmark.json. */
+const BASE_MAQUETTES = PARAMS.get("maquettes") ?? (PARAMS.get("data") || "").replace(/[^/]*$/, "");
 
 /** Un projet de la base, ou « Mon projet » (id « mien »). */
 const projet = (id) => (id === MIEN ? etat.mien : etat.projets.get(id));
@@ -58,6 +65,58 @@ function svg(tag, attrs = {}, texte) {
 }
 
 const titre = (e, t) => { e.append(svg("title", {}, t)); return e; };
+
+/** Icônes au trait (24 × 24, couleur du texte) : boutons et marques qui remplacent les libellés. */
+const ICONES = {
+  tout: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12.5l2.8 2.8L16.5 9"/>',
+  aucun: '<rect x="3" y="3" width="18" height="18" rx="4"/>',
+  partiel: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12h8"/>',
+  proches: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+  alerte: '<path d="M12 3.5L21.5 20h-19z"/><path d="M12 10v4.5M12 17.2v.1"/>',
+  horsfiltre: '<path d="M4 5h16l-6 7.5V18l-4 2v-7.5z"/><path d="M3 3l18 18"/>',
+  // forme des bâtiments : un plan en L
+  forme: '<path d="M5 4h6v10h8v6H5z"/>',
+  tri: '<path d="M7 4v16M3.5 7.5L7 4l3.5 3.5M17 20V4M13.5 16.5L17 20l3.5-3.5"/>',
+  reinit: '<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v5h5"/>',
+  replier: '<path d="M6 15l6-6 6 6"/>',
+  deplier: '<path d="M6 9l6 6 6-6"/>',
+  effacer: '<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5"/>',
+  ajouter: '<path d="M12 5v14M5 12h14"/>',
+  retirer: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  loupe: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/>',
+  coche: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  cube: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
+  dessus: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M12 4v16"/>',
+  excel: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 12l5 6M14 12l-5 6"/>',
+  carte: '<path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/>',
+  zonePlus: '<rect x="3.5" y="3.5" width="17" height="17" rx="2" stroke-dasharray="3 2.5"/><path d="M12 8.5v7M8.5 12h7"/>',
+  zoneMoins: '<rect x="3.5" y="3.5" width="17" height="17" rx="2" stroke-dasharray="3 2.5"/><path d="M8.5 12h7"/>',
+  moins: '<path d="M5 12h14"/>',
+  cadrer: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+};
+
+function icone(nom) {
+  const s = svg("svg", { viewBox: "0 0 24 24", class: "icone", "aria-hidden": "true", fill: "none", stroke: "currentColor",
+    "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" });
+  s.innerHTML = ICONES[nom];
+  return s;
+}
+
+/** Bouton-icône : le libellé passe en infobulle et en nom accessible. */
+function boutonIcone(nom, libelle, action, classe = "") {
+  const b = el("button", { type: "button", class: `icone-btn ${classe}`.trim(), title: libelle, "aria-label": libelle }, icone(nom));
+  b.addEventListener("click", (e) => { e.stopPropagation(); action(); });
+  return b;
+}
+
+/** Marque discrète (écarté, hors filtre) : une icône et son explication au survol. */
+const marque = (nom, libelle, classe = "") =>
+  el("span", { class: `marque-icone ${classe}`.trim(), title: libelle, role: "img", "aria-label": libelle }, icone(nom));
+
+/** Icônes des éléments statiques de la page (data-icone). */
+function poserIcones(racine = document) {
+  for (const e of racine.querySelectorAll("[data-icone]")) e.replaceChildren(icone(e.dataset.icone));
+}
 const nomProjet = (p) => `${p.id} · ${p.nom}`;
 
 // ------------------------------------------------------------------ calculs
@@ -73,9 +132,9 @@ function combiner(projets, kpi) {
   return { n: valeurs.length, combine: sn / sd, q1: q(0.25), mediane: q(0.5), q3: q(0.75), valeurs };
 }
 
-/** Les projets fiables de la sélection les plus proches de `ref` (Évolution 3.5 : la sélection remplace les filtres). */
+/** Les projets fiables du pré-filtre les plus proches de `ref` (distances du moteur, ou recalculées pour « Mon projet »). */
 function candidats(ref) {
-  return Object.entries(ref.distances || {})
+  return Object.entries(ref?.distances || {})
     .map(([id, d]) => ({ p: etat.projets.get(id), d }))
     .filter(({ p }) => p && p.fiable && p.id !== ref.id && dansSelection(p))
     .sort((a, b) => a.d - b.d)
@@ -83,16 +142,6 @@ function candidats(ref) {
 }
 
 const norm = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
-
-/** Domaine d'une règle : toutes les valeurs fiables de la base et celle du projet étudié, avec une marge. */
-function domaine(kpi, extra) {
-  const v = etat.data.projets.filter((p) => p.fiable && p.kpis[kpi.id]).map((p) => p.kpis[kpi.id].valeur);
-  if (extra != null) v.push(extra);
-  if (!v.length) return null;
-  let lo = Math.min(...v), hi = Math.max(...v);
-  const marge = (hi - lo) * 0.08 || Math.abs(hi) * 0.1 || 1;
-  return [lo - marge, hi + marge];
-}
 
 // ------------------------------------------------------------------ Sélection (Évolution 3.5)
 
@@ -122,6 +171,8 @@ function dansSelection(p, sauf = null, s = sel) {
 
 const projetsSelection = () => etat.data.projets.filter((p) => dansSelection(p));
 const fiablesSelection = () => projetsSelection().filter((p) => p.fiable);
+/** La référence : projets fiables du pré-filtre que l'utilisateur n'a pas décochés. Seule base des calculs. */
+const reference = () => fiablesSelection().filter((p) => !etat.exclus.has(p.id));
 const selectionActive = () => CRITERES.some(([cle]) => sel[cle]);
 
 function libelleSelection() {
@@ -133,6 +184,11 @@ function initSelection() {
   try { Object.assign(sel, JSON.parse(localStorage.getItem(CLE_SELECTION) || "{}")); } catch { /* stockage indisponible */ }
   for (const [cle] of CRITERES) if (PARAMS.has(cle)) sel[cle] = PARAMS.get(cle);     // un lien partagé fait foi
   const form = document.getElementById("selection");
+  // les volets collent sous la barre (onglets et pré-filtre), quelle que soit sa hauteur (retour à la ligne en fenêtre étroite)
+  const barre = document.querySelector(".entete-page");
+  const hauteur = () => { document.documentElement.style.setProperty("--haut-selection", `${barre.offsetHeight}px`); ajuster3D(); };
+  hauteur();
+  if ("ResizeObserver" in window) new ResizeObserver(hauteur).observe(barre);
   form.addEventListener("change", (e) => { sel[e.target.name] = e.target.value; majSelection(); });
   form.addEventListener("submit", (e) => e.preventDefault());
   document.getElementById("selection-reinit").addEventListener("click", () => {
@@ -157,8 +213,9 @@ function remplirSelection() {
     form[cle].replaceChildren(...options);
     form[cle].value = valeurs.find((v) => norm(v) === norm(sel[cle])) ?? sel[cle];
   }
-  const n = fiablesSelection().length;
-  document.getElementById("selection-resume").textContent = `${n} projet${n > 1 ? "s" : ""} fiable${n > 1 ? "s" : ""}`;
+  const n = fiablesSelection().length, r = reference().length;
+  document.getElementById("selection-resume").textContent =
+    `${r} projet${r > 1 ? "s" : ""} de référence sur ${n} fiable${n > 1 ? "s" : ""}`;
   document.getElementById("selection-reinit").hidden = !selectionActive();
 }
 
@@ -177,13 +234,31 @@ function majSelection() {
   const url = new URL(location.href);
   for (const [cle] of CRITERES) sel[cle] ? url.searchParams.set(cle, sel[cle]) : url.searchParams.delete(cle);
   try { history.replaceState(null, "", url); } catch { /* adresse non modifiable (aperçu) */ }
+  majReference();
+}
+
+/** La référence a changé (pré-filtre, case cochée) : tout ce qui en dépend est recalculé. */
+function majReference() {
+  sauverVolets();
   remplirSelection();
+  dessinerVolets();
   dessinerRatios();
   dessinerAnatomie();
-  if (etat.projetId) choisirProjet(etat.projetId);
   dessinerProgramme();
   dessinerBase();
   dessinerTypologies();
+  majVue3D();
+  majCarte();
+}
+
+/** Les maquettes comparées ont changé : seuls les repères bougent, jamais les valeurs de référence. */
+function majComparees() {
+  sauverVolets();
+  dessinerVolets();
+  dessinerRatios();
+  dessinerAnatomie();
+  majVue3D();
+  majCarte();
 }
 
 /** Élargissement qui redonne le plus de projets fiables, en retirant un seul critère (canton d'abord). */
@@ -196,62 +271,282 @@ function suggestionElargir() {
   return null;
 }
 
+// ------------------------------------------------------------------ Volets : maquettes comparées et projets de référence
+
+const CLE_EXCLUS = "benchmark.exclus";
+const CLE_COMPAREES = "benchmark.comparees";
+const CLE_MENU = "benchmark.menuComparees";
+
+function initVolets() {
+  try {
+    for (const id of JSON.parse(localStorage.getItem(CLE_EXCLUS) || "[]")) if (etat.projets.has(String(id))) etat.exclus.add(String(id));
+    etat.comparees = JSON.parse(localStorage.getItem(CLE_COMPAREES) || "[]")
+      .filter((c) => c && (c.id === MIEN || etat.projets.has(String(c.id))) && c.couleur >= 1 && c.couleur <= MAX_COMPAREES)
+      .slice(0, MAX_COMPAREES);
+  } catch { /* stockage indisponible : référence complète, rien de comparé */ }
+  const recherche = document.getElementById("recherche"), menu = document.getElementById("volet-comparees");
+  // une recherche ouvre le menu des maquettes, pour que ses résultats se voient
+  recherche.addEventListener("input", () => { etat.recherche = recherche.value; if (etat.recherche) menu.open = true; dessinerVolets(); });
+  try { menu.open = localStorage.getItem(CLE_MENU) === "1"; } catch { /* stockage indisponible : menu fermé */ }
+  menu.addEventListener("toggle", () => { try { localStorage.setItem(CLE_MENU, menu.open ? "1" : "0"); } catch { /* idem */ } });
+  const tri = document.getElementById("references-tri");
+  tri.addEventListener("change", () => { etat.triReference = tri.value; dessinerVolets(); });
+  document.getElementById("references-forme").addEventListener("change", (e) => choisirForme(e.target.value));
+  // un seul bouton : tout cocher s'il manque un projet, sinon tout décocher ; avec un filtre de forme, les projets de
+  // cette forme seulement (la référence se réduit ainsi à une forme : « décocher tout », filtrer, « cocher »)
+  document.getElementById("references-bascule").addEventListener("click", () => {
+    const fiables = fiablesSelection().filter((p) => formeCorrespond(p)), tous = fiables.every((p) => !etat.exclus.has(p.id));
+    for (const p of fiables) tous ? etat.exclus.add(p.id) : etat.exclus.delete(p.id);
+    majReference();
+  });
+}
+
+function sauverVolets() {
+  try {
+    localStorage.setItem(CLE_EXCLUS, JSON.stringify([...etat.exclus]));
+    localStorage.setItem(CLE_COMPAREES, JSON.stringify(etat.comparees));
+  } catch { /* stockage indisponible */ }
+}
+
+const estComparee = (id) => etat.comparees.some((c) => c.id === id);
+const couleurDe = (c) => `var(--cmp${c.couleur})`;
+
+/** Maquettes comparées, dans l'ordre d'ajout, avec leur projet ; « Mon projet » sans surfaces saisies est omis des figures. */
+function comparees() {
+  return etat.comparees.map((c) => ({ ...c, p: projet(c.id), couleur: couleurDe(c) })).filter((c) => c.p);
+}
+
+function basculerComparee(id) {
+  if (estComparee(id)) etat.comparees = etat.comparees.filter((c) => c.id !== id);
+  else {
+    if (etat.comparees.length >= MAX_COMPAREES) return;
+    const prises = new Set(etat.comparees.map((c) => c.couleur));
+    const couleur = [...Array(MAX_COMPAREES).keys()].map((i) => i + 1).find((i) => !prises.has(i));
+    etat.comparees.push({ id, couleur });
+  }
+  if (id === MIEN) document.getElementById("saisie").hidden = !estComparee(MIEN);
+  majComparees();
+}
+
+/** La référence réduite aux projets les plus proches d'une maquette (proximité de l'ancien onglet Comparer). */
+function cocherProches(id) {
+  const proches = new Set(candidats(projet(id)).map((c) => c.p.id));
+  if (!proches.size) return;
+  for (const p of fiablesSelection()) proches.has(p.id) ? etat.exclus.delete(p.id) : etat.exclus.add(p.id);
+  majReference();
+}
+
+function correspond(p) {
+  const q = norm(etat.recherche);
+  if (!q) return true;
+  return [p.id, p.nom, p.infos?.commune, p.infos?.canton].some((v) => v != null && norm(v).includes(q));
+}
+
+// ------------------------------------------------------------------ forme des bâtiments (V5_PLAN, partie 5)
+
+const FORME_ILOT = "ilot", FORME_AUCUNE = "aucune";
+/** Formes de la base, dans l'ordre de la liste du moteur (benchmark.json, listes.Forme). */
+function formesBase() {
+  const ordre = etat.data.listes?.Forme || [];
+  const vues = new Set(etat.data.projets.flatMap((p) => Object.values(p.infos?.formes || {})));
+  return [...vues].sort((a, b) => (ordre.indexOf(a) + 1 || 99) - (ordre.indexOf(b) + 1 || 99) || a.localeCompare(b, "fr"));
+}
+/** Filtre de forme (volet et carte, un seul état) : une forme portée par un des bâtiments, l'îlot, ou sans forme. */
+function formeCorrespond(p, f = etat.forme) {
+  const formes = Object.values(p.infos?.formes || {});
+  if (!f) return true;
+  if (f === FORME_ILOT) return formes.length > 1;
+  if (f === FORME_AUCUNE) return !formes.length;
+  return formes.includes(f);
+}
+/** Options du filtre de forme, avec le nombre de projets du pré-filtre pour chacune. */
+function optionsForme() {
+  const base = projetsSelection(), n = (f) => base.filter((p) => formeCorrespond(p, f)).length;
+  return [el("option", { value: "", text: `Toutes les formes (${base.length})` }),
+    ...formesBase().map((f) => el("option", { value: f, text: `${f} (${n(f)})` })),
+    el("option", { value: FORME_ILOT, text: `Îlot de bâtiments (${n(FORME_ILOT)})` }),
+    el("option", { value: FORME_AUCUNE, text: `Forme non renseignée (${n(FORME_AUCUNE)})` })];
+}
+function choisirForme(f) {
+  etat.forme = f;
+  dessinerVolets();
+  if (typeof majCarte === "function") majCarte();
+}
+/** Libellé de la forme d'un projet, pour les listes et les infobulles. */
+const formeTexte = (p) => p.infos?.forme || "";
+
+const pastille = (couleur, titre = "") => el("i", { class: "pastille-cmp", style: `background:${couleur}`, title: titre, "aria-hidden": "true" });
+
+function dessinerVolets() {
+  // Maquettes à comparer : les comparées d'abord (même hors pré-filtre), puis Mon projet et les projets du pré-filtre
+  const pleines = etat.comparees.length >= MAX_COMPAREES;
+  const choisies = comparees();
+  const autres = [{ id: MIEN }, ...projetsSelection().sort((a, b) => String(a.id).localeCompare(String(b.id), "fr", { numeric: true }))]
+    .filter((x) => !estComparee(x.id));
+  const items = [...choisies.map((c) => ({ id: c.id, c })), ...autres];
+  const ligneComparee = ({ id, c }) => {
+    const p = projet(id) || { id, nom: "Mon projet", infos: {} };
+    if (id !== MIEN && !c && !correspond(p)) return null;
+    const cb = el("input", { type: "checkbox", "aria-label": `Comparer ${id === MIEN ? "Mon projet" : nomProjet(p)}` });
+    cb.checked = !!c;
+    cb.disabled = !c && pleines;
+    cb.addEventListener("change", () => basculerComparee(id));
+    const nom = id === MIEN ? el("span", { class: "nom", text: `★ Mon projet${etat.mien?.nom && etat.mien.nom !== "Mon projet" ? " : " + etat.mien.nom : ""}` })
+                            : el("span", { class: "nom", text: p.nom, title: [p.nom, p.infos?.commune].filter(Boolean).join(" · ") });
+    const label = el("label", { title: cb.disabled ? `${MAX_COMPAREES} maquettes au plus : retirez-en une` : "" }, cb,
+      c ? pastille(c.couleur) : el("i", { class: "pastille-cmp vide", "aria-hidden": "true" }),
+      id === MIEN ? null : el("span", { class: "mono", text: p.id }), nom);
+    const li = el("li", { class: c ? "choisie" : "" }, label);
+    if (p.maquette) li.append(boutonCube(p));
+    if (id !== MIEN && !p.fiable) li.append(marque("alerte", "Écarté : données incohérentes, hors des références, comparable pour mémoire"));
+    if (c && id !== MIEN && !dansSelection(p)) li.append(marque("horsfiltre", "Hors du pré-filtre"));
+    if (c && candidats(c.p).length)
+      li.append(boutonIcone("proches", `Ne garder dans la référence que les ${TAILLE_GROUPE} projets les plus proches de cette maquette`,
+        () => cocherProches(id), "petit"));
+    return li;
+  };
+  document.getElementById("comparees").replaceChildren(...items.map(ligneComparee).filter(Boolean));
+  document.getElementById("comparees-compte").textContent = `${etat.comparees.length} / ${MAX_COMPAREES}`;
+  // menu fermé : les pastilles disent ce qui est comparé
+  document.getElementById("comparees-pastilles").replaceChildren(...choisies.map((c) =>
+    pastille(c.couleur, c.id === MIEN ? `★ ${c.p.nom}` : nomProjet(c.p))));
+
+  // Projets de référence : les fiables du pré-filtre, cochés sauf exclusion
+  const fiables = fiablesSelection();
+  const ordreFormes = formesBase();
+  const cleTri = { id: (p) => p.id, nom: (p) => p.nom, sp: (p) => -(p.totaux?.SP_HS ?? -1),
+                   // forme : dans l'ordre de la liste, les îlots ensuite, les projets sans forme à la fin
+                   forme: (p) => { const f = Object.values(p.infos?.formes || {});
+                                   return f.length === 1 ? ordreFormes.indexOf(f[0]) : f.length > 1 ? 900 : 999; } }[etat.triReference];
+  const triees = [...fiables].sort((a, b) => {
+    const x = cleTri(a), y = cleTri(b);
+    return typeof x === "number" ? x - y : String(x).localeCompare(String(y), "fr", { numeric: true });
+  });
+  const visibles = triees.filter((p) => correspond(p) && formeCorrespond(p));
+  const choixForme = document.getElementById("references-forme");
+  choixForme.replaceChildren(...optionsForme());
+  choixForme.value = etat.forme;
+  choixForme.classList.toggle("actif", !!etat.forme);
+  document.getElementById("references").replaceChildren(...visibles.map((p) => {
+    const cb = el("input", { type: "checkbox", "aria-label": `Inclure ${nomProjet(p)} dans la référence` });
+    cb.checked = !etat.exclus.has(p.id);
+    cb.addEventListener("change", () => { cb.checked ? etat.exclus.delete(p.id) : etat.exclus.add(p.id); majReference(); });
+    const c = etat.comparees.find((x) => x.id === p.id);
+    const sp = p.totaux?.SP_HS;
+    return el("li", { class: cb.checked ? "" : "decoche" },
+      el("label", { title: [nomProjet(p), p.infos?.commune, p.infos?.categorie, formeTexte(p)].filter(Boolean).join(" · ") }, cb,
+        el("span", { class: "mono", text: p.id }), el("span", { class: "nom", text: p.nom })),
+      c ? pastille(couleurDe(c), "Aussi comparée") : null,
+      el("span", { class: "secondaire taille", text: sp ? `${F0.format(sp)} m²` : "" }),
+      p.maquette ? boutonCube(p) : el("span", { class: "sans-cube", "aria-hidden": "true" }));
+  }));
+  const r = reference().length;
+  document.getElementById("references-compte").textContent = `${r} / ${fiables.length}`;
+  // bouton unique : son icône dit l'état (tout, rien, une partie), son clic fait l'inverse ; sur la forme filtrée s'il y en a une
+  const cibles = fiables.filter((p) => formeCorrespond(p)), rc = cibles.filter((p) => !etat.exclus.has(p.id)).length;
+  const bascule = document.getElementById("references-bascule"), tous = cibles.length > 0 && rc === cibles.length;
+  const quoi = etat.forme ? `les ${cibles.length} projets de cette forme` : "tous les projets de référence";
+  bascule.replaceChildren(icone(tous ? "tout" : rc === 0 ? "aucun" : "partiel"));
+  bascule.title = `${tous ? "Décocher" : "Cocher"} ${quoi}`;
+  bascule.setAttribute("aria-label", bascule.title);
+  bascule.disabled = !cibles.length;
+  const vide = document.getElementById("references-vide");
+  vide.hidden = visibles.length > 0;
+  vide.textContent = !fiables.length ? `Aucun projet fiable pour ${libelleSelection()}.`
+    : etat.forme && !cibles.length ? "Aucun projet fiable de cette forme." : "Aucun projet ne correspond à la recherche.";
+}
+
 // ------------------------------------------------------------------ Tendances (Évolution 4.10)
 
 const NOMS_CRITERES = { typologie: "la typologie", canton: "le canton", intervention: "le type d'intervention" };
 
 function dessinerRatios() {
-  const fiables = fiablesSelection(), tous = projetsSelection();
-  document.getElementById("ratios-titre").textContent = `Tendances — ${libelleSelection()}`;
-  document.getElementById("ratios-resume").textContent =
-    `${fiables.length} projet${fiables.length > 1 ? "s" : ""} fiable${fiables.length > 1 ? "s" : ""} sur ${tous.length} dans la sélection`;
-
+  const ref = reference(), fiables = fiablesSelection(), tous = projetsSelection();
+  const cmp = comparees();
   const bandeau = document.getElementById("ratios-bandeau");
-  bandeau.hidden = fiables.length >= MIN_REFERENCE;
+  bandeau.hidden = ref.length >= MIN_REFERENCE;
   if (!bandeau.hidden) {
-    bandeau.replaceChildren(fiables.length ? `${fiables.length} projet${fiables.length > 1 ? "s" : ""} : référence fragile.`
-                                            : `Aucun projet fiable pour ${libelleSelection()}.`);
-    const s = suggestionElargir();
-    if (s) {
-      const b = el("button", { type: "button", class: "lien", text: `Élargir : sans ${NOMS_CRITERES[s.cle]} (${s.n} projets)` });
-      b.addEventListener("click", () => { sel[s.cle] = ""; majSelection(); });
+    bandeau.replaceChildren(ref.length ? `${ref.length} projet${ref.length > 1 ? "s" : ""} de référence : référence fragile.`
+                            : fiables.length ? "Aucun projet de référence coché." : `Aucun projet fiable pour ${libelleSelection()}.`);
+    if (fiables.length > ref.length) {
+      const b = el("button", { type: "button", class: "lien", text: `Recocher les ${fiables.length} projets fiables` });
+      b.addEventListener("click", () => { for (const p of fiables) etat.exclus.delete(p.id); majReference(); });
       bandeau.append(" ", b);
+    } else {
+      const s = suggestionElargir();
+      if (s) {
+        const b = el("button", { type: "button", class: "lien", text: `Élargir : sans ${NOMS_CRITERES[s.cle]} (${s.n} projets)` });
+        b.addEventListener("click", () => { sel[s.cle] = ""; majSelection(); });
+        bandeau.append(" ", b);
+      }
     }
   }
 
   const ligne = (kpi, cle) => {
-    const c = combiner(fiables, kpi);
+    const c = combiner(ref, kpi);
     if (!c.n) return el("div", { class: cle ? "td-cle" : "td-ligne" }, el("b", { text: kpi.label }),
-      el("span", { class: "absent", text: "Aucun projet de la sélection n'a ce ratio" }));
+      el("span", { class: "absent", text: "Aucun projet de référence n'a ce ratio" }), lignesComparees(kpi, null, cmp));
     const st = repartition(c.valeurs.map((x) => x.v));
     const [phrase, court] = PHRASES[kpi.id] || ["", kpi.label];
     const texte = phrase ? `${phrase.replace("{v}", enClair(kpi, st.mediane))} ` : "";
     const details = `${fourchetteTexte(kpi, st)} · ${c.n} projet${c.n > 1 ? "s" : ""} · ratio combiné ${valeur(kpi, c.combine)} · ${SENS_TEXTE[kpi.sens]}`;
-    const fig = figureRepartition(kpi, c.valeurs, representation);
+    const reperes = cmp.map((m) => ({ ...m, v: m.p.kpis?.[kpi.id]?.valeur })).filter((m) => m.v != null);
+    const fig = figureRepartition(kpi, c.valeurs, reperes);
+    const lignes = lignesComparees(kpi, st, cmp);
     if (cle) return el("div", { class: "td-cle" },
       el("p", { class: "td-sur", text: court, title: kpi.label }),
       el("div", { class: "td-valeur" }, enClair(kpi, st.mediane), kpi.unite === "%" ? el("small", { text: " m² sur 100" }) : null),
       el("p", { class: "td-phrase", text: texte.trim() || kpi.label }),
-      el("p", { class: "secondaire", text: details, title: kpi.note || kpi.label }), fig);
+      el("p", { class: "secondaire", text: details, title: kpi.note || kpi.label }), fig, lignes);
     return el("div", { class: "td-ligne" },
       el("div", {}, el("div", {}, el("b", { text: court, title: kpi.label }), " · ", el("span", { class: "td-v", text: valeur(kpi, st.mediane) })),
         el("div", { class: "secondaire", text: texte + fourchetteTexte(kpi, st) + "." }),
-        el("div", { class: "secondaire td-petit", text: `${kpi.label} · ${c.n} projet${c.n > 1 ? "s" : ""} · ratio combiné ${valeur(kpi, c.combine)} · ${SENS_TEXTE[kpi.sens]}`, title: kpi.note || "" })),
+        el("div", { class: "secondaire td-petit", text: `${kpi.label} · ${c.n} projet${c.n > 1 ? "s" : ""} · ratio combiné ${valeur(kpi, c.combine)} · ${SENS_TEXTE[kpi.sens]}`, title: kpi.note || "" }),
+        lignes),
       fig);
   };
   document.getElementById("ratios-cles").replaceChildren(...KPI_CLES
     .map((id) => etat.kpis.find((k) => k.id === id)).filter(Boolean).map((kpi) => ligne(kpi, true)));
   const autres = kpisSelection().filter((k) => !KPI_CLES.includes(k.id));
   document.getElementById("ratios-familles").replaceChildren(...blocsParGroupe(autres, (kpi) => ligne(kpi, false)));
-  document.getElementById("ratios-legende").textContent = "Trait noir : la médiane, le projet type. En couleur : la moitié des projets (25e au 75e percentile)" +
-      (representation === "bandes" ? " ; en clair : 8 projets sur 10 (10e au 90e)" : "") + ". Échelle : 1er au 99e percentile de la sélection.";
-  dessinerProjetsSelection(tous, fiables);
+  document.getElementById("ratios-legende").textContent = "Trait noir : la médiane, le projet type. En couleur : la moitié des projets (25e au 75e percentile)." +
+      " Échelle : 1er au 99e percentile de la référence" +
+      (cmp.length ? ". Traits de couleur : les maquettes comparées (▸ au bord : hors échelle)." : ".");
+  dessinerCages(cmp);
+  dessinerProjetsSelection(tous, ref);
 }
 
-const CLE_REPRESENTATION = "benchmark.representation";
-const REPRESENTATIONS = [["histo", "Histogramme"], ["bandes", "Bandes de percentiles"], ["densite", "Courbe de densité"]];
+/** Sous un KPI, une ligne par maquette comparée : sa valeur et son écart à la médiane de la référence (en m² et CHF si
+ *  le ratio mesure une surface ; repris de l'ancien onglet Comparer, qui mesurait l'écart au ratio combiné). */
+function lignesComparees(kpi, st, cmp) {
+  if (!cmp.length) return null;
+  return el("ul", { class: "td-comparees" }, ...cmp.map((m) => {
+    const r = m.p.kpis?.[kpi.id];
+    const li = el("li", {}, pastille(m.couleur), el("span", { class: "nom", text: m.id === MIEN ? `★ ${m.p.nom}` : m.p.nom, title: m.id === MIEN ? "" : nomProjet(m.p) }));
+    if (!r) { li.append(el("span", { class: "absent", text: m.id === MIEN && etat.mienSource === "saisie" ? "non saisi" : "donnée absente du MDP" })); return li; }
+    li.append(el("b", { text: valeur(kpi, r.valeur) }));
+    if (!st) return li;
+    const d = r.valeur - st.mediane;
+    const neutre = kpi.sens === 0 || Math.abs(d) < (kpi.unite === "%" ? 0.0005 : 0.005);
+    const favorable = !neutre && Math.sign(d) === kpi.sens;
+    li.append(el("span", { class: neutre ? "ecart" : `ecart ${favorable ? "favorable" : "defavorable"}`,
+      title: neutre ? "Écart à la médiane de la référence" : favorable ? "Favorable" : "Défavorable",
+      text: (neutre ? "" : favorable ? "▲ " : "▼ ") + ecartTexte(kpi, d) }));
+    if (kpi.objet && !neutre) {
+      const m2 = d * r.den;     // l'écart rapporté à la surface de la maquette : ce qu'elle gagne ou perd face au projet type
+      li.append(el("span", { class: "secondaire", text: `${signe(m2)}${F0.format(Math.abs(m2))} m² ${kpi.objet}` }));
+      // CHF : seulement pour les m² vendables, au prix de vente saisi ; les pertes restent en m²
+      if (CHF_KPIS.has(kpi.id) && etat.prix > 0) {
+        const chf = Math.round((m2 * etat.prix) / 1000) * 1000;
+        li.append(el("span", { class: "secondaire", title: `${F0.format(Math.abs(m2))} m² × ${F0.format(etat.prix)} CHF/m²`,
+          text: `≈ ${signe(chf)}${F0.format(Math.abs(chf))} CHF` }));
+      }
+    }
+    return li;
+  }));
+}
+
 const MIN_FORME = 10;     // en dessous, la fourchette dit « de … à … » plutôt que les quartiles, et l'échelle va du min au max
-let representation = "histo";
 /** Le ratio en clair, au projet type ({v} : la médiane). Le premier mot court sert de titre de carte. */
 const PHRASES = {
   "SUP/SP_HS": ["Sur 100 m² de SP hors-sol, le projet type a {v} m² de surface utile principale.", "Utile principale hors-sol"],
@@ -322,10 +617,10 @@ const FIGURES = new Set();
 const observateur = "ResizeObserver" in window
   ? new ResizeObserver((entrees) => entrees.forEach((e) => e.target._dessiner?.())) : null;
 
-/** Répartition d'un ratio dans la représentation choisie, quel que soit le nombre de projets : médiane (trait), moitié
+/** Répartition d'un ratio en histogramme, quel que soit le nombre de projets : médiane (trait), moitié
  *  des projets en accent, échelle graduée. Une barre d'histogramme nomme ses projets au survol. Dessinée à la largeur
  *  réelle, redessinée quand elle change (onglet affiché, fenêtre redimensionnée). */
-function figureRepartition(kpi, valeurs, rep) {
+function figureRepartition(kpi, valeurs, reperes = []) {
   const boite = el("div", { class: "td-figure" });
   let largeur = 0;
   boite._dessiner = () => {
@@ -334,52 +629,54 @@ function figureRepartition(kpi, valeurs, rep) {
     largeur = W;
     const st = repartition(valeurs.map((x) => x.v)), [lo, hi] = domaineSelection(st);
     const x = (v) => ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * W;
-    const forme = rep;
-    const H = { histo: 38, densite: 38, bandes: 16 }[forme], haut = 16, y0 = haut + H;
-    const g = svg("g");
-    if (forme === "bandes") {
-      g.append(svg("rect", { x: 0, y: haut + 6, width: W, height: 2, class: "td-fond" }));
-      g.append(titre(svg("rect", { x: x(st.p10), y: haut + 2, width: x(st.p90) - x(st.p10), height: 10, rx: 5, class: "td-large" }),
-        `8 projets sur 10 entre ${valeur(kpi, st.p10)} et ${valeur(kpi, st.p90)}`));
-      g.append(titre(svg("rect", { x: x(st.p25), y: haut, width: x(st.p75) - x(st.p25), height: 14, rx: 4, class: "td-moitie" }),
-        `La moitié des projets entre ${valeur(kpi, st.p25)} et ${valeur(kpi, st.p75)}`));
-    } else if (forme === "histo") {
-      const nb = Math.max(12, Math.min(40, Math.round(W / 16))), pas = (hi - lo) / nb, classes = Array.from({ length: nb }, () => []);
-      for (const it of valeurs) classes[Math.min(nb - 1, Math.max(0, Math.floor((it.v - lo) / pas)))].push(it.p);
-      const m = Math.max(...classes.map((c) => c.length)), unite = kpi.unite === "%" ? " %" : "";
-      const borne = (v) => (kpi.unite === "%" ? F1.format(v * 100) : texteGraduation(kpi, v, pas));
-      classes.forEach((projets, i) => {
-        const n = projets.length;
-        if (!n) return;
-        const a = lo + i * pas, b = a + pas, milieu = (a + b) / 2, hh = Math.max(2, (n / m) * H);
-        const qui = n <= 5 ? ` : ${projets.map((q) => q.nom).join(", ")}` : "";
-        g.append(titre(svg("rect", { x: x(a) + 1, y: y0 - hh, width: Math.max(1, x(b) - x(a) - 2), height: hh, rx: 1.5,
-          class: milieu >= st.p25 && milieu <= st.p75 ? "td-moitie" : "td-fond" }),
-          `${n} projet${n > 1 ? "s" : ""} entre ${borne(a)} et ${borne(b)}${unite}${qui}`));
-      });
-    } else if (forme === "densite") {
-      const ecart = Math.sqrt(st.s.reduce((t, v) => t + (v - st.mediane) ** 2, 0) / st.n);
-      const bande = 1.06 * ecart * st.n ** -0.2 || (hi - lo) / 20, pts = [];
-      for (let i = 0; i <= 80; i++) {
-        const v = lo + ((hi - lo) * i) / 80;
-        let d = 0;
-        for (const u of st.s) d += Math.exp(-0.5 * ((v - u) / bande) ** 2);
-        pts.push([v, d]);
-      }
-      const m = Math.max(...pts.map((q) => q[1]));
-      const trace = pts.map(([v, d], i) => `${i ? "L" : "M"}${x(v).toFixed(1)},${(y0 - (d / m) * H).toFixed(1)}`).join("") + `L${W},${y0}L0,${y0}Z`;
-      const id = `td-c${FIGURES.size}-${Math.round(Math.random() * 1e6)}`;
-      const clip = svg("clipPath", { id });
-      clip.append(svg("rect", { x: x(st.p25), y: 0, width: x(st.p75) - x(st.p25), height: y0 + 1 }));
-      g.append(svg("path", { d: trace, class: "td-fond" }), clip,
-        titre(svg("path", { d: trace, class: "td-moitie", "clip-path": `url(#${id})` }),
-          `La moitié des projets entre ${valeur(kpi, st.p25)} et ${valeur(kpi, st.p75)}`));
+    // Valeurs écrites au-dessus des traits : la médiane, puis chaque maquette comparée à sa couleur. Une étiquette qui
+    // en chevaucherait une autre monte d'une rangée ; la figure grandit d'autant.
+    const etiquettes = [{ v: st.mediane, texte: valeur(kpi, st.mediane) },
+      ...reperes.map((m) => ({ v: m.v, texte: valeur(kpi, m.v), couleur: m.couleur }))];
+    const rangees = [];
+    for (const e of etiquettes) {
+      const l = e.texte.length * 6.2 + 8;
+      e.x = Math.min(W - l / 2, Math.max(l / 2, x(e.v)));
+      e.de = e.x - l / 2; e.a = e.x + l / 2;
+      e.rang = rangees.findIndex((r) => r.every((o) => e.a <= o.de || e.de >= o.a));
+      if (e.rang < 0) { e.rang = rangees.length; rangees.push([]); }
+      rangees[e.rang].push(e);
     }
+    const H = 38, haut = 4 + 13 * rangees.length, y0 = haut + H;
+    const g = svg("g");
+    const nb = Math.max(12, Math.min(40, Math.round(W / 16))), pas = (hi - lo) / nb, classes = Array.from({ length: nb }, () => []);
+    for (const it of valeurs) classes[Math.min(nb - 1, Math.max(0, Math.floor((it.v - lo) / pas)))].push(it.p);
+    const m = Math.max(...classes.map((c) => c.length)), unite = kpi.unite === "%" ? " %" : "";
+    const borne = (v) => (kpi.unite === "%" ? F1.format(v * 100) : texteGraduation(kpi, v, pas));
+    classes.forEach((projets, i) => {
+      const n = projets.length;
+      if (!n) return;
+      const a = lo + i * pas, b = a + pas, milieu = (a + b) / 2, hh = Math.max(2, (n / m) * H);
+      const qui = n <= 5 ? ` : ${projets.map((q) => q.nom).join(", ")}` : "";
+      g.append(titre(svg("rect", { x: x(a) + 1, y: y0 - hh, width: Math.max(1, x(b) - x(a) - 2), height: hh, rx: 1.5,
+        class: milieu >= st.p25 && milieu <= st.p75 ? "td-moitie" : "td-fond" }),
+        `${n} projet${n > 1 ? "s" : ""} entre ${borne(a)} et ${borne(b)}${unite}${qui}`));
+    });
     g.append(svg("rect", { x: 0, y: y0, width: W, height: 1, class: "td-axe" }));
     // médiane : le projet type, en trait, sa valeur au-dessus
     g.append(svg("rect", { x: x(st.mediane) - 1.5, y: haut - 3, width: 3, height: H + 3, rx: 1.5, class: "td-mediane" }));
-    g.append(svg("text", { x: Math.min(W - 30, Math.max(30, x(st.mediane))), y: haut - 6, "text-anchor": "middle", class: "td-fort" },
-      valeur(kpi, st.mediane)));
+    const yEtiquette = (e) => haut - 6 - 13 * e.rang;
+    g.append(svg("text", { x: etiquettes[0].x, y: yEtiquette(etiquettes[0]), "text-anchor": "middle", class: "td-fort" }, etiquettes[0].texte));
+    // maquettes comparées : un trait à leur couleur, leur valeur au-dessus et une pointe sous l'axe ; hors échelle,
+    // rabattues au bord
+    reperes.forEach((m, i) => {
+      const hors = m.v < lo ? -1 : m.v > hi ? 1 : 0, xm = Math.min(W - 1, Math.max(1, x(m.v)));
+      const nom = m.id === MIEN ? m.p.nom : nomProjet(m.p);
+      const ecart = ecartTexte(kpi, m.v - st.mediane);
+      const g2 = titre(svg("g", { class: "td-repere", style: `fill:${m.couleur}` }),
+        `${nom} : ${valeur(kpi, m.v)} (${ecart} par rapport à la médiane)${hors ? " · hors échelle" : ""}`);
+      g2.append(svg("rect", { x: xm - 1, y: haut - 3, width: 2, height: H + 3, rx: 1 }));
+      const pointe = hors ? `M${xm},${y0 + 5} l${-6 * hors},-4 v8 Z` : `M${xm},${y0 + 1} l-4.5,7 h9 Z`;
+      g2.append(svg("path", { d: pointe }));
+      const e = etiquettes[i + 1];
+      g2.append(svg("text", { x: e.x, y: yEtiquette(e), "text-anchor": "middle", class: "td-fort", style: `fill:${m.couleur}` }, e.texte));
+      g.append(g2);
+    });
     const yA = y0 + 18, grad = graduations(lo, hi);
     for (const t of grad.valeurs) {
       if (t < lo || t > hi) continue;
@@ -396,23 +693,6 @@ function figureRepartition(kpi, valeurs, rep) {
   observateur?.observe(boite);
   requestAnimationFrame(() => boite._dessiner());
   return boite;
-}
-
-function initRepresentation() {
-  try { representation = localStorage.getItem(CLE_REPRESENTATION) || representation; } catch { /* stockage indisponible */ }
-  if (!REPRESENTATIONS.some(([id]) => id === representation)) representation = "histo";
-  const groupe = document.getElementById("representation");
-  const boutons = REPRESENTATIONS.map(([id, nom]) => {
-    const b = el("button", { type: "button", role: "radio", text: nom, "aria-checked": String(id === representation) });
-    b.addEventListener("click", () => {
-      representation = id;
-      try { localStorage.setItem(CLE_REPRESENTATION, id); } catch { /* stockage indisponible */ }
-      boutons.forEach((x) => x.setAttribute("aria-checked", String(x === b)));
-      dessinerRatios();
-    });
-    return b;
-  });
-  groupe.replaceChildren(el("span", { class: "secondaire", text: "Répartition :" }), ...boutons);
 }
 
 // ------------------------------------------------------------------ Anatomie de la SP (Évolution 4.10, bas des Tendances)
@@ -441,11 +721,11 @@ function dessinerAnatomie() {
   document.getElementById("anatomie-legende").replaceChildren(...PARTS_SP.map((c) =>
     el("li", {}, el("i", { style: `background:${COULEURS_SIA[c]}` }), `${c} · ${NOMS_SIA[c]}`)));
 
-  const lignes = fiablesSelection().map((p) => ({ p, ...partsSp(p.totaux || {}, assiette) })).filter((l) => l.sp > 0)
+  const lignes = reference().map((p) => ({ p, ...partsSp(p.totaux || {}, assiette) })).filter((l) => l.sp > 0)
     .sort((a, b) => b.o.SUP / b.sp - a.o.SUP / a.sp);
   const barres = document.getElementById("anatomie-barres"), lecture = document.getElementById("anatomie-lecture");
   if (!lignes.length) {
-    barres.replaceChildren(el("p", { class: "absent", text: `Aucun projet fiable de la sélection n'a ${deQuoi === "de SP" ? "de SP" : `de ${nomAssiette.toLowerCase()}`}.` }));
+    barres.replaceChildren(el("p", { class: "absent", text: `Aucun projet de référence n'a ${deQuoi === "de SP" ? "de SP" : `de ${nomAssiette.toLowerCase()}`}.` }));
     lecture.textContent = "";
     return;
   }
@@ -458,10 +738,25 @@ function dessinerAnatomie() {
       class: `an-${c}`, style: `flex:${l.o[c]} 1 0;background:${COULEURS_SIA[c]}`, text: pct(l, c) >= 6 ? `${F0.format(pct(l, c))} %` : "",
       title: `${nom} · ${c} ${NOMS_SIA[c]} : ${F1.format(pct(l, c))} % (${F0.format(l.o[c])} m²)` })));
   const rangees = [el("div", { class: "an-nom reference", text: "Référence" }), pile("Référence", ref, true),
-                   el("div", { class: "secondaire", text: `${lignes.length} projet${lignes.length > 1 ? "s" : ""}` }), el("div", { class: "an-sep" })];
+                   el("div", { class: "secondaire", text: `${lignes.length} projet${lignes.length > 1 ? "s" : ""}` })];
+  // les maquettes comparées sous la référence, bordées de leur couleur (elles n'entrent pas dans la barre Référence)
+  for (const m of comparees()) {
+    const l = partsSp(m.p.totaux || {}, assiette);
+    const nom = m.id === MIEN ? `★ ${m.p.nom}` : m.p.nom;
+    rangees.push(el("div", { class: "an-nom comparee", title: m.id === MIEN ? "" : nomProjet(m.p) }, pastille(m.couleur), nom));
+    if (l.sp > 0) {
+      const b = pile(nom, l, false);
+      b.classList.add("comparee");
+      b.style.outlineColor = m.couleur;
+      rangees.push(b, el("div", { class: "secondaire", text: `${F0.format(l.sp)} m²` }));
+    } else rangees.push(el("div", { class: "absent", text: `pas ${deQuoi === "de SP" ? "de SP" : `de ${nomAssiette.toLowerCase()}`} connue` }), el("div"));
+  }
+  rangees.push(el("div", { class: "an-sep" }));
   for (const l of lignes) {
-    const nom = el("button", { type: "button", class: "an-nom lien-projet", text: l.p.nom, title: `${nomProjet(l.p)} · cliquer pour le comparer` });
-    nom.addEventListener("click", () => { montrerVue("comparer"); choisirProjet(l.p.id); });
+    const compare = estComparee(l.p.id);
+    const nom = el("button", { type: "button", class: "an-nom lien-projet", text: l.p.nom,
+      title: `${nomProjet(l.p)} · cliquer pour ${compare ? "ne plus le comparer" : "l'ajouter aux maquettes comparées"}` });
+    nom.addEventListener("click", () => basculerComparee(l.p.id));
     rangees.push(nom, pile(nomProjet(l.p), l, false), el("div", { class: "secondaire", text: `${F0.format(l.sp)} m²` }));
   }
   barres.replaceChildren(...rangees);
@@ -469,7 +764,7 @@ function dessinerAnatomie() {
   const sc = [...lignes].sort((a, b) => pct(b, "SC") - pct(a, "SC"))[0];
   lecture.textContent = lignes.length < 2
     ? `Sur 100 m² ${deQuoi}, ${premier.p.nom} met ${F0.format(pct(premier, "SUP"))} m² en utile principale.`
-    : `Sur 100 m² ${deQuoi}, la sélection met ${F0.format(pct(ref, "SUP"))} m² en utile principale : ${premier.p.nom} le plus ` +
+    : `Sur 100 m² ${deQuoi}, la référence met ${F0.format(pct(ref, "SUP"))} m² en utile principale : ${premier.p.nom} le plus ` +
       `(${F0.format(pct(premier, "SUP"))} m²), ${dernier.p.nom} le moins (${F0.format(pct(dernier, "SUP"))} m²). ` +
       `La construction pèse le plus chez ${sc.p.nom} (${F0.format(pct(sc, "SC"))} m² sur 100).`;
 }
@@ -508,16 +803,25 @@ function quartDe(p, fiables) {
   return ["meilleur quart", "2e quart", "3e quart", "dernier quart"][Math.min(3, Math.floor(((rang - 1) / v.length) * 4))];
 }
 
-function dessinerProjetsSelection(tous, fiables) {
+function dessinerProjetsSelection(tous, ref) {
   const kpi = etat.kpis.find((k) => k.id === "SUP/SP_HS");
-  const tete = el("tr", {}, ...["Projet", "Typologie", "Canton", "SUP / SP hors-sol", "Position", ""].map((t) => el("th", { scope: "col", text: t })));
+  const tete = el("tr", {}, ...["Projet", "Typologie", "Canton", "SUP / SP hors-sol", "Position", "Référence", ""].map((t) => el("th", { scope: "col", text: t })));
   const lignes = [...tous].sort((a, b) => b.fiable - a.fiable || (b.kpis[kpi.id]?.valeur ?? -1) - (a.kpis[kpi.id]?.valeur ?? -1));
+  const pleines = etat.comparees.length >= MAX_COMPAREES;
   const corps = lignes.map((p) => {
-    const tr = el("tr", { class: p.fiable ? "" : "ecarte", tabindex: "0", title: p.fiable ? "Comparer ce projet" : "Écarté des références : comparer pour mémoire" },
-      el("td", {}, el("span", { class: "mono", text: p.id }), ` ${p.nom}${p.fiable ? "" : " (écarté)"}`),
+    const c = etat.comparees.find((x) => x.id === p.id);
+    const dansRef = p.fiable && !etat.exclus.has(p.id);
+    const action = c ? boutonIcone("retirer", "Ne plus comparer", () => basculerComparee(p.id), "petit")
+                 : pleines ? null : boutonIcone("ajouter", "Ajouter aux maquettes comparées", () => basculerComparee(p.id), "petit");
+    const tr = el("tr", { class: p.fiable ? "" : "ecarte", tabindex: "0",
+                          title: c ? "Ne plus comparer ce projet" : pleines ? `${MAX_COMPAREES} maquettes comparées au plus` : "Ajouter aux maquettes comparées" },
+      el("td", {}, c ? pastille(couleurDe(c)) : null, el("span", { class: "mono", text: p.id }), ` ${p.nom}${p.fiable ? "" : " (écarté)"}`),
       el("td", { text: p.infos?.categorie || "Non identifiée" }), el("td", { class: "mono", text: p.infos?.canton || "—" }),
-      el("td", { text: valeur(kpi, p.kpis[kpi.id]?.valeur) }), el("td", { text: quartDe(p, fiables) }), el("td", { class: "lien-ligne", text: "Comparer →" }));
-    const ouvrir = () => { montrerVue("comparer"); choisirProjet(p.id); };
+      el("td", { text: valeur(kpi, p.kpis[kpi.id]?.valeur) }), el("td", { text: quartDe(p, ref) }),
+      el("td", { class: "etat-ref" }, !p.fiable ? marque("alerte", "Écarté : hors des références")
+        : dansRef ? marque("coche", "Dans la référence", "ok") : el("span", { class: "secondaire", title: "Décoché : hors de la référence", text: "—" })),
+      el("td", { class: "lien-ligne" }, action));
+    const ouvrir = () => { if (c || !pleines) basculerComparee(p.id); };
     tr.addEventListener("click", ouvrir);
     tr.addEventListener("keydown", (e) => { if (e.key === "Enter") ouvrir(); });
     return tr;
@@ -525,10 +829,10 @@ function dessinerProjetsSelection(tous, fiables) {
   document.getElementById("ratios-projets").replaceChildren(el("thead", {}, tete), el("tbody", {}, ...corps));
 }
 
-/** SUP par logement selon le nombre de chambres, sur les projets fiables de la sélection (même calcul que benchmark.typologies). */
+/** SUP par logement selon le nombre de chambres, sur les projets de référence (même calcul que benchmark.typologies). */
 function typologiesSelection() {
   const par = new Map();
-  for (const p of fiablesSelection())
+  for (const p of reference())
     for (const lg of p.logements || []) {
       if (!par.has(lg.chambres)) par.set(lg.chambres, []);
       par.get(lg.chambres).push({ id: p.id, sup: lg.sup });
@@ -540,150 +844,138 @@ function typologiesSelection() {
   });
 }
 
-// ------------------------------------------------------------------ Comparer
+// ------------------------------------------------------------------ Maquette 3D (V5_PLAN, partie 2)
 
-function remplirProjets() {
-  const sel = document.getElementById("projet");
-  sel.replaceChildren();
-  const fiables = etat.data.projets.filter((p) => p.fiable), ecartes = etat.data.projets.filter((p) => !p.fiable);
-  const groupe = (label, liste) => {
-    const g = el("optgroup", { label });
-    for (const p of liste) g.append(el("option", { value: p.id, text: nomProjet(p) }));
-    return g;
-  };
-  const mien = el("optgroup", { label: "Mon projet" }, el("option", { value: MIEN, id: "option-mien", text: "★ Mon projet" }));
-  sel.append(mien, groupe("Fiables", fiables), groupe("Écartés (données incohérentes)", ecartes));
-  sel.addEventListener("change", () => choisirProjet(sel.value));
+let module3d = null;     // vue3d.js et three.js, chargés à la première ouverture
+/** Version des fichiers de la page (index.html porte la même) : un module chargé à la demande n'est pas repris du cache. */
+const VERSION_PAGE = "5.0-18";
+const charger3d = () => (module3d ??= import(`./vue3d.js?v=${VERSION_PAGE}`));
+
+function boutonCube(p) {
+  const actif = etat.vue3d === p.id;
+  return boutonIcone("cube", actif ? "Maquette 3D affichée : fermer" : `Voir la maquette 3D de ${p.nom}`,
+    () => (actif ? fermer3D() : ouvrir3D(p.id)), `petit cube${actif ? " actif" : ""}`);
 }
 
-function choisirProjet(id) {
-  etat.projetId = id;
-  document.getElementById("projet").value = id;
-  const ref = projet(id);
-  etat.coches = new Set(candidats(ref).map((c) => c.p.id));
-  etat.groupeCle = candidats(ref).map((c) => c.p.id).join();
-  document.getElementById("saisie").hidden = id !== MIEN;
-  dessinerComparer();
-}
-
-function dessinerComparer() {
-  const ref = projet(etat.projetId);
-  const liste = candidats(ref);
-  const groupe = liste.filter((c) => etat.coches.has(c.p.id)).map((c) => c.p);
-
-  const bandeau = document.getElementById("bandeau-projet");
-  bandeau.hidden = ref.fiable || ref.id === MIEN;
-  bandeau.textContent = ref.fiable ? "" : "Données incohérentes : ce projet est écarté des références (SP et SN ne décrivent pas le même périmètre). " +
-    "Ses ratios sont affichés pour mémoire.";
-
-  const ul = document.getElementById("similaires");
-  ul.replaceChildren(...liste.map(({ p, d }) => {
-    const cb = el("input", { type: "checkbox", "aria-label": `Inclure ${nomProjet(p)} dans la référence` });
-    cb.checked = etat.coches.has(p.id);
-    cb.addEventListener("change", () => { cb.checked ? etat.coches.add(p.id) : etat.coches.delete(p.id); dessinerComparer(); });
-    const pleins = Math.max(1, Math.round(5 * (1 - Math.min(d, 1))));
-    const prox = el("span", { class: "proximite", title: `Distance ${F2.format(d)} (0 = identique)` },
-      ...Array.from({ length: 5 }, (_, i) => el("i", { class: i < pleins ? "plein" : "" })));
-    return el("li", {}, el("label", {}, cb, el("span", { class: "mono", text: p.id }), el("span", { class: "nom", text: p.nom, title: p.nom })), prox);
-  }));
-
-  const aucun = document.getElementById("aucun-similaire");
-  aucun.hidden = liste.length > 0;
-  if (!liste.length) {
-    const comparable = Object.keys(ref.distances || {}).length > 0;
-    const filtre = comparable && selectionActive();
-    aucun.replaceChildren(filtre ? "Aucun projet similaire dans la sélection."
-      : ref.id === MIEN ? "Saisissez au moins la SP hors-sol et le nombre de logements pour trouver des projets similaires."
-      : "Aucun projet comparable : il manque au projet des caractéristiques (SP hors-sol, logements…).");
-    if (filtre) {
-      const b = el("button", { class: "lien", type: "button", text: "Réinitialiser la sélection" });
-      b.addEventListener("click", () => { for (const [cle] of CRITERES) sel[cle] = ""; majSelection(); });
-      aucun.append(" ", b);
-    }
+/** La zone centrale montre la maquette d'un projet à la place des graphiques ; les volets restent actifs. */
+async function ouvrir3D(id) {
+  const p = etat.projets.get(id);
+  if (!p?.maquette) return;
+  if (etat.carte) fermerCarte(true);
+  else if (!etat.vue3d) etat.defilement = window.scrollY;
+  etat.vue3d = id;
+  document.querySelector(".centre").classList.add("mode-3d");
+  document.documentElement.classList.add("mode-3d");
+  document.getElementById("vue-3d").hidden = false;
+  window.scrollTo(0, 0);
+  ajuster3D();
+  dessinerVolets();
+  majVue3D();
+  const statut = document.getElementById("v3-etat");
+  statut.hidden = false;
+  statut.textContent = "Chargement de la maquette…";
+  try {
+    const vue = await charger3d();
+    if (etat.vue3d !== id) return;
+    const affichee = await vue.afficher(BASE_MAQUETTES + p.maquette, document.getElementById("v3-scene"), document.getElementById("v3-calques"));
+    if (affichee && etat.vue3d === id) statut.hidden = true;
+  } catch (e) {
+    if (etat.vue3d !== id) return;
+    statut.textContent = `La maquette de ${p.nom} ne peut pas s'afficher : ${e.message || e}.`;
+    console.error(e);
   }
-
-  document.getElementById("resume-reference").textContent = groupe.length
-    ? `Référence : ${groupe.length} projet${groupe.length > 1 ? "s" : ""} similaire${groupe.length > 1 ? "s" : ""} · ratios combinés` +
-      (groupe.length < MIN_REFERENCE ? " · référence fragile" : "") +
-      (ref.id !== MIEN && !dansSelection(ref) ? " · ce projet est hors sélection" : "")
-    : liste.length ? "Aucune référence : cochez au moins un projet similaire." : "Aucune référence : aucun projet similaire.";
-
-  document.getElementById("regles").replaceChildren(...blocsParGroupe(kpisSelection(), (kpi) => ligneKpi(kpi, ref, groupe)));
-  dessinerCages(ref);
 }
 
-/** Détail des cages d'escalier du projet étudié, bâtiment par bâtiment et étage par étage (benchmark._cages). */
-function dessinerCages(ref) {
-  const etages = ref.etages || [];
+/** `sansRetour` : une autre vue (la carte) prend la place, la page reste en mode vue. */
+function fermer3D(sansRetour = false) {
+  if (!etat.vue3d) return;
+  etat.vue3d = null;
+  module3d?.then((vue) => vue.fermer());
+  document.getElementById("vue-3d").hidden = true;
+  if (sansRetour) { dessinerVolets(); return; }
+  document.querySelector(".centre").classList.remove("mode-3d");
+  document.documentElement.classList.remove("mode-3d");
+  dessinerVolets();
+  // les figures ont pu changer de largeur pendant que la vue était ouverte
+  requestAnimationFrame(() => { FIGURES.forEach((b) => b.isConnected && b._dessiner?.()); window.scrollTo(0, etat.defilement); });
+}
+
+/** En-tête (référence, couleur de comparaison) et KPI de la maquette ouverte, face à la médiane de la référence. */
+function majVue3D() {
+  const p = etat.vue3d && etat.projets.get(etat.vue3d);
+  if (!p) return;
+  document.getElementById("v3-titre").textContent = nomProjet(p);
+  const cb = document.getElementById("v3-ref"), label = document.getElementById("v3-ref-label");
+  const possible = p.fiable && dansSelection(p);
+  cb.checked = possible && !etat.exclus.has(p.id);
+  cb.disabled = !possible;
+  label.title = !p.fiable ? "Écarté : données incohérentes, hors des références" : !dansSelection(p) ? "Hors du pré-filtre" : "";
+  const c = etat.comparees.find((x) => x.id === p.id);
+  document.getElementById("v3-pastille").replaceChildren(c ? pastille(couleurDe(c), "Maquette comparée") : "");
+  const ref = reference();
+  document.getElementById("v3-kpi").replaceChildren(el("table", { class: "v3-table" },
+    el("thead", {}, el("tr", {}, ...["", "Projet", "Médiane", "Écart"].map((t) => el("th", { scope: "col", text: t })))),
+    el("tbody", {}, ...kpisSelection().map((kpi) => {
+      const r = p.kpis[kpi.id], cmb = combiner(ref, kpi);
+      const med = cmb.n ? repartition(cmb.valeurs.map((x) => x.v)).mediane : null;
+      const ecart = el("td", { class: "n" });
+      if (r && med != null) {
+        const d = r.valeur - med;
+        const neutre = kpi.sens === 0 || Math.abs(d) < (kpi.unite === "%" ? 0.0005 : 0.005);
+        const favorable = !neutre && Math.sign(d) === kpi.sens;
+        ecart.className = `n ${neutre ? "" : favorable ? "favorable" : "defavorable"}`;
+        ecart.textContent = (neutre ? "" : favorable ? "▲ " : "▼ ") + ecartTexte(kpi, d);
+      }
+      return el("tr", {}, el("td", { text: (PHRASES[kpi.id] || [])[1] || kpi.label, title: kpi.label }),
+        el("td", { class: "n", text: r ? valeur(kpi, r.valeur) : "—" }), el("td", { class: "n secondaire", text: med != null ? valeur(kpi, med) : "—" }), ecart);
+    }))));
+}
+
+/** Mode maquette : la vue et les volets tiennent dans la fenêtre, la page ne défile pas (seuls les panneaux défilent). */
+function ajuster3D() {
+  if (!etat.vue3d && !etat.carte) return;
+  const haut = document.querySelector(".centre").getBoundingClientRect().top + window.scrollY;
+  document.documentElement.style.setProperty("--haut-3d", `${Math.max(320, window.innerHeight - haut - 16)}px`);
+}
+
+function brancher3D() {
+  window.addEventListener("resize", ajuster3D);
+  document.getElementById("v3-fermer").addEventListener("click", fermer3D);
+  document.getElementById("v3-dessus").addEventListener("click", () => module3d?.then((vue) => vue.cadrer("dessus")));
+  document.getElementById("v3-perspective").addEventListener("click", () => module3d?.then((vue) => vue.cadrer("3d")));
+  document.getElementById("v3-ref").addEventListener("change", (e) => {
+    if (!etat.vue3d) return;
+    e.target.checked ? etat.exclus.delete(etat.vue3d) : etat.exclus.add(etat.vue3d);
+    majReference();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && etat.vue3d && !e.target.closest?.("input, select, textarea")) fermer3D();
+  });
+}
+
+// ------------------------------------------------------------------ Cages d'escalier des maquettes comparées
+
+/** Détail des cages d'escalier de chaque maquette comparée, bâtiment par bâtiment et étage par étage (benchmark._cages). */
+function dessinerCages(cmp) {
+  const avec = cmp.filter((m) => (m.p.etages || []).length);
   const section = document.getElementById("cages");
-  section.hidden = !etages.length || !selectionLogement();
+  section.hidden = !avec.length || !selectionLogement();
   if (section.hidden) return;
   const parCage = (v, e) => (e.cages ? v / e.cages : null);
-  const entete = el("tr", {}, ...["Bâtiment", "Étage", "SUP", "Logements", "Cages", "SUP / cage", "Logements / cage"]
-    .map((t, i) => el("th", { text: t, class: i > 1 ? "n" : "" })));
-  const lignes = etages.map((e) => el("tr", {},
-    el("td", { class: "mono", text: e.batiment || "—" }), el("td", { class: "mono", text: e.etage }),
-    el("td", { class: "n", text: `${F0.format(e.sup)} m²` }), el("td", { class: "n", text: F0.format(e.logements) }),
-    el("td", { class: e.cages ? "n" : "n absent", text: e.cages ? F0.format(e.cages) : "aucune",
-      title: e.cages ? "" : "Étage de logements sans cage d'escalier : sous-type à vérifier dans le modèle" }),
-    el("td", { class: "n", text: e.cages ? `${F0.format(parCage(e.sup, e))} m²` : "—" }),
-    el("td", { class: "n", text: e.cages ? F1.format(parCage(e.logements, e)) : "—" })));
-  document.getElementById("table-cages").replaceChildren(el("thead", {}, entete), el("tbody", {}, ...lignes));
-}
-
-function ligneKpi(kpi, ref, groupe) {
-  const r = ref.kpis[kpi.id];
-  const c = combiner(groupe, kpi);
-  const libelle = el("div", { class: "libelle", text: kpi.label, title: kpi.note || kpi.label });
-  if (!r) return el("div", { class: "kpi" }, libelle, el("div", { class: "absent", text: ref.id === MIEN && etat.mienSource === "saisie" ? "Non saisi" : "Donnée absente du MDP" }), el("div"));
-
-  const valeurs = el("div", { class: "valeurs" });
-  valeurs.append("ce projet ", el("b", { text: valeur(kpi, r.valeur) }));
-  if (c.n) valeurs.append(`   référence ${valeur(kpi, c.combine)} (n = ${c.n})`);
-  libelle.append(el("br"), valeurs);
-
-  const ecart = el("div", { class: "ecart" });
-  if (c.n) {
-    const d = r.valeur - c.combine;
-    const neutre = kpi.sens === 0 || Math.abs(d) < (kpi.unite === "%" ? 0.0005 : 0.005);
-    const favorable = !neutre && Math.sign(d) === kpi.sens;
-    const glyphe = neutre ? "" : favorable ? "▲ " : "▼ ";
-    ecart.append(el("span", { class: neutre ? "" : favorable ? "favorable" : "defavorable",
-      title: neutre ? "Écart à la référence" : favorable ? "Favorable" : "Défavorable", text: glyphe + ecartTexte(kpi, d) }));
-    if (kpi.objet && !neutre) {
-      const m2 = d * r.den;     // l'écart rapporté à la surface du projet : ce qu'il gagne ou perd face à la référence
-      ecart.append(el("span", { class: "m2", text: `${signe(m2)}${F0.format(Math.abs(m2))} m² ${kpi.objet}` }));
-      // CHF : seulement pour les m² vendables (Rendement), au prix de vente saisi ; les pertes restent en m²
-      if (CHF_KPIS.has(kpi.id) && etat.prix > 0) {
-        const chf = Math.round((m2 * etat.prix) / 1000) * 1000;
-        ecart.append(el("span", { class: "chf", title: `${F0.format(Math.abs(m2))} m² × ${F0.format(etat.prix)} CHF/m²`,
-          text: `≈ ${signe(chf)}${F0.format(Math.abs(chf))} CHF` }));
-      }
-    }
-  }
-  return el("div", { class: "kpi" }, libelle, regle(kpi, r.valeur, c, ref), ecart);
-}
-
-/** La règle graduée : pairs en points neutres, quartiles en aplat, référence en trait, projet étudié en accent. */
-function regle(kpi, v, c, ref) {
-  // En HTML positionné (pourcentages) plutôt qu'en SVG étiré : les points restent ronds à toutes les largeurs.
-  const dom = domaine(kpi, v);
-  const x = (t) => `${((t - dom[0]) / (dom[1] - dom[0])) * 100}%`;
-  const r = el("div", { class: "regle", role: "img",
-    "aria-label": `${kpi.label} : ${valeur(kpi, v)}` + (c.n ? `, référence ${valeur(kpi, c.combine)}` : "") });
-  r.append(el("span", { class: "axe" }));
-  r.append(el("span", { class: "graduation debut", text: valeur(kpi, Math.max(dom[0], 0)) }));
-  r.append(el("span", { class: "graduation fin", text: valeur(kpi, dom[1]) }));
-  const marque = (classe, t, title, extra = {}) => el("span", { class: classe, title, style: `left:${x(t)};${extra.style || ""}` });
-  if (c.n) {
-    r.append(marque("quartiles", c.q1, `Quartiles : ${valeur(kpi, c.q1)} à ${valeur(kpi, c.q3)}`,
-      { style: `width:calc(${x(c.q3)} - ${x(c.q1)})` }));
-    for (const { p, v: pv } of c.valeurs) r.append(marque("pair", pv, `${nomProjet(p)} : ${valeur(kpi, pv)}`));
-    r.append(marque("reference" + (c.n < MIN_REFERENCE ? " fragile" : ""), c.combine,
-      `Référence (ratio combiné de ${c.n} projet${c.n > 1 ? "s" : ""}) : ${valeur(kpi, c.combine)}` + (c.n < MIN_REFERENCE ? " · fragile" : "")));
-  }
-  r.append(marque("etudie", v, `${nomProjet(ref)} : ${valeur(kpi, v)}`));
-  return r;
+  document.getElementById("cages-tables").replaceChildren(...avec.map((m) => {
+    const entete = el("tr", {}, ...["Bâtiment", "Étage", "SUP", "Logements", "Cages", "SUP / cage", "Logements / cage"]
+      .map((t, i) => el("th", { text: t, class: i > 1 ? "n" : "" })));
+    const lignes = m.p.etages.map((e) => el("tr", {},
+      el("td", { class: "mono", text: e.batiment || "—" }), el("td", { class: "mono", text: e.etage }),
+      el("td", { class: "n", text: `${F0.format(e.sup)} m²` }), el("td", { class: "n", text: F0.format(e.logements) }),
+      el("td", { class: e.cages ? "n" : "n absent", text: e.cages ? F0.format(e.cages) : "aucune",
+        title: e.cages ? "" : "Étage de logements sans cage d'escalier : sous-type à vérifier dans le modèle" }),
+      el("td", { class: "n", text: e.cages ? `${F0.format(parCage(e.sup, e))} m²` : "—" }),
+      el("td", { class: "n", text: e.cages ? F1.format(parCage(e.logements, e)) : "—" })));
+    return el("div", { class: "cages-maquette" },
+      el("h3", {}, pastille(m.couleur), m.id === MIEN ? `★ ${m.p.nom}` : nomProjet(m.p)),
+      el("div", { class: "defile" }, el("table", { class: "table-cages" }, el("thead", {}, entete), el("tbody", {}, ...lignes))));
+  }));
 }
 
 function remplirEcartes() {
@@ -701,9 +993,9 @@ function remplirEcartes() {
 
 function dessinerBase() {
   const t = document.getElementById("table-base");
-  const fiables = fiablesSelection();
+  const fiables = reference();
   const kpis = kpisSelection();
-  const base = Object.fromEntries(kpis.map((k) => [k.id, combiner(fiables, k)]));     // ensemble de la sélection
+  const base = Object.fromEntries(kpis.map((k) => [k.id, combiner(fiables, k)]));     // ensemble de la référence
   const colonnes = [{ id: "nom", label: "Projet" }, { id: "canton", label: "Canton" }, ...kpis.map((k) => ({ id: k.id, label: k.id, kpi: k }))];
   const cle = (p, col) => col.id === "nom" ? Number(p.id) || p.id : col.id === "canton" ? (p.infos.canton || "") : p.kpis[col.id]?.valeur ?? -Infinity;
   let lignes = projetsSelection().sort((a, b) => b.fiable - a.fiable || String(a.id).localeCompare(String(b.id), "fr", { numeric: true }));
@@ -721,15 +1013,18 @@ function dessinerBase() {
     return th;
   }));
 
-  const ensemble = el("tr", { class: "ensemble" }, el("td", { text: `Ensemble de la sélection (${fiables.length} fiable${fiables.length > 1 ? "s" : ""})` }), el("td"),
+  const ensemble = el("tr", { class: "ensemble" }, el("td", { text: `Ensemble de la référence (${fiables.length} projet${fiables.length > 1 ? "s" : ""} coché${fiables.length > 1 ? "s" : ""})` }), el("td"),
     ...kpis.map((k) => el("td", { title: base[k.id]?.n ? `n = ${base[k.id].n}` : "", text: base[k.id]?.n ? `${valeur(k, base[k.id].combine)} (${base[k.id].n})` : "—" })));
 
   const corps = lignes.map((p) => {
-    const tr = el("tr", { class: p.fiable ? "" : "ecarte", tabindex: "0", title: p.fiable ? "Comparer ce projet" : "Écarté des références : comparer pour mémoire" },
-      el("td", {}, el("span", { class: "mono", text: p.id }), ` ${p.nom}${p.fiable ? "" : " (écarté)"}`),
+    const horsRef = p.fiable && etat.exclus.has(p.id), c = etat.comparees.find((x) => x.id === p.id);
+    const tr = el("tr", { class: p.fiable && !horsRef ? "" : "ecarte", tabindex: "0",
+                          title: c ? "Comparée : cliquer pour la voir dans les Tendances" : "Ajouter aux maquettes comparées et ouvrir les Tendances" },
+      el("td", {}, c ? pastille(couleurDe(c)) : null, el("span", { class: "mono", text: p.id }),
+        ` ${p.nom}${!p.fiable ? " (écarté)" : horsRef ? " (décoché)" : ""}`),
       el("td", { class: "mono", text: p.infos.canton || "—" }),
       ...kpis.map((k) => celluleBase(k, p, base[k.id])));
-    const ouvrir = () => { montrerVue("comparer"); choisirProjet(p.id); };
+    const ouvrir = () => { if (!c && etat.comparees.length < MAX_COMPAREES) basculerComparee(p.id); montrerVue("ratios"); };
     tr.addEventListener("click", ouvrir);
     tr.addEventListener("keydown", (e) => { if (e.key === "Enter") ouvrir(); });
     return tr;
@@ -760,12 +1055,12 @@ function dessinerTypologies() {
   if (!typos.length) {
     titreTypo.textContent = "SUP par logement selon le nombre de chambres";
     boites.replaceChildren(el("p", { class: "secondaire", text: selectionLogement()
-      ? "Aucun projet fiable de la sélection ne donne les chambres de ses logements."
+      ? "Aucun projet de référence ne donne les chambres de ses logements."
       : "Les typologies de logement ne concernent pas cette sélection." }));
     return;
   }
   const nLog = typos.reduce((s, t) => s + t.n, 0);
-  const nProj = fiablesSelection().filter((p) => (p.logements || []).length).length;
+  const nProj = reference().filter((p) => (p.logements || []).length).length;
   titreTypo.textContent = `SUP par logement selon le nombre de chambres (${nProj} projet${nProj > 1 ? "s" : ""}, ${nLog} logements)`;
 
   const W = 900, G = 70, D = 230, L = 40, haut = 20 + typos.length * L;     // D : colonne de droite (médiane, effectifs)
@@ -830,7 +1125,9 @@ function initSaisie() {
 function replierSaisie(replie) {
   document.getElementById("saisie-form").hidden = replie;
   const b = document.getElementById("saisie-replier");
-  b.textContent = replie ? "Déplier" : "Replier";
+  b.replaceChildren(icone(replie ? "deplier" : "replier"));
+  b.title = replie ? "Déplier" : "Replier";
+  b.setAttribute("aria-label", replie ? "Déplier la saisie" : "Replier la saisie");
   b.setAttribute("aria-expanded", String(!replie));
 }
 
@@ -910,12 +1207,7 @@ function majMien() {
   document.getElementById("saisie-bilan").textContent = calculables
     ? `${calculables} ratio${calculables > 1 ? "s" : ""} calculable${calculables > 1 ? "s" : ""} sur ${etat.kpis.length} · les champs vides laissent la ligne « donnée absente ».`
     : "Saisissez la SP hors-sol et le nombre de logements pour commencer.";
-  document.getElementById("option-mien").textContent = `★ Mon projet : ${etat.mien.nom}` + (etat.mienSource === "siacheck" ? " (SIA Check)" : "");
-  if (etat.projetId === MIEN) {
-    const liste = candidats(etat.mien).map((c) => c.p.id);
-    if (liste.join() !== etat.groupeCle) { etat.groupeCle = liste.join(); etat.coches = new Set(liste); }
-    dessinerComparer();
-  }
+  if (estComparee(MIEN) && etat.data) { dessinerVolets(); dessinerRatios(); dessinerAnatomie(); }
 }
 
 function afficherErreurs(erreurs) {
@@ -935,7 +1227,10 @@ function verrouiller(oui) {
     if (e.tagName === "SELECT") e.disabled = oui; else e.readOnly = oui;
   }
   document.getElementById("saisie-source").textContent = oui ? "Surfaces du projet ouvert dans SIA Check (corrections comprises)" : "";
-  document.getElementById("saisie-effacer").textContent = oui ? "Revenir à une saisie" : "Effacer la saisie";
+  const effacer = document.getElementById("saisie-effacer");
+  effacer.replaceChildren(icone(oui ? "reinit" : "effacer"));
+  effacer.title = oui ? "Revenir à une saisie" : "Effacer la saisie";
+  effacer.setAttribute("aria-label", effacer.title);
 }
 
 /** Projet ouvert dans SIA Check : calculé par le moteur (sia-check --benchmark-projet), affiché en lecture seule. */
@@ -952,8 +1247,10 @@ function recevoirProjetSiaCheck(p) {
   verrouiller(true);
   replierSaisie(true);
   majMien();
-  montrerVue("comparer");
-  choisirProjet(MIEN);
+  if (!estComparee(MIEN)) basculerComparee(MIEN);
+  else majComparees();
+  document.getElementById("saisie").hidden = false;
+  montrerVue("ratios");
 }
 
 // Similarité : même formule que benchmark.distance (écart moyen normalisé, au moins 2 caractéristiques communes,
@@ -1006,7 +1303,8 @@ window.verifierDistances = verifierDistances;
 const CLE_PROGRAMME = "benchmark.programme";
 // Légende SIA 416, comme dans l'application (report.py, SIA_COLORS)
 const COULEURS_SIA = { SUP: "#D5003B", SUS: "#F0A900", SD: "#F2E900", SI: "#0C9DDA", SC: "#A3AAB6" };
-const progEtat = { coches: new Set(), cle: "" };
+/** Dernier programme calculé (hypothèses, lignes du tableau et parts de la barre) : repris tel quel par l'export Excel. */
+const progEtat = { h: null, lignes: [], parts: [], n: 0 };
 
 function initProgrammer() {
   const form = document.getElementById("prog-form");
@@ -1015,6 +1313,7 @@ function initProgrammer() {
   document.getElementById("prog-mix").replaceChildren(...MIX.map(([k, l]) => nombre(`mix${k}`, `${l} (%)`, { max: "100" })),
     el("span", { id: "prog-mix-total", class: "total" }));
   form.addEventListener("submit", (e) => e.preventDefault());
+  document.getElementById("prog-export").addEventListener("click", exporterExcel);
   form.addEventListener("input", () => {
     try { localStorage.setItem(CLE_PROGRAMME, JSON.stringify(Object.fromEntries(new FormData(form)))); } catch { /* stockage indisponible */ }
     dessinerProgramme();
@@ -1031,30 +1330,17 @@ function lireHypotheses() {
   const num = (n) => { const v = f[n].value.trim(); return v === "" ? null : Number(v); };
   const mix = {};
   for (const [k] of MIX) { const v = num(`mix${k}`); if (v > 0) mix[k] = v; }
-  return { SP_HS: num("SP_HS"), ETAGES_HS: num("ETAGES_HS"), mix: selectionLogement() ? mix : {}, prix: num("prix") };
+  return { SP_HS: num("SP_HS"), mix: selectionLogement() ? mix : {}, prix: num("prix") };
 }
 
-/** Projets similaires à une constructibilité : SP hors-sol, étages et part de grands logements du mix visé. */
-function groupeProgramme(h) {
-  const features = {};
-  if (h.SP_HS > 0) features.SP_HS = h.SP_HS;
-  if (h.ETAGES_HS > 0) features.ETAGES_HS = h.ETAGES_HS;
-  const totalMix = Object.values(h.mix).reduce((a, b) => a + b, 0);
-  if (totalMix > 0) features.PART_GRANDS = ((h.mix["3"] || 0) + (h.mix["4"] || 0)) / totalMix;
-  const fiables = fiablesSelection();
-  const d = distancesA(features);
-  const proches = fiables.filter((p) => d[p.id] != null).sort((a, b) => d[a.id] - d[b.id]).slice(0, TAILLE_GROUPE);
-  return proches.length ? { liste: proches.map((p) => ({ p, d: d[p.id] })), parDefaut: false }
-                        : { liste: fiables.map((p) => ({ p, d: null })), parDefaut: true };
-}
-
-/** Bas (1er quartile), central (ratio combiné) et haut (3e quartile) d'un KPI sur le groupe, multipliés par une base. */
+/** Bas (1er quartile), central (médiane, comme les Tendances) et haut (3e quartile) d'un KPI sur la référence,
+ *  multipliés par une base (V5_PLAN, partie 4). */
 function fourchette(groupe, kpiId, base) {
   const kpi = etat.kpis.find((k) => k.id === kpiId);
   const c = combiner(groupe, kpi);
   if (!c.n || base == null) return null;
   const [bas, haut] = [c.q1 * base, c.q3 * base].sort((a, b) => a - b);
-  return { bas, central: c.combine * base, haut, n: c.n, kpi };
+  return { bas, central: c.mediane * base, haut, n: c.n, kpi };
 }
 
 /** Surface moyenne d'un logement du mix visé, chaque typologie à sa médiane de SUP (onglet Typologies). */
@@ -1081,20 +1367,18 @@ function dessinerProgramme() {
 
   const resultat = document.getElementById("prog-resultat");
   const invite = document.getElementById("prog-invite");
-  if (!(h.SP_HS > 0)) { resultat.hidden = true; invite.hidden = false; document.getElementById("prog-groupe").replaceChildren(); return; }
+  // la référence de Tendances, cochable ici aussi : une seule sélection pour tout le benchmark
+  const groupe = reference();
+  dessinerGroupeProgramme();
+  progEtat.h = h; progEtat.lignes = []; progEtat.parts = []; progEtat.n = groupe.length;
+  if (!(h.SP_HS > 0)) { resultat.hidden = true; invite.hidden = false; return; }
   invite.hidden = true;
   resultat.hidden = false;
-
-  const { liste, parDefaut } = groupeProgramme(h);
-  const cle = liste.map((c) => c.p.id).join();
-  if (cle !== progEtat.cle) { progEtat.cle = cle; progEtat.coches = new Set(liste.map((c) => c.p.id)); }
-  const groupe = liste.filter((c) => progEtat.coches.has(c.p.id)).map((c) => c.p);
-  dessinerGroupeProgramme(liste, parDefaut);
 
   const fragile = document.getElementById("prog-fragile");
   fragile.hidden = groupe.length >= MIN_REFERENCE;
   fragile.textContent = groupe.length ? `Estimation fragile : ${groupe.length} projet${groupe.length > 1 ? "s" : ""}.`
-                                      : "Aucun projet coché : pas d'estimation.";
+                                      : "Aucun projet de référence coché : pas d'estimation.";
   if (!groupe.length) { document.getElementById("prog-barre").replaceChildren(); document.getElementById("prog-table").replaceChildren(); return; }
 
   const sup = fourchette(groupe, "SUP/SP_HS", h.SP_HS);
@@ -1135,20 +1419,20 @@ function dessinerProgramme() {
   if (h.prix > 0 && svn)
     ligne("Chiffre d'affaires (SVN × prix)", { bas: svn.bas * h.prix, central: svn.central * h.prix, haut: svn.haut * h.prix },
           "CHF", `${F0.format(h.prix)} CHF / m² de SVN`);
+  progEtat.lignes = lignes;
   dessinerTableProgramme(lignes);
 }
 
-function dessinerGroupeProgramme(liste, parDefaut) {
-  const ul = document.getElementById("prog-groupe");
-  const titre = document.getElementById("prog-groupe-titre");
-  titre.textContent = parDefaut ? "Faute de caractéristiques, tous les projets fiables de la sélection (saisissez les étages ou le mix)"
-                                : `D'après ${liste.length} projet${liste.length > 1 ? "s" : ""} similaire${liste.length > 1 ? "s" : ""} de la sélection`;
-  ul.replaceChildren(...liste.map(({ p, d }) => {
-    const cb = el("input", { type: "checkbox", "aria-label": `Inclure ${nomProjet(p)} dans l'estimation` });
-    cb.checked = progEtat.coches.has(p.id);
-    cb.addEventListener("change", () => { cb.checked ? progEtat.coches.add(p.id) : progEtat.coches.delete(p.id); dessinerProgramme(); });
-    return el("li", {}, el("label", { title: d == null ? "" : `Distance ${F2.format(d)} (0 = identique)` }, cb,
-      el("span", { class: "mono", text: p.id }), el("span", { class: "nom", text: p.nom })));
+/** Les projets fiables du pré-filtre, cochés s'ils sont dans la référence : même état que le volet des Tendances. */
+function dessinerGroupeProgramme() {
+  const fiables = fiablesSelection(), n = reference().length;
+  document.getElementById("prog-groupe-titre").textContent =
+    `Projets de référence : ${n} sur ${fiables.length} fiable${fiables.length > 1 ? "s" : ""} (${libelleSelection()}), les mêmes que dans Tendances`;
+  document.getElementById("prog-groupe").replaceChildren(...fiables.map((p) => {
+    const cb = el("input", { type: "checkbox", "aria-label": `Projet de référence : ${nomProjet(p)}` });
+    cb.checked = !etat.exclus.has(p.id);
+    cb.addEventListener("change", () => { cb.checked ? etat.exclus.delete(p.id) : etat.exclus.add(p.id); majReference(); });
+    return el("li", {}, el("label", {}, cb, el("span", { class: "mono", text: p.id }), el("span", { class: "nom", text: p.nom })));
   }));
 }
 
@@ -1158,6 +1442,7 @@ function dessinerBarre(sp, sup, sd, sus) {
     .filter(([, , f]) => f).map(([code, label, f]) => ({ code, label, m2: f.central }));
   const reste = Math.max(0, sp - parts.reduce((s, x) => s + x.m2, 0));
   parts.push({ code: "reste", label: "Construction, installations et autres", m2: reste });
+  progEtat.parts = parts;
   const pct = (m2) => `${F0.format((m2 / sp) * 100)} %`;
   document.getElementById("prog-titre-barre").textContent = `Où vont les ${F0.format(sp)} m² de SP hors-sol (estimation centrale)`;
   const barre = el("div", { class: "barre", role: "img", "aria-label": parts.map((x) => `${x.label} ${F0.format(x.m2)} m²`).join(", ") },
@@ -1172,9 +1457,9 @@ function dessinerBarre(sp, sup, sd, sus) {
 
 function dessinerTableProgramme(lignes) {
   const fmt = (v, unite) => unite === "CHF" ? `≈ ${F1.format(v / 1e6)} M` : unite === "m²" ? `${F0.format(v)} m²` : F0.format(v);
-  const tete = el("tr", {}, ...["", "Bas (P25)", "Central", "Haut (P75)", "D'après"].map((t) => el("th", { scope: "col", text: t })));
+  const tete = el("tr", {}, ...["", "Bas (P25)", "Central (médiane)", "Haut (P75)", "D'après"].map((t) => el("th", { scope: "col", text: t })));
   const corps = lignes.map(({ label, f, unite, source, detail, sous }) => {
-    if (!f) return el("tr", {}, el("td", { text: label }), el("td", { colspan: "4", class: "absent", text: "Pas de donnée dans les projets similaires" }));
+    if (!f) return el("tr", {}, el("td", { text: label }), el("td", { colspan: "4", class: "absent", text: "Pas de donnée dans les projets de référence" }));
     const nom = el("td", { text: label, class: sous ? "sous" : "" });
     if (detail) nom.append(el("span", { class: "detail", text: `dont ${detail}` }));
     return el("tr", {}, nom, el("td", { text: fmt(f.bas, unite) }), el("td", { class: "central", text: fmt(f.central, unite) + (unite === "CHF" ? " CHF" : "") }),
@@ -1183,9 +1468,348 @@ function dessinerTableProgramme(lignes) {
   document.getElementById("prog-table").replaceChildren(el("thead", {}, tete), el("tbody", {}, ...corps));
 }
 
+// ------------------------------------------------------------------ export Excel (V5_PLAN, partie 4)
+
+/** KPI de la sélection dans l'ordre de l'écran (groupes, puis familles), chacun avec son groupe. */
+function kpisOrdonnes() {
+  const kpis = kpisSelection(), connues = GROUPES.flatMap((g) => g.familles);
+  const autres = [...new Set(kpis.map((k) => k.famille))].filter((f) => !connues.includes(f)).map((f) => ({ titre: f, definition: "", familles: [f] }));
+  return [...GROUPES, ...autres].flatMap((g) => g.familles.flatMap((f) => kpis.filter((k) => k.famille === f).map((kpi) => ({ kpi, groupe: g, famille: f }))));
+}
+
+/** Charte HRS du classeur, et rien d'autre : orange de marque (bandeau de titre, sections, maquettes comparées), bleu
+ *  foncé (en-têtes de tableau), bleus clairs (médiane, sections, bon côté), rouge-orange pâle (mauvais côté), gris. */
+const XL = { noir: "000000", gris: "808080", clair: "BFBFBF", filet: "D9D9D9", blanc: "FFFFFF",
+             orange: "FF6600", accent: "FF4A2E", bleu: "001A82", mediane: "C3DAFC", section: "DBE9FD", bande: "F4F8FE",
+             bon: "001A82", bonFond: "DBE9FD", mauvais: "D62929", mauvaisFond: "FFE1DB", neutre: "000000", neutreFond: "EDEDED" };
+const XL_POLICE = "Sofia Pro";
+const XL_SOCIETE = "HRS Real Estate AG";
+/** Parts de la barre « Où vont les m² » : la surface utile principale à l'orange, puis bleu foncé, bleu clair et gris. */
+const XL_PARTS = { SUP: XL.orange, SD: XL.bleu, SUS: XL.mediane, reste: XL.clair };
+/** Bandeau de section : bleu clair, texte bleu foncé, barre orange à gauche. */
+const XL_SECTION = { fond: XL.section, couleur: XL.bleu, gras: true, taille: 11, v: "center", retrait: 1 };
+const XL_BARRE = { bordure: { gauche: `thick:${XL.orange}` } };
+
+/** Format d'affichage d'un KPI : l'unité est dans la cellule (% à une décimale, m² entiers, m et rapports à deux décimales). */
+const formatKpi = (kpi) => ({ "%": "0.0%", "m²": '#,##0" m²"', m: '0.00" m"' })[kpi.unite] || "0.00";
+/** Écart à la médiane, dans l'unité du KPI (pt = point de pourcentage) : ▲ au-dessus, ▼ en dessous, = à la médiane. */
+function formatEcart(kpi) {
+  const n = ({ "%": '0.0" pt"', "m²": '#,##0" m²"', m: '0.00" m"' })[kpi.unite] || "0.00";
+  return `"▲ +"${n};"▼ −"${n};"="`;
+}
+/** L'écart arrondi comme il s'affiche (un écart infime se lit « = »), en points pour un KPI en %. */
+function ecartXl(kpi, d) {
+  const pas = kpi.unite === "%" ? 1000 : kpi.unite === "m²" ? 1 : 100;
+  return Math.round(d * pas) / (kpi.unite === "%" ? 10 : pas);
+}
+/** Place d'une valeur par rapport à la fourchette P25–P75 de la référence : -1 sous, 0 dedans, 1 au-dessus. */
+const placeXl = (c, v) => (v < c.q1 ? -1 : v > c.q3 ? 1 : 0);
+/** Un écart ou une place de signe `signe` selon le sens du KPI : « bon », « mauvais », « neutre » (KPI sans sens), ou rien. */
+const jugementXl = (kpi, signe) => (!signe ? null : !kpi.sens ? "neutre" : signe * kpi.sens > 0 ? "bon" : "mauvais");
+/** ID d'un MDP : nombre dans Excel quand il en est un (pas d'avertissement « nombre stocké sous forme de texte »). */
+const idCellule = (id) => (/^\d+$/.test(String(id)) ? Number(id) : String(id));
+/** Nombre de lignes d'un texte qui revient à la ligne dans `largeur` caractères de colonne (estimation prudente). */
+const lignesXl = (texte, largeur, taille = 10) =>
+  String(texte).split("\n").reduce((n, t) => n + Math.max(1, Math.ceil((t.length * taille) / (largeur * 11))), 0);
+/** Intitulé d'une maquette comparée. Sans ★ : la police de la charte ne l'a pas, Excel changerait de police pour tout l'intitulé. */
+const nomCompare = (m) => (m.id !== MIEN ? `${m.p.id} · ${m.p.nom}` : m.p.nom && m.p.nom !== "Mon projet" ? `Mon projet · ${m.p.nom}` : "Mon projet");
+
+/** Une feuille en construction : lignes ajoutées une à une, bandeaux fusionnés. `ct` colonnes (130 caractères au
+ *  plus) portent les textes longs : titre, lecture, légende. */
+function feuilleXl(nom, largeurs) {
+  const f = { nom, largeurs, lignes: [], fusions: [], onglet: XL.orange }, nc = largeurs.length;
+  let ct = 0, lt = 0;
+  while (ct < nc && lt < 130) lt += largeurs[ct++];
+  const ligne = (c, h) => f.lignes.push(h ? { c, h } : c) - 1;
+  const fusion = (l1, c1, l2, c2) => { if (l2 > l1 || c2 > c1) f.fusions.push([l1, c1, l2, c2]); };
+  /** Ligne dont le texte s'étend de c1 à c2 ; le style (fond, filets) court sur toute la largeur de la feuille,
+   *  `premier` s'ajoute à la seule cellule du texte (barre à gauche). */
+  const bandeau = (v, s, h, c1 = 0, c2 = ct - 1, premier = {}) => {
+    const l = ligne(largeurs.map((_, k) => (k === c1 ? { v, s: { ...s, ...premier } } : { s })), h);
+    fusion(l, c1, l, c2);
+    return l;
+  };
+  /** Hauteur d'un texte qui revient à la ligne dans le bandeau. */
+  const hauteur = (v, taille = 10) => 6 + Math.ceil(taille * 1.35 * lignesXl(Array.isArray(v) ? v.map((m) => m.t).join("") : v, lt, taille));
+  return { f, nc, ct, ligne, fusion, bandeau, hauteur };
+}
+
+/** En-tête d'une feuille : bandeau de titre orange, comme une diapositive de titre (filet rouge-orange dessous), ce
+ *  que la feuille montre et comment la lire, contexte de l'export. */
+function enteteXl(x, titre, lecture, contexte) {
+  x.bandeau(titre, { gras: true, taille: 17, couleur: XL.blanc, fond: XL.orange, v: "center", retrait: 1, bordure: { bas: `thick:${XL.accent}` } }, 40);
+  x.ligne([], 8);
+  x.bandeau(lecture, { couleur: XL.noir, v: "center", retour: true, retrait: 1 }, x.hauteur(lecture));
+  x.bandeau(contexte, { v: "center", retrait: 1 }, 20);
+  x.ligne([], 10);
+}
+
+/** Légende en pied de feuille : un titre, puis une ligne par point (texte enrichi). */
+function legendeXl(x, points) {
+  x.ligne([], 14);
+  x.bandeau("Comment lire cette feuille", { gras: true, taille: 11, couleur: XL.bleu, bordure: { bas: `medium:${XL.orange}` }, v: "center", retrait: 1 }, 20);
+  for (const p of points) x.bandeau(p, { couleur: XL.noir, v: "center", retour: true, retrait: 1 }, x.hauteur(p, 9));
+}
+/** Morceaux de texte enrichi des légendes : `g` en gras, `t` courant. */
+const RT = { g: (t, couleur = XL.noir) => ({ t, gras: true, couleur, taille: 9 }), t: (t) => ({ t, couleur: XL.noir, taille: 9 }) };
+
+/** Le classeur de l'écran : KPI (référence et maquettes comparées hors référence), projets de référence, détail par
+ *  projet et, si une SP est saisie dans Programmer, le programme attendu. Une seule valeur centrale : la médiane,
+ *  celle de Tendances et de Programmer ; la fourchette va du 1er au 3e quartile. */
+function classeurBenchmark() {
+  const ref = reference(), fiables = fiablesSelection(), kpis = kpisOrdonnes();
+  const idsRef = new Set(ref.map((p) => p.id));
+  // les maquettes comparées déjà dans la référence ne sont pas répétées : elles sont repérées dans les listes de projets
+  const cmp = comparees(), hors = cmp.filter((m) => !idsRef.has(m.p.id)), dedans = new Map(cmp.filter((m) => idsRef.has(m.p.id)).map((m) => [m.p.id, m]));
+  const stats = new Map(kpis.map(({ kpi }) => [kpi.id, combiner(ref, kpi)]));
+  const date = new Date().toLocaleString("fr-CH", { dateStyle: "long", timeStyle: "short" });
+  const pl = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+  const contexte = [
+    { t: "Pré-filtre  ", couleur: XL.gris }, { t: libelleSelection(), gras: true, couleur: XL.bleu },
+    { t: "        Référence  ", couleur: XL.gris }, { t: `${pl(ref.length, "projet")} sur ${pl(fiables.length, "fiable")}`, gras: true, couleur: XL.bleu },
+    { t: "        Exporté le  ", couleur: XL.gris }, { t: date, gras: true, couleur: XL.bleu },
+  ];
+  const impression = (titres, papier) => ({ titres, papier, pied: `${XL_SOCIETE} · Benchmark des surfaces SIA 416 · ${libelleSelection()} · ${date}` });
+  // tableaux : en-tête en aplat bleu foncé, texte blanc ; lignes séparées par un filet fin gris clair
+  const tete = (v, s) => ({ v, s: { gras: true, taille: 9, couleur: XL.blanc, fond: XL.bleu, h: "center", v: "center", retour: true, ...s } });
+  const teteMediane = { fond: XL.mediane, couleur: XL.bleu };
+  const filet = { v: "center", bordure: { bas: XL.filet } }, droite = { h: "right", retrait: 1 };
+  const absent = { v: "—", s: { ...filet, h: "center", couleur: XL.clair } };
+  const gauche = { gauche: XL.mediane };     // filet vertical entre deux blocs de colonnes
+  const blancG = { bordure: { gauche: XL.blanc } };     // le même, dans un en-tête
+  /** Nom d'un projet de référence, précédé d'une pastille orange s'il est aussi comparé à l'écran. */
+  const nomRef = (p) => (dedans.has(p.id) ? [{ t: "● ", gras: true, couleur: XL.orange }, { t: p.nom, gras: true, couleur: XL.noir }] : p.nom);
+  const pastilles = dedans.size ? [[RT.g("● ", XL.orange), RT.g("Pastille : "), RT.t("projet de référence qui est aussi une maquette comparée à l'écran.")]] : [];
+  /** Une valeur hors de la fourchette P25–P75 d'un ratio qui a un sens : aplat bleu clair du bon côté, rouge-orange
+   *  pâle du mauvais. Un ratio sans bon ni mauvais sens n'est pas marqué : la moitié du tableau serait colorée pour rien. */
+  const horsFourchette = (kpi, v) => {
+    const c = stats.get(kpi.id), j = c.n >= MIN_REFERENCE && kpi.sens ? jugementXl(kpi, placeXl(c, v)) : null;
+    return j ? { gras: true, couleur: XL[j], fond: XL[`${j}Fond`] } : {};
+  };
+  const legendeCouleurs = [RT.g("Bleu", XL.bon), RT.t(" : du bon côté selon le sens de lecture. "), RT.g("Rouge", XL.mauvais), RT.t(" : du mauvais côté. "),
+    RT.g("Gris"), RT.t(" : ratio sans bon ni mauvais sens (un choix de projet).")];
+
+  // 1. KPI : un ratio par ligne, rangé par groupe ; la référence, puis trois colonnes par maquette comparée hors référence
+  const k = feuilleXl("KPI", [31, 52, 16, 8, 11, 11, 11, ...hors.flatMap(() => [12, 17, 22])]);
+  enteteXl(k, "Benchmark des surfaces SIA 416 — ratios de la référence",
+    "Un ratio par ligne. La médiane est la valeur du projet type : la moitié des projets de référence est au-dessus, l'autre en dessous. "
+    + "La fourchette P25–P75 encadre la moitié centrale des projets."
+    + (hors.length ? " À droite, chaque maquette comparée : sa valeur, son écart à la médiane et sa place par rapport à la fourchette." : ""), contexte);
+  // sur-titre d'un bloc de colonnes : bleu foncé pour la référence, orange pour chaque maquette comparée
+  const sur = { taille: 10, bordure: { gauche: XL.blanc, bas: XL.blanc } }, surCmp = { ...sur, fond: XL.orange };
+  const k1 = k.ligne([tete("Ratio", { h: "left", retrait: 1 }), tete("En clair, pour le projet type", { h: "left" }), tete("Sens de lecture"),
+    tete(`Projets de référence (${ref.length})`, sur), tete(null, sur), tete(null, sur), tete(null, sur),
+    ...hors.flatMap((m) => [tete(nomCompare(m), surCmp), tete(null, surCmp), tete(null, surCmp)])], 24);
+  const k2 = k.ligne([tete(null), tete(null), tete(null), tete("Projets (n)", blancG), tete("Bas (P25)"), tete("Médiane", teteMediane), tete("Haut (P75)"),
+    ...hors.flatMap(() => [tete("Valeur", blancG), tete("Écart à la médiane"), tete("Place dans la fourchette")])], 28);
+  for (const c of [0, 1, 2]) k.fusion(k1, c, k2, c);
+  k.fusion(k1, 3, k1, 6);
+  hors.forEach((_, i) => k.fusion(k1, 7 + 3 * i, k1, 9 + 3 * i));
+  const SENS_XL = { 1: "Plus haut = mieux", "-1": "Plus bas = mieux", 0: "Ni bon ni mauvais : choix de projet" };
+  let groupe = null, famille = null;
+  for (const { kpi, groupe: g, famille: f } of kpis) {
+    // groupes : un même bandeau de section pour tous ; familles : un sous-titre bleu
+    if (g !== groupe)
+      k.bandeau([{ t: g.titre, gras: true, taille: 11, couleur: XL.bleu }, { t: g.definition ? `     ${g.definition}` : "", taille: 9, couleur: XL.bleu }],
+        XL_SECTION, 24, 0, k.nc - 1, XL_BARRE);
+    if (g.familles.length > 1 && (g !== groupe || f !== famille))
+      k.bandeau(f, { gras: true, taille: 9, couleur: XL.bleu, v: "bottom", retrait: 1, bordure: { bas: XL.mediane } }, 20, 0, k.nc - 1);
+    groupe = g; famille = f;
+    const c = stats.get(kpi.id), nombre = { ...filet, ...droite, format: formatKpi(kpi) }, [phrase, court] = PHRASES[kpi.id] || [];
+    const clair = phrase && c.n ? phrase.replace("{v}", enClair(kpi, c.mediane)) : "";
+    const lignes = Math.max(lignesXl(court || kpi.label, 30) + (court ? lignesXl(kpi.label, 30, 8) : 0),
+      (clair ? lignesXl(clair, 52) : 0) + (kpi.note ? lignesXl(kpi.note, 52, 8) : 0), lignesXl(SENS_XL[kpi.sens] || SENS_XL[0], 16, 9));
+    k.ligne([
+      { v: [{ t: court || kpi.label, gras: true, couleur: XL.noir }, { t: court ? `\n${kpi.label}` : "", taille: 8, couleur: XL.gris }], s: { ...filet, retour: true, retrait: 1 } },
+      { v: [{ t: clair, couleur: XL.noir }, { t: kpi.note ? `${clair ? "\n" : ""}${kpi.note}` : "", taille: 8, couleur: XL.gris }], s: { ...filet, retour: true } },
+      { v: SENS_XL[kpi.sens] || SENS_XL[0], s: { ...filet, h: "center", retour: true, taille: 9, couleur: kpi.sens ? XL.noir : XL.gris } },
+      { v: c.n || 0, s: { ...filet, h: "center", couleur: XL.gris, bordure: { ...filet.bordure, ...gauche } } },
+      c.n ? { v: c.q1, s: nombre } : absent,
+      c.n ? { v: c.mediane, s: { ...nombre, gras: true, couleur: XL.bleu, fond: XL.mediane } } : { ...absent, s: { ...absent.s, fond: XL.mediane } },
+      c.n ? { v: c.q3, s: nombre } : absent,
+      ...hors.flatMap((m) => {
+        const v = m.p.kpis?.[kpi.id]?.valeur, bord = { bordure: { ...filet.bordure, ...gauche } };
+        if (v == null) return [{ ...absent, s: { ...absent.s, ...bord } }, { s: filet }, { s: filet }];
+        const valeurM = { v, s: { ...nombre, gras: true, ...bord } };
+        if (!c.n) return [valeurM, { s: filet }, { s: filet }];
+        const e = ecartXl(kpi, v - c.mediane), place = placeXl(c, v), j = jugementXl(kpi, place);
+        return [valeurM,
+          { v: e, s: { ...filet, ...droite, format: formatEcart(kpi), couleur: XL[jugementXl(kpi, Math.sign(e))] || XL.gris } },
+          { v: place > 0 ? "▲ Au-dessus du P75" : place < 0 ? "▼ Sous le P25" : "Dans la fourchette",
+            s: { ...filet, h: "center", taille: 9, ...(j ? { gras: true, couleur: XL[j], fond: XL[`${j}Fond`] } : { couleur: XL.gris }) } }];
+      })], Math.max(30, 8 + 12.5 * lignes));
+  }
+  legendeXl(k, [
+    [RT.g("Médiane : "), RT.t("la valeur centrale de la référence, celle des onglets Tendances et Programmer. "), RT.g("Fourchette (P25 à P75) : "),
+     RT.t("un quart des projets est sous le P25, un quart au-dessus du P75. Avec peu de projets, la fourchette reste indicative.")],
+    [RT.g("Sens de lecture : "), RT.t("dit de quel côté de la médiane un projet fait mieux. « Choix de projet » : le ratio décrit le projet sans le juger.")],
+    ...(hors.length ? [
+      [RT.g("Écart à la médiane : "), RT.t("valeur de la maquette moins la médiane, dans l'unité du ratio (pt = point de pourcentage). ▲ au-dessus de la médiane, ▼ en dessous. "),
+       ...legendeCouleurs],
+      [RT.g("Place dans la fourchette : "), RT.t("la maquette est-elle dans la moitié centrale des projets de référence ? Hors fourchette, la case est colorée : bleu clair du bon côté, rouge pâle du mauvais, gris sans jugement.")]] : []),
+    ...(dedans.size ? [[RT.g("Maquettes comparées déjà dans la référence : "),
+      RT.t(`${[...dedans.values()].map((m) => `${m.p.id} ${m.p.nom}`).join(", ")}. Leurs valeurs pèsent dans la médiane ; elles se lisent dans la feuille « Détail par projet ».`)]] : []),
+  ]);
+  Object.assign(k.f, { figer: { lignes: k2 + 1, colonnes: 1 }, impression: impression([k1, k2]) });
+
+  // 2. Projets de référence : identité et surfaces principales, total et médiane en pied
+  const SURFACES_REF = [["SP", "SP (m²)"], ["SP_HS", "SP hors-sol (m²)"], ["SP_SS", "SP sous-sol (m²)"], ["SUP", "SUP (m²)"]];
+  const r = feuilleXl("Projets de référence", [8, 30, 40, 23, 26, 8, 18, 26, 8, 12, 12, 12, 12, 11, 9, 11]);
+  enteteXl(r, "Projets de référence",
+    "Les projets dont sont tirées la médiane et la fourchette de chaque ratio : les projets fiables du pré-filtre, cochés à l'écran. "
+    + "Les flèches de l'en-tête trient et filtrent la liste.", contexte);
+  const rTete = r.ligne([tete("ID"), ...["Nom", "Typologie", "Intervention", "Forme"].map((t) => tete(t, { h: "left" })), tete("Canton"), tete("Commune", { h: "left" }),
+    tete("Adresse", { h: "left" }), tete("Phase SIA"), ...SURFACES_REF.map(([, t]) => tete(t)), tete("Logements"), tete("Étages hors-sol"), tete("Maquette 3D")], 32);
+  ref.forEach((p, i) => {
+    const base = { ...filet, ...(i % 2 ? { fond: XL.bande } : {}) };
+    const centre = { ...base, h: "center" }, nombre = { ...base, ...droite, format: "#,##0" };
+    const texte = (v) => ({ v: v || "", s: { ...base, retour: true } });
+    const lignes = Math.max(...[[p.nom, 30], [p.infos?.categorie, 40], [p.infos?.intervention, 23], [p.infos?.forme, 26], [p.infos?.commune, 18], [p.infos?.adresse, 26]].map(([t, l]) => lignesXl(t || "", l)));
+    r.ligne([{ v: idCellule(p.id), s: { ...centre, couleur: XL.gris } }, { v: nomRef(p), s: { ...base, gras: true, couleur: XL.noir, retour: true } },
+      texte(p.infos?.categorie), texte(p.infos?.intervention), texte(p.infos?.forme), { v: p.infos?.canton || "", s: centre }, texte(p.infos?.commune), texte(p.infos?.adresse),
+      { v: p.infos?.phase ?? "", s: centre }, ...SURFACES_REF.map(([c]) => ({ v: p.totaux?.[c], s: nombre })),
+      { v: p.infos?.logements || null, s: nombre }, { v: p.totaux?.ETAGES_HS, s: centre },
+      { v: p.maquette ? "oui" : "—", s: { ...centre, couleur: p.maquette ? XL.noir : XL.clair } }], 7 + 13.5 * lignes);
+  });
+  const rFin = r.f.lignes.length - 1;
+  const colonneRef = (lire) => ref.map(lire).filter((v) => v != null && Number.isFinite(v)).sort((a, b) => a - b);
+  const mesures = [...SURFACES_REF.map(([c]) => colonneRef((p) => p.totaux?.[c])), colonneRef((p) => p.infos?.logements || null), colonneRef((p) => p.totaux?.ETAGES_HS)];
+  const pied = (titre, calcul, s) => r.ligne([{ s }, { v: titre, s: { ...s, gras: true } }, ...Array.from({ length: 7 }, () => ({ s })),
+    ...mesures.map((v, i) => ({ v: v.length ? calcul(v, i) : null, s: { ...s, gras: true, format: "#,##0", ...(i === 5 ? { h: "center" } : droite) } })), { s }], 20);
+  if (ref.length) {
+    pied(`Total des ${pl(ref.length, "projet")}`, (v, i) => (i === 5 ? null : v.reduce((a, b) => a + b, 0)), { v: "center", couleur: XL.bleu, fond: XL.section, bordure: { haut: XL.bleu } });
+    pied("Médiane", (v) => quantile(v, 0.5), { v: "center", couleur: XL.bleu, fond: XL.mediane });
+  }
+  legendeXl(r, [
+    [RT.g("Projet fiable : "), RT.t("maquette dont les surfaces passent les contrôles du benchmark (surfaces brutes et nettes, cohérence, informations du projet).")],
+    [RT.g("SP : "), RT.t("surface de plancher (SIA 416), hors-sol et sous-sol. "), RT.g("SUP : "), RT.t("surface utile principale. "),
+     RT.g("Total et médiane : "), RT.t("sur les projets listés, sans tenir compte d'un filtre posé dans Excel.")],
+    ...pastilles]);
+  Object.assign(r.f, { figer: { lignes: rTete + 1, colonnes: 2 }, impression: impression([rTete, rTete]), ...(ref.length ? { filtre: [rTete, 0, rFin, r.nc - 1] } : {}) });
+
+  // 3. Détail par projet : un projet par ligne, les ratios en colonnes sous leur groupe ; médiane et fourchette en pied
+  const d = feuilleXl("Détail par projet", [8, 30, ...kpis.map(() => 13)]);
+  enteteXl(d, "Détail par projet — la valeur de chaque ratio",
+    "Un projet par ligne, un ratio par colonne. En pied, la médiane et la fourchette P25–P75 de la référence servent de repère. "
+    + "Une valeur colorée sort de cette fourchette : en bleu du bon côté, en rouge du mauvais." + (hors.length ? " Les maquettes comparées hors référence suivent, à part." : ""), contexte);
+  const debut = (i) => i === 0 || kpis[i].groupe !== kpis[i - 1].groupe;     // première colonne d'un groupe : filet à gauche
+  const bordG = (i) => (debut(i) ? gauche : {});
+  const blancD = (i) => (debut(i) ? blancG : {});
+  const d1 = d.ligne([tete("ID"), tete("Projet", { h: "left" }),
+    ...kpis.map(({ groupe: g }, i) => tete(debut(i) ? g.titre : null, { taille: 10, bordure: { bas: XL.blanc, ...blancD(i).bordure } }))], 22);
+  const d2 = d.ligne([tete(null), tete(null), ...kpis.map(({ kpi }, i) => tete(PHRASES[kpi.id]?.[1] || kpi.label, blancD(i)))], 44);
+  const SENS_COURT = { 1: "▲ mieux", "-1": "▼ mieux", 0: "choix de projet" };
+  // sous-en-tête : le sens de lecture, en bleu clair
+  const d3 = d.ligne([tete(null), tete(null), ...kpis.map(({ kpi }, i) =>
+    tete(SENS_COURT[kpi.sens] || SENS_COURT[0], { gras: false, taille: 8, couleur: XL.bleu, fond: XL.section, ...blancD(i) }))], 16);
+  for (const c of [0, 1]) d.fusion(d1, c, d3, c);
+  kpis.forEach((_, i) => { if (debut(i)) { let j = i; while (j + 1 < kpis.length && !debut(j + 1)) j++; d.fusion(d1, 2 + i, d1, 2 + j); } });
+  const valeurs = (p) => kpis.map(({ kpi }, i) => {
+    const v = p.kpis?.[kpi.id]?.valeur, bordure = { ...filet.bordure, ...bordG(i) };
+    return v == null ? { ...absent, s: { ...absent.s, bordure } } : { v, s: { v: "center", ...droite, format: formatKpi(kpi), ...horsFourchette(kpi, v), bordure } };
+  });
+  for (const p of ref)
+    d.ligne([{ v: idCellule(p.id), s: { ...filet, h: "center", couleur: XL.gris } }, { v: nomRef(p), s: { ...filet, gras: true, couleur: XL.noir } }, ...valeurs(p)], 19);
+  const repere = (titre, lire, s, format) => d.ligne([{ s }, { v: titre, s }, ...kpis.map(({ kpi }, i) => {
+    const c = stats.get(kpi.id), st = { ...s, bordure: { ...s.bordure, ...bordG(i) } };
+    return c.n ? { v: lire(c), s: { ...st, ...droite, format: format || formatKpi(kpi) } } : { v: "—", s: { ...st, h: "center", couleur: XL.clair } };
+  })], 19);
+  if (ref.length) {
+    repere("Médiane de la référence", (c) => c.mediane, { v: "center", gras: true, couleur: XL.bleu, fond: XL.mediane, bordure: { haut: XL.bleu } });
+    repere("Bas de la fourchette (P25)", (c) => c.q1, { v: "center", couleur: XL.noir, fond: XL.bande, bordure: { bas: XL.filet } });
+    repere("Haut de la fourchette (P75)", (c) => c.q3, { v: "center", couleur: XL.noir, fond: XL.bande, bordure: { bas: XL.filet } });
+    repere("Projets avec la donnée (n)", (c) => c.n, { v: "center", couleur: XL.gris, fond: XL.bande, bordure: { bas: XL.mediane } }, "0");
+  }
+  if (hors.length) {
+    d.ligne([], 12);
+    // même orange que les en-têtes des maquettes comparées de la feuille KPI
+    d.bandeau("Maquettes comparées hors référence", { gras: true, taille: 10, couleur: XL.blanc, fond: XL.orange, v: "center", retrait: 1 }, 22, 0, d.nc - 1);
+    for (const m of hors)
+      d.ligne([{ v: m.id === MIEN ? "★" : idCellule(m.p.id), s: { ...filet, h: "center", couleur: XL.gris } },
+        { v: m.id === MIEN ? m.p.nom || "Mon projet" : m.p.nom, s: { ...filet, gras: true, couleur: XL.noir } }, ...valeurs(m.p)], 19);
+  }
+  legendeXl(d, [
+    [RT.g("Valeur colorée : "), RT.t("hors de la fourchette P25–P75 de la référence. "), RT.g("Bleu", XL.bon), RT.t(" : du bon côté selon le sens de lecture. "),
+     RT.g("Rouge", XL.mauvais), RT.t(" : du mauvais côté. Les ratios sans bon ni mauvais sens (choix de projet) ne sont pas marqués.")],
+    [RT.g("▲ mieux / ▼ mieux : "), RT.t("sens de lecture du ratio (plus haut ou plus bas = mieux). "), RT.g("— : "), RT.t("donnée absente de la maquette, le ratio n'est pas calculable. "),
+     RT.t("L'intitulé complet de chaque ratio est dans la feuille « KPI ».")],
+    ...pastilles]);
+  Object.assign(d.f, { figer: { lignes: d3 + 1, colonnes: 2 }, impression: impression([d1, d3], 8) });
+
+  const feuilles = [k.f, r.f, d.f];
+
+  // 4. Programme attendu : seulement si une SP hors-sol est saisie dans Programmer, tel que son tableau
+  const h = progEtat.h;
+  if (h?.SP_HS > 0 && progEtat.lignes.length) {
+    const p = feuilleXl("Programme attendu", [42, 18, 20, 18, 64]);
+    enteteXl(p, "Programme attendu",
+      "Ce que les projets de référence laissent attendre d'un projet de la surface saisie. Central : la médiane de la référence. "
+      + "Bas et haut : la fourchette P25–P75. La dernière colonne dit de quel ratio vient chaque ligne.", contexte);
+    const carte = (titre, v, format) => {
+      const l = p.ligne([{ v: titre, s: { ...filet, couleur: XL.gris, retrait: 1 } }, { v, s: { ...filet, gras: true, couleur: XL.noir, h: "left", format } }, { s: filet }, { s: filet }, { s: filet }], 19);
+      p.fusion(l, 1, l, 4);
+    };
+    p.bandeau("Hypothèses saisies", XL_SECTION, 22, 0, p.ct - 1, XL_BARRE);
+    carte("SP hors-sol", h.SP_HS, '#,##0" m²"');
+    const mix = MIX.filter(([c]) => h.mix[c]).map(([c, l]) => `${l} ${F0.format(h.mix[c])} %`).join(" · ");
+    carte("Mix de logements visé", mix || "non saisi");
+    carte("Prix de vente", h.prix > 0 ? h.prix : "non saisi", '#,##0" CHF / m² de SVN"');
+    carte("Référence", `${pl(progEtat.n, "projet")} (${libelleSelection()})`);
+    if (progEtat.n < MIN_REFERENCE)
+      p.bandeau(`Estimation fragile : ${pl(progEtat.n, "projet")} de référence seulement.`, { gras: true, couleur: XL.mauvais, fond: XL.mauvaisFond, v: "center", retrait: 1 }, 22);
+    p.ligne([], 14);
+    const pTete = p.ligne([tete("Poste", { h: "left", retrait: 1 }), tete("Bas (P25)", droite), tete("Central (médiane)", { ...droite, ...teteMediane }),
+      tete("Haut (P75)", droite), tete("D'après", { h: "left", retrait: 1 })], 24);
+    const FORMATS = { "m²": '#,##0" m²"', CHF: '0.0,," M CHF"' };     // le chiffre d'affaires en millions, comme à l'écran
+    for (const { label, f, unite, source, detail, sous } of progEtat.lignes) {
+      const nom = { v: [{ t: label, gras: !sous, couleur: XL.noir }, { t: detail ? `\ndont ${detail}` : "", taille: 8, couleur: XL.gris }],
+                    s: { ...filet, retour: true, retrait: sous ? 3 : 1 } };
+      if (!f) {
+        const s = { ...filet, couleur: XL.gris };
+        const l = p.ligne([nom, { v: "Pas de donnée dans les projets de référence", s: { ...s, retrait: 1 } }, { s }, { s }, { s }], 21);
+        p.fusion(l, 1, l, 4);
+        continue;
+      }
+      const nombre = { ...filet, ...droite, format: FORMATS[unite] || "#,##0", couleur: XL.noir };
+      const origine = { ...filet, taille: 9, couleur: XL.gris, retour: true, retrait: 1 };
+      p.ligne([nom, { v: f.bas, s: nombre }, { v: f.central, s: { ...nombre, gras: true, couleur: XL.bleu, fond: XL.mediane } }, { v: f.haut, s: nombre },
+        // le prix en nombre : son séparateur de milliers suit Excel, comme les montants de la ligne
+        unite === "CHF" ? { v: h.prix, s: { ...origine, h: "left", format: '#,##0" CHF / m² de SVN"' } } : { v: source || "", s: origine }], detail ? 32 : 21);
+    }
+    if (progEtat.parts.length) {     // la barre de l'écran : où va la SP hors-sol, à l'estimation centrale
+      p.ligne([], 14);
+      // un nombre et son format, pas un texte : le séparateur de milliers suit les réglages d'Excel, comme le reste de la feuille
+      p.bandeau(h.SP_HS, { ...XL_SECTION, h: "left", format: '"Où vont les "#,##0" m² de SP hors-sol (estimation centrale)"' }, 22, 0, p.ct - 1, XL_BARRE);
+      for (const { code, label, m2 } of progEtat.parts) {
+        const part = m2 / h.SP_HS;
+        const l = p.ligne([{ v: label, s: { ...filet, couleur: XL.noir, retrait: 1 } }, { v: m2, s: { ...filet, ...droite, format: FORMATS["m²"] } }, { v: part, s: { ...filet, ...droite, format: "0%", gras: true } },
+          { v: "█".repeat(Math.round(part * 60)), s: { ...filet, couleur: XL_PARTS[code] || XL_PARTS.reste, taille: 11 } }, { s: filet }], 19);
+        p.fusion(l, 3, l, 4);
+      }
+    }
+    legendeXl(p, [
+      [RT.g("Central : "), RT.t("la surface de plancher saisie multipliée par la médiane du ratio dans les projets de référence. "),
+       RT.g("Bas et haut : "), RT.t("la même surface multipliée par le P25 et le P75 du ratio : la moitié centrale des projets tombe entre les deux.")],
+      [RT.g("Ordres de grandeur : "), RT.t("ces chiffres situent un projet en amont des études ; ils ne remplacent ni un avant-projet ni un métré.")]]);
+    p.f.impression = impression([pTete, pTete]);
+    feuilles.push(p.f);
+  }
+  return feuilles;
+}
+
+function exporterExcel() {
+  const blob = classeurXlsx(classeurBenchmark(), { police: XL_POLICE });
+  const jour = new Date().toISOString().slice(0, 10);
+  const a = el("a", { href: URL.createObjectURL(blob), download: `Benchmark_SIA416_${jour}.xlsx` });
+  document.body.append(a);
+  a.click();     // dans SIA Check, l'application demande où enregistrer (MainWindow.Dashboard.cs, DownloadStarting)
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+
 // ------------------------------------------------------------------ onglets et démarrage
 
-const VUES = ["ratios", "comparer", "programmer", "base", "typologies"];
+const VUES = ["ratios", "programmer", "base", "typologies"];
 
 function montrerVue(nom) {
   for (const v of VUES) {
@@ -1226,8 +1850,10 @@ function demarrer(data) {
   etat.kpis = data.kpis;
   etat.projets = new Map(data.projets.map((p) => [String(p.id), p]));
   document.getElementById("etat").hidden = true;
+  initVolets();
+  brancher3D();
+  brancherOutilsCarte();
   initSelection();
-  remplirProjets();
   remplirEcartes();
   initSaisie();
   initProgrammer();
@@ -1235,17 +1861,18 @@ function demarrer(data) {
   if (ecart > 0.002) console.warn(`Distances de la page et du moteur différentes (écart max ${ecart}) : formules à réaligner.`);
   dessinerBase();
   dessinerTypologies();
-  initRepresentation();
+  // un projet demandé (SIA Check, lien) est ajouté aux maquettes comparées
+  const demande = PARAMS.get("projet");
+  if ((demande === MIEN || etat.projets.has(demande)) && !estComparee(demande)) basculerComparee(demande);
+  document.getElementById("saisie").hidden = !estComparee(MIEN);
+  dessinerVolets();
   dessinerRatios();
   dessinerAnatomie();
-  const premier = data.projets.find((p) => p.fiable) || data.projets[0];
-  const demande = PARAMS.get("projet");
-  const direct = demande === MIEN || etat.projets.has(demande);
-  choisirProjet(direct ? demande : String(premier.id));
-  montrerVue(direct ? "comparer" : "ratios");     // un projet demandé (SIA Check, lien) s'ouvre en comparaison
+  montrerVue("ratios");
 }
 
 function charger() {
+  poserIcones();
   if (PARAMS.get("theme")) document.documentElement.dataset.theme = PARAMS.get("theme");
   brancherOnglets();
   const hote = window.chrome && window.chrome.webview;
@@ -1260,8 +1887,8 @@ function charger() {
   }
   fetch(PARAMS.get("data") || "benchmark.json", { cache: "no-store" })
     .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(demarrer)
-    .catch(() => afficherEtat("La base n'a pas encore été lue (benchmark.json introuvable)."));
+    // une erreur de la page reste dans la console : seule l'absence de la base donne ce message
+    .then(demarrer, () => afficherEtat("La base n'a pas encore été lue (benchmark.json introuvable)."));
 }
 
 charger();

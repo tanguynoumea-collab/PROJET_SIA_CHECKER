@@ -364,7 +364,8 @@ public sealed partial class MainViewModel
         {
             var service = new AiGenerationService(_engine);
             var prompt = await service.PrepareAsync(dir, CancellationToken.None);
-            if (prompt.IssueCount == 0) { _shell.Notify("Les règles n'hésitent sur aucun espace : rien à demander à l'IA."); return; }
+            // sans question, l'IA est encore appelée pour la forme des bâtiments (partie 5)
+            if (prompt.IssueCount == 0 && prompt.BuildingCount == 0) { _shell.Notify("Les règles n'hésitent sur aucun espace et aucun bâtiment n'est décrit : rien à demander à l'IA."); return; }
             var client = new AiReviewClient(key);
             var cost = await client.EstimateAsync(prompt, CancellationToken.None);
             if (!await _shell.ConfirmAsync(title,
@@ -385,6 +386,9 @@ public sealed partial class MainViewModel
             AiGenerationService.SaveResponse(dir, response, DateTime.Now);
             var summary = await service.RecordAsync(dir, CancellationToken.None);
             IsAnalysing = false;
+            // forme des bâtiments proposée avec les décisions (moteur : generation/formes-ia.json)
+            var shapesFile = Path.Combine(dir, "generation", "formes-ia.json");
+            if (File.Exists(shapesFile)) await ProposeShapesAsync(dir, AiReviewParser.ParseShapes(await File.ReadAllTextAsync(shapesFile)));
             ReloadDecisions(keepSelection: false);
             SpaceFilter = "ia";
             _shell.Notify($"{summary.Replace("INFO ", "")} Coût réel : {response.CostUsd:0.00} $.");

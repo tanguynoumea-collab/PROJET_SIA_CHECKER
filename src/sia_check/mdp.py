@@ -238,7 +238,11 @@ def projet_values(levels: pd.DataFrame, lots: pd.DataFrame) -> dict[str, object]
 
 # Identité d'un projet (fiche « Identité du projet » de la visionneuse) : descriptions de la feuille InfosProjet
 IDENTITE = ("ID projet", "Nom Projet HRS", "Canton", "Commune", "Categorie d'Ouvrage", "Type d'intervention",
-            "Phase du projet")
+            "Phase du projet", "Adresse", "Forme", "Forme (origine)")
+# Champs ajoutés après le gabarit d'origine (V5) : absents des MDP existants, leur ligne est ajoutée à la première écriture.
+# Forme : une forme par bâtiment (sia_check.formes) ; origine : « saisie » ou « IA » (partie 5).
+AJOUTS_INFOS = {"Adresse": "Identification du projet", "Forme": "Identification du projet",
+                "Forme (origine)": "Identification du projet"}
 # Colonnes de la feuille « Listes formulaire » qui alimentent les listes déroulantes de la fiche
 LISTES = {"Categorie d'Ouvrage": "Categorie d'Ouvrage", "Canton": "Cantons", "Type d'intervention": "Type Intervention",
           "Phase du projet": "Phase du projet"}
@@ -267,12 +271,33 @@ def _valeur_identite(desc: str, v):
     return v.strip() if isinstance(v, str) else v
 
 
+def _ajouter_info(wb: Workbook, desc: str) -> int | None:
+    """Ligne d'un champ ajouté depuis (AJOUTS_INFOS), créée à la fin d'InfosProjet : dans son tableau, sinon après la
+    dernière description de la colonne B (anciens MDP sans tableau)."""
+    categorie = AJOUTS_INFOS.get(desc)
+    if categorie is None:
+        return None
+    if "InfosProjet" in wb.tables:
+        cols = wb.tables["InfosProjet"].columns
+        if "Description" not in cols:
+            return None
+        return wb.append_row("InfosProjet", {cols[0]: categorie, "Description": desc})
+    if "InfosProjet" not in wb.sheets:
+        return None
+    dernier = max((r for r in range(1, 200) if wb.cell_value("InfosProjet", f"B{r}") is not None), default=1)
+    wb.set_cell("InfosProjet", f"A{dernier + 1}", categorie)
+    wb.set_cell("InfosProjet", f"B{dernier + 1}", desc)
+    return dernier + 1
+
+
 def set_identite(wb: Workbook, identite: dict) -> None:
     """Écrit les champs d'identité renseignés dans InfosProjet ; une valeur vide n'efface rien."""
     for desc, v in identite.items():
         if desc not in IDENTITE or v is None or (isinstance(v, str) and not v.strip()):
             continue
         r = _ligne_info(wb, desc)
+        if r is None:
+            r = _ajouter_info(wb, desc)
         if r is not None:
             wb.set_cell("InfosProjet", f"C{r}", _valeur_identite(desc, v))
 

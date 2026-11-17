@@ -41,7 +41,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import mdp
+from . import localites, mdp
+from .formes import FORMES, decoder, libelle
 from .ratios import is_stair
 
 VERSION = 1
@@ -273,11 +274,16 @@ def _infos(df: pd.DataFrame) -> dict:
         return None
 
     date = get("date fin projet", "date de la source")
+    # forme des bâtiments (partie 5) : clé exacte, « Forme (origine) » commençant aussi par « forme »
+    formes = decoder(raw.get(_key("forme")) if not _empty(raw.get(_key("forme"))) else None)
     return {
         "id": get("id projet"), "nom": get("nom projet"), "canton": _canton(get("canton")),
-        "commune": get("commune"), "categorie": get("categorie d'ouvrage"), "intervention": get("type d'intervention"),
+        "commune": get("commune"), "adresse": get("adresse"), "categorie": get("categorie d'ouvrage"),
+        "intervention": get("type d'intervention"),
         "phase": get("phase du projet"), "date": date.date().isoformat() if isinstance(date, dt.datetime) else date,
         "logements": _num(get("nbr total de logements")), "places_voiture": _num(get("nbr places de stationnement voiture dans")),
+        "formes": formes or None, "forme": libelle(formes) or None,
+        "forme_origine": raw.get(_key("forme (origine)")) if not _empty(raw.get(_key("forme (origine)"))) else None,
     }
 
 
@@ -475,6 +481,15 @@ def _controles(t: dict, infos: dict, logements: list[dict]) -> list[Controle]:
     ]
 
 
+def _batiments(df: pd.DataFrame) -> list[str] | None:
+    """Parties d'ouvrage du MDP (feuille InfosBatiment) : les bâtiments auxquels la fiche donne une forme."""
+    c = _col(df, "partie d'ouvrage")
+    if df.empty or not c:
+        return None
+    noms = sorted({str(v).strip() for v in df[c] if not _empty(v) and str(v).strip()})
+    return noms or None
+
+
 def lire(path: Path) -> Projet:
     """Un tableau MDP HRS ; MdpError si le fichier n'en est pas un."""
     try:
@@ -487,6 +502,7 @@ def lire(path: Path) -> Projet:
         if "SurfacesNettesSIA416" not in x.sheet_names:
             raise MdpError(f"{path.name} : pas de feuille SurfacesNettesSIA416, ce n'est pas un MDP")
         infos = _infos(_sheet(x, "InfosProjet"))
+        infos["batiments"] = _batiments(_sheet(x, "InfosBatiment"))
         t: dict[str, float] = {}
         _brutes(_sheet(x, "SurfacesBrutesVolumeSIA416"), t)
         nettes = _nettes(_sheet(x, "SurfacesNettesSIA416"), t)
@@ -596,7 +612,18 @@ def typologies(projets: list[Projet]) -> list[dict]:
 
 # --- export --------------------------------------------------------------------------------------------------
 
-def projet_json(p: Projet) -> dict:
+def position(p: Projet, registre=None) -> tuple[list[int] | None, str | None]:
+    """([E, N] LV95, précision) : l'adresse exacte si le registre des adresses la trouve (« adresse », ou « rue » sans
+    numéro reconnu), sinon le centre de la commune (« commune »), sinon (None, None)."""
+    if registre is not None and p.infos.get("adresse"):
+        trouve = registre.position(p.infos["adresse"], p.infos.get("commune"), p.infos.get("canton"))
+        if trouve:
+            return trouve
+    pos = localites.position(p.infos.get("commune"), p.infos.get("canton"))
+    return (pos, "commune") if pos else (None, None)
+
+
+def projet_json(p: Projet, registre=None) -> dict:
     """Un projet tel que le lit le dashboard, sans sa comparaison (projet de la base ou « Mon projet »)."""
     mix = {}
     for lg in p.logements:
@@ -610,16 +637,18 @@ def projet_json(p: Projet) -> dict:
         "logements": [{"chambres": lg["chambres"], "sup": round(lg["sup"], 2)} for lg in p.logements
                       if lg["chambres"] is not None and lg["sup"]],
         "etages": p.etages,     # cages d'escalier par bâtiment et étage (onglet Comparer)
+        # [E, N] LV95 pour la vue Carte : adresse exacte, sinon centre de la commune ; None sans l'une ni l'autre
+        **dict(zip(("position", "precision"), position(p, registre))),
         "kpis": {kpi.id: (None if (r := p.ratio(kpi)) is None else
                           {"num": round(r[0], 2), "den": round(r[1], 2), "valeur": r[0] / r[1]}) for kpi in KPIS},
     }
 
 
-def _projet_json(p: Projet, projets: list[Projet], k: int) -> dict:
+def _projet_json(p: Projet, projets: list[Projet], k: int, registre=None) -> dict:
     groupe = similaires(p, projets, k=k)
     membres = [q for q, _ in groupe]
     return {
-        **projet_json(p),
+        **projet_json(p, registre),
         "similaires": [{"id": q.id, "distance": round(d, 3)} for q, d in groupe],
         # distances à tous les projets fiables, sans filtre : la page refait le groupe quand on change les filtres
         "distances": {q.id: round(d, 3) for q, d in similaires(p, projets, filtres=(), k=len(projets))},
@@ -627,15 +656,24 @@ def _projet_json(p: Projet, projets: list[Projet], k: int) -> dict:
     }
 
 
-def construire(projets: list[Projet], erreurs: list[str] | None = None, k: int = 5) -> dict:
-    """Le contenu de benchmark.json, lu par le dashboard."""
+def maquette(dossier: Path, id_projet: str) -> str | None:
+    """Nom de la maquette 3D web d'un projet (MAQ-<id>.json.gz, écrite par SIA Check à côté du MDP), None sans elle."""
+    nom = f"MAQ-{id_projet}.json.gz"
+    return nom if (dossier / nom).is_file() else None
+
+
+def construire(projets: list[Projet], erreurs: list[str] | None = None, k: int = 5, dossier: Path | None = None,
+               registre=None) -> dict:
+    """Le contenu de benchmark.json, lu par le dashboard. `dossier` : celui de la base, où chercher les maquettes 3D ;
+    `registre` : registre des adresses (sia_check.adresses.Registre), pour placer les projets à leur adresse."""
     return {
         "version": VERSION, "genere": dt.datetime.now().isoformat(timespec="seconds"),
         "kpis": [dataclasses.asdict(k_) for k_ in KPIS], "features": FEATURES, "filtres": list(FILTRES),
-        "projets": [_projet_json(p, projets, k) for p in projets],
+        "projets": [{**_projet_json(p, projets, k, registre), "maquette": maquette(dossier, p.id) if dossier else None} for p in projets],
         "base": {kpi.id: combiner(projets, kpi) for kpi in KPIS},
         "typologies": typologies(projets), "erreurs": erreurs or [],
-        "listes": mdp.listes(),     # listes déroulantes de la fiche « Identité du projet »
+        # listes déroulantes de la fiche « Identité du projet », formes des bâtiments comprises (partie 5)
+        "listes": {**mdp.listes(), "Forme": list(FORMES)},
     }
 
 

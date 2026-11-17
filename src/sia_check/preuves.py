@@ -19,7 +19,9 @@ faut pour dire POURQUOI, avant la rédaction du rapport par l'IA (étape 2, voir
       sous-sol), au-dessus de rien (terrain), et part recouverte par SPT ;
 - totaux de niveau Treegram différents de la somme de leur détail ;
 - les sujets du moteur et leurs corrections de base (sujets.py), sans les tracés : la revue les garde,
-  les modifie, les rejette ou en ajoute (bloc `sujets` des verdicts).
+  les modifie, les rejette ou en ajoute (bloc `sujets` des verdicts) ;
+- l'emprise de chaque bâtiment (emprise.py : union des SP hors-sol, mesures, contour simplifié, forme estimée),
+  d'où la revue tire une forme par bâtiment (bloc `formes` des verdicts).
 
 Dépendance : shapely (extra `revue` ; embarquée dans le moteur de la visionneuse).
 """
@@ -33,6 +35,8 @@ from pathlib import Path
 
 from shapely import Polygon, union_all
 from shapely.geometry.base import BaseGeometry
+
+from . import emprise
 
 INTERIOR = ["SUP", "SUS", "SD", "SI", "SUT"]
 MIN_AREA = 0.5      # m² : en dessous, bruit de triangulation
@@ -179,6 +183,12 @@ def build(doc: dict, subjects: list[dict] | None = None) -> dict:
             "covered_by_SPT": r(sep.intersection(roof_code).area) if roof_code is not None else 0,
         })
 
+    # Emprise de chaque bâtiment (forme, docs/V5_PLAN.md partie 5) : SP par niveau, surfaces intérieures à défaut.
+    footprints = emprise.emprises(
+        (b, lvl, levels[(b, lvl)].get("rank") if (b, lvl) in levels else None, union((b, lvl), [code]), code)
+        for b, lvl in sorted({(s["building"], s["level"]) for s in doc["surfaces"]}, key=str)
+        for code in ("SP", *INTERIOR))
+
     ev = {
         "project": doc["project"], "analysis_date": doc["date"], "cache": doc["cache"],
         "counts": doc["counts"], "tolerance": doc["tolerance"],
@@ -187,6 +197,7 @@ def build(doc: dict, subjects: list[dict] | None = None) -> dict:
         "levels": out_levels, "sep_decomposition": sep_split,
         "interior_outside_SP": outside, "interior_overlaps": overlaps,
         "level_total_vs_detail": uspi_totals,
+        "emprises": footprints,
         "propositions": [{**{k: v for k, v in s.items() if k != "corrections"},
                           "corrections": [{k: v for k, v in c.items() if k not in ("polygone", "trace")}
                                           for c in s["corrections"]]}
@@ -201,7 +212,8 @@ def build(doc: dict, subjects: list[dict] | None = None) -> dict:
 def summary(ev: dict) -> str:
     return (f"{len(ev['levels'])} niveaux, {len(ev['sep_decomposition'])} SEP décomposées, "
             f"{len(ev['interior_outside_SP'])} surfaces hors SP, {len(ev['interior_overlaps'])} recouvrements, "
-            f"{len(ev['level_total_vs_detail'])} totaux ≠ détail")
+            f"{len(ev['level_total_vs_detail'])} totaux ≠ détail, "
+            f"{len(ev.get('emprises') or {})} emprises")
 
 
 def write(ev: dict, path: str | Path) -> Path:

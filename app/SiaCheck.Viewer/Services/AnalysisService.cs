@@ -117,8 +117,10 @@ public sealed partial class AnalysisService(string enginePath)
         RunAsync(["-q", projectDir, "--treegram", outDir, .. inputs.Args()], null, ct);
 
     /// <summary>Base du benchmark : les MDP d'un dossier lus, normalisés et comparés (sia_check.benchmark).</summary>
-    public Task<EngineRun> BenchmarkAsync(string folder, string json, CancellationToken ct) =>
-        RunAsync(["--benchmark", folder, "--benchmark-json", json], null, ct);
+    /// <param name="addresses">registre des adresses (s'il est là) : les projets sont placés à leur adresse sur la carte.</param>
+    public Task<EngineRun> BenchmarkAsync(string folder, string json, string? addresses, CancellationToken ct) =>
+        RunAsync(["--benchmark", folder, "--benchmark-json", json, .. addresses is null ? Array.Empty<string>() : ["--adresses", addresses]],
+                 null, ct);
 
     /// <summary>Totaux et ratios du projet (corrections comprises) au format d'un projet du benchmark (« Mon projet »).</summary>
     public Task<EngineRun> BenchmarkProjectAsync(string projectDir, string json, string projectName, EngineInputs inputs,

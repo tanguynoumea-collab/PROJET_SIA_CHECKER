@@ -21,6 +21,7 @@ public sealed class IdentityLists
     public IReadOnlyList<string> Cantons { get; init; } = [];
     public IReadOnlyList<string> Interventions { get; init; } = [];
     public IReadOnlyList<string> Phases { get; init; } = [];
+    public IReadOnlyList<string> Formes { get; init; } = [];
 
     /// <summary>
     /// Copie des listes du gabarit livré, utilisée tant que la base n'a pas été lue : le moteur les transmet ensuite
@@ -34,6 +35,7 @@ public sealed class IdentityLists
                    "SG", "TG", "TI", "UR", "VS", "VD", "ZG", "ZH"],
         Interventions = ["Renovation", "Nouvelle construction", "Reno et nouvelle construction", "Demolition"],
         Phases = ["21", "31", "32", "33", "41", "51", "52", "53"],
+        Formes = BuildingShapes.Default,
     };
 
     public static IdentityLists From(Dictionary<string, List<string>>? listes) =>
@@ -43,6 +45,7 @@ public sealed class IdentityLists
             Cantons = Pick(listes, ProjectIdentity.Canton, Default.Cantons),
             Interventions = Pick(listes, ProjectIdentity.Intervention, Default.Interventions),
             Phases = Pick(listes, ProjectIdentity.Phase, Default.Phases),
+            Formes = Pick(listes, ProjectIdentity.Forme, Default.Formes),
         };
 
     private static IReadOnlyList<string> Pick(Dictionary<string, List<string>> l, string key, IReadOnlyList<string> fallback) =>
@@ -56,7 +59,8 @@ public sealed class IdentityLists
 public static class ProjectIdentity
 {
     public const string Id = "ID projet", Nom = "Nom Projet HRS", Canton = "Canton", Commune = "Commune",
-                        Typologie = "Categorie d'Ouvrage", Intervention = "Type d'intervention", Phase = "Phase du projet";
+                        Typologie = "Categorie d'Ouvrage", Intervention = "Type d'intervention", Phase = "Phase du projet",
+                        Adresse = "Adresse", Forme = "Forme", FormeOrigine = "Forme (origine)";
 
     /// <summary>Champs nécessaires pour entrer dans le benchmark (fiche marquée *).</summary>
     public static IReadOnlyList<(string Key, string Label)> RequiredForBase { get; } =
@@ -72,7 +76,8 @@ public static class ProjectIdentity
     public static Dictionary<string, string> Values(MdpProject p) => new()
     {
         [Id] = p.Id, [Nom] = p.Name, [Canton] = p.Canton, [Commune] = p.Commune, [Typologie] = p.Typologie,
-        [Intervention] = p.Intervention, [Phase] = p.Phase,
+        [Intervention] = p.Intervention, [Phase] = p.Phase, [Adresse] = p.Adresse,
+        [Forme] = p.Forme, [FormeOrigine] = p.Forme.Length > 0 ? p.FormeOrigine : "",
     };
 
     /// <summary>La fiche écrite pour le moteur ; les champs vides n'effacent rien dans le MDP.</summary>

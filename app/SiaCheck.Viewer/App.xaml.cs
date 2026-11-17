@@ -73,9 +73,9 @@ public partial class App : Application
             }
             var service = new AiGenerationService(new AnalysisService(engine));
             var prompt = await service.PrepareAsync(dir, CancellationToken.None);
-            if (prompt.IssueCount == 0)
+            if (prompt.IssueCount == 0 && prompt.BuildingCount == 0)
             {
-                MessageBox.Show(window, "Les règles n'hésitent sur aucun espace : rien à demander à l'IA.", title);
+                MessageBox.Show(window, "Les règles n'hésitent sur aucun espace et aucun bâtiment n'est décrit : rien à demander à l'IA.", title);
                 return;
             }
             var client = new AiReviewClient(key);

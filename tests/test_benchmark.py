@@ -259,3 +259,43 @@ def test_cages_par_etage_de_logements():
     etages = b._cages(b._nettes(raw, {}), t)
     assert [(e["etage"], e["cages"], e["logements"], e["sup"]) for e in etages] == [("N01", 1, 3, 205), ("N02", 2, 1, 100)]
     assert (t["CAGES"], t["SUP_CAGES"], t["LOG_CAGES"]) == (3, 305, 4)
+
+
+def test_maquette_3d_dans_le_json(tmp_path):
+    """Une maquette web MAQ-<id>.json.gz à côté du MDP est nommée dans le projet ; sans elle, null."""
+    mdp(tmp_path / "MDP-1-A.xlsx", infos={"ID projet": 1})
+    mdp(tmp_path / "MDP-2-B.xlsx", infos={"ID projet": 2})
+    (tmp_path / "MAQ-1.json.gz").write_bytes(b"")
+    projets = {p["id"]: p for p in b.construire(*b.lire_dossier(tmp_path), dossier=tmp_path)["projets"]}
+    assert projets["1"]["maquette"] == "MAQ-1.json.gz" and projets["2"]["maquette"] is None
+
+
+@pytest.mark.parametrize("commune, canton, attendu", [
+    ("Lausanne", "VD", True), ("Petit-Lancy", "GE", True), ("Estavayer-Le-Lac", "FR", True), ("ESTAVAYER-LE-LAC", None, True),
+    ("Lausanne - Prélaz", "VD", True), ("Commune inconnue", "VD", False), (None, "VD", False),
+    ("Lausanne", "GE", True),     # nom de commune unique en Suisse : il l'emporte sur un canton contradictoire
+])
+def test_position_par_commune(commune, canton, attendu):
+    from sia_check import localites
+    pos = localites.position(commune, canton)
+    assert (pos is not None) == attendu
+    if pos:     # en Suisse, coordonnées LV95
+        assert 2_480_000 < pos[0] < 2_840_000 and 1_070_000 < pos[1] < 1_300_000
+
+
+def test_position_dans_le_json(projet):
+    projet.infos.update(commune="Bussigny", canton="VD")
+    e, n = b.projet_json(projet)["position"]
+    assert abs(e - 2_532_242) < 2_000 and abs(n - 1_155_984) < 2_000
+
+
+def test_formes_encodage_et_libelle():
+    from sia_check import formes
+    assert formes.decoder("Rectangle compact") == {"": "Rectangle compact"}
+    d = formes.decoder("B : carre ; A : Rectangle compact ; C : inconnue")
+    assert d == {"A": "Rectangle compact", "B": "Carré"}
+    assert formes.encoder(d) == "A : Rectangle compact ; B : Carré"
+    assert formes.encoder({"A": "barre"}) == "Barre"
+    assert formes.libelle(d) == "Îlot de bâtiments : Carré, Rectangle compact"
+    assert formes.libelle({"": "En L"}) == "En L"
+    assert formes.libelle({}) == ""

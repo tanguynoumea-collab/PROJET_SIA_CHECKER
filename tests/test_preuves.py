@@ -82,3 +82,20 @@ def test_issues_keep_their_key(doc):
 def test_ratios_passed_to_review(doc):
     doc["ratios"] = [{"building": "*", "id": "SN/SP", "value": 0.85, "status": "ok"}]
     assert preuves.build(doc)["ratios"] == doc["ratios"]
+
+
+def test_emprises_per_building(doc):
+    """Emprise : SP hors-sol seule (N00, 10 x 10 m), pas le sous-sol de 20 x 10 m ; nom du bâtiment des surfaces."""
+    ev = preuves.build(doc)
+    d = ev["emprises"]["B01"]
+    assert d["source"] == "SP hors-sol" and d["niveaux"] == ["N00"] and d["aire_m2"] == 100.0
+    assert d["forme_estimee"] == "Carré" and "1 emprises" in preuves.summary(ev)
+
+
+def test_skill_lists_the_exact_shapes():
+    """La procédure de la revue IA demande le bloc « formes » et cite les 13 formes, texte exact."""
+    from pathlib import Path
+    from sia_check import formes
+    skill = (Path(__file__).resolve().parents[1] / ".claude/skills/revue-ia/SKILL.md").read_text(encoding="utf-8")
+    assert '"formes": {' in skill and "emprises" in skill
+    assert all(f"« {f} »" in skill for f in formes.FORMES)

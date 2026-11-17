@@ -34,6 +34,9 @@ public sealed class AppPaths(string roamingRoot, string localRoot)
     /// <summary>Base du benchmark lue par le moteur (sia-check --benchmark) : régénérable, reste locale.</summary>
     public string BenchmarkFile => Path.Combine(localRoot, "benchmark", "benchmark.json");
 
+    /// <summary>Registre des adresses de bâtiments de swisstopo (CSV zippé, ~140 Mo) et son index : carte du benchmark.</summary>
+    public string AddressRegisterFile => Path.Combine(localRoot, "geodonnees", "adresses.csv.zip");
+
     /// <summary>Profil du navigateur intégré (WebView2) du dashboard : cache, régénérable, local.</summary>
     public string WebViewDataDir => Path.Combine(localRoot, "webview2");
 

@@ -328,6 +328,7 @@ public sealed partial class MainViewModel
                 Project = doc.Project, AnalysisDate = doc.Date, ReviewDate = reviewDate,
                 Model = $"{AiPricing.ModelLabel} (SIA Check Viewer)", Points = output.Points,
                 Version = output.Subjects is null ? 1 : 2, Subjects = output.Subjects,
+                Shapes = output.Shapes is { Count: > 0 } ? output.Shapes.ToDictionary() : null,
             });
             File.Copy(evidencePath, Path.Combine(saveDir, $"{AiReviewFiles.Prefix(doc.Project)}_{reviewDate}.preuves.json"), overwrite: true);
             AiStage = AiStage.Done;
@@ -336,6 +337,7 @@ public sealed partial class MainViewModel
             // Les décisions de la revue sur les corrections réorientent les sujets : le moteur les fusionne.
             if (output.Subjects is not null) await AnalyseAsync();
             ShowAiReport();
+            if (output.Shapes is { Count: > 0 } shapes) await ProposeShapesAsync(dir, shapes);
             var missing = output.MissingKeys.Count > 0 ? $" · {output.MissingKeys.Count} points sans verdict du modèle (« à confirmer »)" : "";
             _shell.Notify($"Revue IA terminée · coût réel {response.CostUsd:0.00} USD ({response.InputTokens:N0} + {response.OutputTokens:N0} jetons){missing}.");
         }

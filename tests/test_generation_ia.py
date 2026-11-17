@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from sia_check import cli, config
+from sia_check import cli, config, formes
 from sia_check.generation import classify, engine, ia, journal
 from conftest import ROOT
 from ifc_synth import build
@@ -114,3 +114,51 @@ def test_app_contract_maquette_surface_links_and_manual_decision(tmp_path):
     assert (d["origine"], d["statut"], d["code"], d["type"]) == ("manuel", "acceptée", "SUS", "Parking")
     again = engine.generate(ifc, cfg, tmp_path / "out", "Synth")
     assert next(s for s in again.data["spaces"] if s["gid"] == sej["gid"])["source"] == "manuel"
+
+
+EMPRISES = {"A": {"aire_m2": 300.0, "forme_estimee": "Barre"}, "B": {"aire_m2": 200.0, "forme_estimee": "Carré"}}
+
+
+def test_prompt_carries_footprints_and_asks_for_shapes():
+    q = ia.questions(RAPPORT, emprises=EMPRISES)
+    assert q["emprises"] == EMPRISES
+    p = ia.prompt(q)
+    assert p["batiments"] == 2 and p["output_tokens"] == [970, 2910]         # + 50 jetons par bâtiment
+    assert "<emprises>" in p["user"] and '"forme_estimee":"Barre"' in p["user"]
+    assert "<formes>" in p["system"] and "« Cour fermée / îlot »" in p["system"]
+
+
+def test_shapes_read_from_response():
+    q = ia.questions(RAPPORT, emprises=EMPRISES)
+    text = """<decisions>{}</decisions><synthese>rien</synthese>
+<formes>
+```json
+{"A": {"forme": "barre", "raison": "60 x 12 m"}, "B": {"forme": "Pentagone", "raison": "?"},
+ "Z": {"forme": "Carré", "raison": "bâtiment inventé"}}
+```
+</formes>"""
+    assert ia.parse(text, q)[0] == []
+    assert ia.formes(text, q) == {"A": {"forme": "Barre", "raison": "60 x 12 m"}}   # normalisée ; inconnues écartées
+    assert ia.formes("<decisions>{}</decisions>", q) == {}                         # sans bloc : rien
+    assert ia.formes("<formes>pas du json</formes>", q) == {}
+
+
+def test_cli_writes_shapes_file_and_tolerates_missing_block(tmp_path):
+    pytest.importorskip("shapely")
+    cfg = config.load(ROOT / "config.yaml").generation
+    g = engine.generate(build(tmp_path / "synth.ifc"), cfg, tmp_path / "out", "Synth")
+    assert cli.main(["--questions-ia", str(g.folder)]) == 0
+    q = json.loads((g.folder / ia.QUESTIONS).read_text(encoding="utf-8"))
+    (bat,) = q["emprises"]                                    # le bâtiment généré, sous le nom de ses surfaces
+    assert bat == "A" and q["emprises"][bat]["source"] == "SP hors-sol"
+    assert q["emprises"][bat]["forme_estimee"] in formes.FORMES
+    assert json.loads((g.folder / ia.PROMPT).read_text(encoding="utf-8"))["batiments"] == 1
+    # réponse sans bloc formes : décisions lues, aucun fichier de formes
+    (g.folder / ia.RESPONSE).write_text("<decisions>{}</decisions><synthese>ok</synthese>", encoding="utf-8")
+    assert cli.main(["--reponse-ia", str(g.folder)]) == 0 and not (g.folder / ia.FORMES).exists()
+    (g.folder / ia.RESPONSE).write_text(
+        '<decisions>{}</decisions><synthese>ok</synthese><formes>{"A": {"forme": "En L", "raison": "aile"}}</formes>',
+        encoding="utf-8")
+    assert cli.main(["--reponse-ia", str(g.folder)]) == 0
+    assert json.loads((g.folder / ia.FORMES).read_text(encoding="utf-8")) == {
+        "format": "sia-check-formes-ia", "version": 1, "formes": {"A": {"forme": "En L", "raison": "aile"}}}

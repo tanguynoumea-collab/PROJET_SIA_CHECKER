@@ -16,16 +16,20 @@
   --police: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --police-forte: "Segoe UI Variable Display Semibold", "Segoe UI Semibold", "Segoe UI", system-ui, sans-serif;
   --mono: "Cascadia Mono", Consolas, monospace;
+  /* Maquettes comparées (V5_PLAN, partie 1) : six teintes distinctes entre elles, des couleurs SIA et du texte */
+  --cmp1: #1C6FD1; --cmp2: #C2255C; --cmp3: #2B8A3E; --cmp4: #9C36B5; --cmp5: #D9480F; --cmp6: #7A4E2D;
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme])) {
     color-scheme: dark;
+  --cmp1: #4DABF7; --cmp2: #F06595; --cmp3: #51CF66; --cmp4: #DA77F2; --cmp5: #FF922B; --cmp6: #C9A27E;
     --fond: #15171C; --surface: #1E2128; --surface-2: #272B33; --texte: #E7E9EE; --texte-2: #9BA1AD;
     --accent: #8B83FF; --sur-accent: #15171C; --filet: #2E323B; --ok: #59C28F; --alerte: #E8B04A; --erreur: #F27272;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --cmp1: #4DABF7; --cmp2: #F06595; --cmp3: #51CF66; --cmp4: #DA77F2; --cmp5: #FF922B; --cmp6: #C9A27E;
   --fond: #15171C; --surface: #1E2128; --surface-2: #272B33; --texte: #E7E9EE; --texte-2: #9BA1AD;
   --accent: #8B83FF; --sur-accent: #15171C; --filet: #2E323B; --ok: #59C28F; --alerte: #E8B04A; --erreur: #F27272;
 }
@@ -45,11 +49,13 @@
 }
 :root[data-theme="mint-dark"] {
   color-scheme: dark;
+  --cmp1: #4DABF7; --cmp2: #F06595; --cmp3: #51CF66; --cmp4: #DA77F2; --cmp5: #FF922B; --cmp6: #C9A27E;
   --fond: #041716; --surface: #062220; --surface-2: #09302E; --texte: #E6FFFB; --texte-2: #99B0AD;
   --accent: #14B8A6; --accent-texte: #56D7C5; --sur-accent: #0B3D3B; --filet: #233F3C; --ok: #59C28F; --alerte: #E8B04A; --erreur: #F27272;
 }
 :root[data-theme="amber-dark"] {
   color-scheme: dark;
+  --cmp1: #4DABF7; --cmp2: #F06595; --cmp3: #51CF66; --cmp4: #DA77F2; --cmp5: #FF922B; --cmp6: #C9A27E;
   --fond: #14131C; --surface: #1F1D2B; --surface-2: #2F2B36; --texte: #FFF8EF; --texte-2: #AFAAA7;
   --accent: #FF7A00; --accent-texte: #FF9226; --sur-accent: #1F1D2B; --filet: #3C3944; --ok: #59C28F; --alerte: #E8B04A; --erreur: #F27272;
 }
@@ -96,7 +102,8 @@ select {
 .liste label { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; }
 .liste .nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .case { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
-input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+/* cases et boutons radio : même taille partout, sans rétrécir quand le libellé passe à la ligne */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; flex: none; }
 .proximite { display: inline-flex; gap: 2px; margin-left: auto; flex: none; }
 .proximite i { width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--texte-2); opacity: .45; }
 .proximite i.plein { background: var(--texte-2); opacity: 1; }
@@ -291,6 +298,253 @@ table.programme tbody tr { cursor: default; }
 /* Programmer : vitrée et pleine sous la façade (Évolution 3.7) */
 table.programme td.sous { padding-left: 1.5rem; color: var(--texte-2); }
 
-/* Cages d'escalier par étage (Comparer) */
+/* Cages d'escalier par étage (maquettes comparées) */
 #cages { margin-top: 16px; }
-#table-cages th, #table-cages tbody tr { cursor: default; }
+
+/* Tendances et comparaison (V5_PLAN, partie 1) : volets à gauche, collants et défilant seuls ; zone centrale à droite */
+.benchmark { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; align-items: start; }
+.volets { position: sticky; top: calc(var(--haut-selection, 64px) + 12px); max-height: calc(100vh - var(--haut-selection, 64px) - 24px);
+          overflow-y: auto; display: flex; flex-direction: column; gap: 12px; overscroll-behavior: contain; }
+.volet { background: var(--surface); border-radius: 6px; padding: 4px 12px 12px; }
+.volet-entete { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.volet-note { margin: 8px 0 0; }
+.volet-actions { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; font-size: 12px; }
+.volet-actions .tri { display: flex; align-items: center; gap: 6px; color: var(--texte-2); margin-right: auto; }
+.volet-actions select { min-width: 0; min-height: 28px; padding: 2px 6px; font-size: 12px; }
+.volet .liste li { min-height: 28px; padding: 2px 0; }
+.volet .liste li.decoche .nom, .volet .liste li.decoche .mono { color: var(--texte-2); }
+.volet .liste .taille { flex: none; font-size: 11px; }
+.volet .marque { flex: none; font-size: 11px; color: var(--texte-2); border: 1px solid var(--filet); border-radius: 3px; padding: 0 4px; }
+.lien.petit { font-size: 11px; flex: none; }
+.choix-comparees li.choisie .nom { font-weight: 600; }
+.pastille-cmp { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; }
+.pastille-cmp.vide { border: 1px solid var(--filet); }
+td .pastille-cmp { margin-right: 6px; vertical-align: -1px; }
+.centre { min-width: 0; }
+.centre > .saisie { margin-bottom: 16px; }
+/* Menu dépliant des maquettes comparées : fermé, ses pastilles disent ce qui est comparé */
+.volets .recherche input[type="search"] {
+  width: 100%; font: 13px var(--police); color: var(--texte); background: var(--surface); border: 1px solid var(--filet);
+  border-radius: 4px; padding: 5px 8px; min-height: 32px; flex: none;
+}
+.volet-depliant { padding: 0 12px; margin-top: 0; }
+.volet-depliant[open] { padding-bottom: 12px; }
+.volet-depliant summary { display: flex; align-items: center; gap: 8px; min-height: 40px; list-style: none; color: var(--texte); font-size: 13px; }
+.volet-depliant summary::-webkit-details-marker { display: none; }
+.volet-depliant summary::before { content: "▸"; color: var(--texte-2); font-size: 11px; transition: transform .15s; }
+.volet-depliant[open] summary::before { transform: rotate(90deg); }
+.titre-depliant { font: 12px var(--police-forte); color: var(--texte-2); font-variant-caps: all-small-caps; letter-spacing: .02em; }
+.volet-depliant .pastilles { display: inline-flex; gap: 3px; margin-left: auto; }
+.volet-depliant #comparees-compte { flex: none; }
+/* Repères des maquettes comparées dans les figures et sous les KPI */
+.td-repere { opacity: .95; }
+.td-comparees { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; }
+.td-comparees li { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding: 1px 0; }
+.td-comparees .nom { color: var(--texte-2); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td-comparees b { font-weight: 600; }
+.td-cle .td-comparees { margin-top: 8px; border-top: 1px solid var(--filet); padding-top: 6px; }
+/* Anatomie : barres des maquettes comparées, bordées de leur couleur */
+.an-nom.comparee { display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-family: var(--police-forte); }
+.an-pile.comparee { outline: 2px solid; outline-offset: 2px; border-radius: 3px; }
+/* Cages d'escalier, une table par maquette comparée */
+.cages-maquette h3 { display: flex; align-items: center; gap: 8px; margin: 12px 0 6px; font: 13px var(--police-forte); }
+.table-cages th, .table-cages tbody tr { cursor: default; }
+@media (max-width: 1000px) {
+  .benchmark { grid-template-columns: 1fr; }
+  .volets { position: static; max-height: none; }
+}
+
+/* Boutons-icônes et marques : le libellé passe en infobulle */
+.icone { width: 16px; height: 16px; display: block; flex: none; }
+.icone-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; flex: none;
+             border: 0; border-radius: 4px; background: none; color: var(--texte-2); cursor: pointer; }
+.icone-btn:hover { background: var(--surface-2); color: var(--texte); }
+.icone-btn.petit { width: 24px; height: 24px; }
+.icone-btn.petit .icone { width: 14px; height: 14px; }
+.icone-seule { color: var(--texte-2); display: inline-flex; }
+.marque-icone { display: inline-flex; flex: none; color: var(--texte-2); }
+.marque-icone .icone { width: 14px; height: 14px; }
+.marque-icone.ok { color: var(--ok); }
+td.etat-ref, td.lien-ligne { text-align: center; }
+td.etat-ref .marque-icone { vertical-align: middle; }
+td.lien-ligne .icone-btn { color: var(--accent-texte, var(--accent)); vertical-align: middle; }
+.volet-actions .icone-btn { width: 26px; height: 26px; }
+.volet-actions .tri { gap: 4px; }
+/* Recherche : loupe dans le champ */
+.recherche { position: relative; display: block; flex: none; }
+.recherche .icone-seule { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); pointer-events: none; }
+.volets .recherche input[type="search"] { padding-left: 32px; }
+.selection #selection-reinit { margin-bottom: 1px; }
+
+/* Maquette 3D (V5_PLAN, partie 2) : remplace les graphiques, fixée à l'écran pendant que la page et les volets défilent */
+.centre.mode-3d > :not(#vue-3d):not(#vue-carte) { display: none !important; }
+.vue-3d { position: sticky; top: calc(var(--haut-selection, 64px) + 12px); height: calc(100vh - var(--haut-selection, 64px) - 24px);
+          min-height: 420px; display: flex; flex-direction: column; background: var(--surface); border-radius: 6px; overflow: hidden; }
+.v3-entete { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-bottom: 1px solid var(--filet); flex: none; }
+.v3-entete .titre-vue { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v3-ref { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--texte-2); margin-left: 8px; flex: none; }
+.v3-outils { display: flex; gap: 2px; margin-left: auto; flex: none; }
+.v3-outils .fermer { margin-left: 8px; }
+.v3-corps { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
+.v3-scene { position: relative; min-width: 0; min-height: 0; background: var(--fond); outline: 1px solid transparent; outline-offset: -1px; }
+.v3-scene.actif { outline-color: var(--accent); }
+.v3-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+.v3-canvas:active { cursor: grabbing; }
+.v3-aide { position: absolute; left: 10px; top: 8px; margin: 0; font-size: 11px; pointer-events: none; z-index: 1; }
+.v3-etat { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 24px;
+           text-align: center; font-size: 14px; background: color-mix(in srgb, var(--fond) 80%, transparent); z-index: 2; }
+.v3-info { position: absolute; left: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 2px; z-index: 1; max-width: 70%;
+           background: var(--surface); border: 1px solid var(--filet); border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+.v3-info b { font: 13px var(--police-forte); }
+.v3-panneau { overflow-y: auto; border-left: 1px solid var(--filet); padding: 0 12px 12px; overscroll-behavior: contain; }
+.v3-panneau details { margin-top: 10px; }
+.v3-panneau summary { font: 12px var(--police-forte); color: var(--texte-2); font-variant-caps: all-small-caps; letter-spacing: .02em; }
+.v3-panneau h3 { margin: 10px 0 2px; font: 11px var(--police-forte); color: var(--texte-2); }
+.v3-calques { list-style: none; margin: 0; padding: 0; }
+.v3-calques label { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 8px; padding: 2px 0; cursor: pointer; }
+.v3-calques .secondaire { font-size: 11px; text-align: right; }
+.v3-pastille { width: 12px; height: 12px; border-radius: 2px; background: var(--c); display: inline-block; }
+.v3-pastille.hachure { background: repeating-linear-gradient(135deg, var(--c) 0 2px, color-mix(in srgb, var(--c) 25%, white) 2px 5px); }
+.v3-puces { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.v3-puce { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.v3-niveaux { display: flex; flex-direction: column; gap: 8px; }
+.v3-niveaux select { min-width: 0; width: 100%; }
+.v3-eclat { display: flex; align-items: center; gap: 8px; }
+.v3-eclat input { flex: 1; accent-color: var(--accent); }
+.v3-table { font-size: 12px; margin-top: 6px; }
+.v3-table th, .v3-table td { padding: 3px 4px; }
+.v3-table th { position: static; cursor: default; }
+.v3-table tbody tr { cursor: default; }
+.v3-table td:first-child { white-space: normal; text-align: left; }
+.v3-table td.n { text-align: right; }
+.icone-btn.cube.actif { color: var(--accent-texte, var(--accent)); background: var(--surface-2); }
+.sans-cube { width: 24px; flex: none; }
+@media (max-width: 1000px) {
+  .vue-3d { position: static; height: 80vh; }
+  .v3-corps { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+  .v3-panneau { border-left: 0; border-top: 1px solid var(--filet); max-height: 40vh; }
+}
+
+/* Mode maquette : tout tient dans la fenêtre (app.js, ajuster3D) ; la page n'a pas de barre de défilement */
+html.mode-3d, html.mode-3d body { overflow: hidden; }
+html.mode-3d main { padding-bottom: 0; }
+html.mode-3d .vue-3d, html.mode-3d .vue-carte { position: relative; top: 0; height: var(--haut-3d, 70vh); min-height: 0; }
+html.mode-3d .volets { position: relative; top: 0; max-height: var(--haut-3d, 70vh); }
+
+/* Barre unique : onglets à gauche, pré-filtre à droite, collée en haut de la page */
+.entete-page { display: flex; align-items: center; flex-wrap: wrap; gap: 0 28px; padding: 0 24px; background: var(--surface);
+         border-bottom: 1px solid var(--filet); position: sticky; top: 0; z-index: 2; }
+.entete-page .tabs { padding: 0; background: none; border-bottom: 0; flex: none; }
+.entete-page .selection { position: static; flex: 1; align-items: center; gap: 6px 16px; padding: 6px 0; background: none; border-bottom: 0; }
+.entete-page .selection label { flex-direction: row; align-items: center; gap: 6px; }
+.entete-page .selection select { min-width: 170px; min-height: 30px; padding: 3px 8px; }
+.entete-page .selection #selection-resume { padding-bottom: 0; }
+.entete-page .selection #selection-reinit { margin-bottom: 0; }
+@media (max-width: 1000px) {
+  .entete-page { position: static; padding: 0 16px; }
+  .entete-page .selection { flex-basis: 100%; }
+}
+
+/* Bouton Carte, à droite de la recherche, en haut du volet de gauche */
+.volets-haut { display: flex; gap: 8px; align-items: center; flex: none; }
+.volets-haut .recherche { flex: 1; min-width: 0; }
+/* Programmer : titre des hypothèses et export Excel sur une ligne */
+.prog-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.prog-tete h2 { margin: 0; }
+.bouton-export { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; cursor: pointer;
+                 border: 1px solid var(--filet); border-radius: 6px; background: var(--surface); color: var(--texte); font: inherit; }
+.bouton-export .icone { width: 16px; height: 16px; }
+.bouton-export:hover { background: var(--surface-2); }
+/* filtre de forme du volet (partie 5) : une liste compacte, marquée quand elle filtre */
+.volet-actions .filtre-forme { flex: 1 1 auto; min-width: 0; }
+.volet-actions .filtre-forme select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.volet-actions .filtre-forme select.actif { border-color: var(--accent); color: var(--accent); }
+.bouton-carte { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; flex: none; cursor: pointer;
+                font: 13px var(--police); color: var(--texte); background: var(--surface); border: 1px solid var(--filet); border-radius: 4px; }
+.bouton-carte .icone { width: 16px; height: 16px; }
+.bouton-carte:hover { background: var(--surface-2); }
+.bouton-carte[aria-pressed="true"] { background: var(--accent); color: var(--sur-accent); border-color: var(--accent); }
+.icone-btn[aria-pressed="true"] { background: var(--surface-2); color: var(--accent-texte, var(--accent)); }
+.bouton-secondaire { font: 13px var(--police); color: var(--texte); background: var(--surface); border: 1px solid var(--filet);
+                     border-radius: 4px; min-height: 30px; padding: 0 10px; cursor: pointer; }
+.bouton-secondaire:disabled { color: var(--texte-2); cursor: default; opacity: .6; }
+
+/* Carte (V5_PLAN, partie 3) : Leaflet, fonds et calques de geo.admin.ch, fond minimum hors ligne */
+.carte-scene { overflow: hidden; }
+.carte-leaflet { position: absolute; inset: 0; background: var(--fond); font: 12px var(--police); }
+/* fond gris : les calques qui sont des plans en couleur (cadastre) suivent le fond au lieu de le recolorer */
+.carte-leaflet.fond-gris .calque-desature { filter: grayscale(1); }
+.carte-leaflet.leaflet-container { background: var(--fond); }     /* leaflet.css, chargé après, met #ddd */
+.carte-scene.outil-zone .carte-leaflet, .carte-scene.outil-zone .leaflet-interactive { cursor: crosshair; }
+.carte-aide { background: color-mix(in srgb, var(--surface) 85%, transparent); padding: 2px 6px; border-radius: 4px; z-index: 500; }
+.carte-hors-ligne { position: absolute; left: 10px; bottom: 10px; z-index: 500; margin: 0; max-width: 60%; font-size: 12px;
+                    background: var(--surface); border: 1px solid var(--alerte); border-radius: 4px; padding: 6px 8px; }
+.leaflet-container .carte-info-bulle, .carte-info-bulle .leaflet-popup-content-wrapper, .carte-info-bulle .leaflet-popup-tip {
+  background: var(--surface); color: var(--texte); border: 1px solid var(--filet); box-shadow: 0 2px 8px rgb(0 0 0 / .18); }
+.carte-info-bulle { font: 12px/1.45 var(--police); }
+.carte-info-bulle .leaflet-popup-content { margin: 8px 10px; font: 12px/1.5 var(--police); }
+.leaflet-tooltip.carte-info-bulle::before { display: none; }
+.leaflet-control-attribution { font-size: 10px; background: color-mix(in srgb, var(--surface) 80%, transparent) !important; color: var(--texte-2); }
+.leaflet-control-attribution a { color: var(--accent-texte, var(--accent)); }
+.carte-calques { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.carte-calques li { display: flex; flex-direction: column; gap: 3px; }
+.carte-calques label.case { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.carte-calques input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
+.carte-calques input[type="range"]:disabled { opacity: .35; }
+.carte-legende-img { max-width: 100%; background: #FFFFFF; border-radius: 4px; padding: 4px; }
+.carte-symbole.approx { border-style: dashed; --c: var(--texte-2); }
+.carte-legende { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.carte-legende li { display: flex; align-items: center; gap: 8px; }
+.carte-symbole { width: 13px; height: 13px; border-radius: 50%; flex: none; box-sizing: border-box; border: 2px solid var(--c, var(--texte-2));
+                 background: radial-gradient(circle, var(--c, var(--texte-2)) 0 28%, var(--surface) 31%); }
+.carte-symbole.coche { background: var(--c, var(--texte-2)); border-color: var(--surface); box-shadow: 0 0 0 1px var(--filet); }
+.carte-symbole.neutre { --c: var(--texte-2); }
+.carte-symbole.ecarte { background: #CBD5E1; border-color: var(--surface); box-shadow: 0 0 0 1px var(--filet); }
+.carte-filtres { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; font-size: 12px; }
+.carte-filtres label { display: flex; flex-direction: column; gap: 3px; color: var(--texte-2); }
+.carte-filtres label.case { flex-direction: row; align-items: center; gap: 6px; color: var(--texte); }
+.carte-filtres select { min-width: 0; width: 100%; min-height: 30px; }
+.carte-filtres p { margin: 0; }
+.carte-plage { display: flex; align-items: center; gap: 6px; }
+.carte-plage input, .carte-km input { width: 90px; font: 13px var(--police); color: var(--texte); background: var(--surface);
+                                      border: 1px solid var(--filet); border-radius: 4px; padding: 4px 6px; min-height: 30px; }
+.carte-km { flex-direction: row !important; align-items: center; gap: 6px !important; }
+#carte-sans { margin-top: 6px; }
+
+/* Projets sur la carte : pastille (taille selon la SP hors-sol) et étiquette de l'ID, en HTML (Leaflet divIcon).
+   Blanc cerclé d'une ombre douce : lisible sur la carte nationale, l'orthophoto et les calques, sans contour lourd. */
+.carte-projet { cursor: pointer; }
+.carte-projet .pastille { display: block; width: 100%; height: 100%; border-radius: 50%; box-sizing: border-box;
+                          background: var(--c); border: 2px solid #FFFFFF;
+                          box-shadow: 0 1px 3px rgb(15 23 42 / .45), 0 0 0 1px rgb(15 23 42 / .12);
+                          transition: transform .12s ease, box-shadow .12s ease; }
+.carte-projet.hors .pastille { background: radial-gradient(circle, var(--c) 0 28%, #FFFFFF 31%); border: 2px solid var(--c);
+                               box-shadow: 0 0 0 2px #FFFFFF, 0 1px 4px rgb(15 23 42 / .45); }
+.carte-projet.ecarte .pastille { background: #CBD5E1; border-color: #FFFFFF; opacity: .85; }
+.carte-projet.approx .pastille { border-style: dashed; }
+.carte-projet.comparee .pastille { box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 5px var(--anneau), 0 2px 6px rgb(15 23 42 / .45); }
+.carte-projet .etiquette { position: absolute; left: calc(100% + 6px); top: 50%; transform: translateY(-50%);
+                           font: 600 11px/1 var(--mono); color: #0F172A; white-space: nowrap; pointer-events: none;
+                           background: rgb(255 255 255 / .92); padding: 3px 5px; border-radius: 4px;
+                           box-shadow: 0 1px 3px rgb(15 23 42 / .3); }
+.carte-projet.ecarte .etiquette { color: #64748B; }
+.carte-projet:hover .pastille, .carte-projet:focus-visible .pastille { transform: scale(1.18); }
+.carte-projet:hover { z-index: 10000 !important; }
+.carte-projet:focus { outline: none; }
+/* étiquettes masquées à l'échelle de la Suisse (trop serrées), visibles dès l'échelle régionale (carte.js, zoomend) */
+.carte-leaflet.vue-large .carte-projet:not(:hover) .etiquette { display: none; }
+/* contour de focus du navigateur sur une commune cliquée : inutile, et il masquait la carte */
+.carte-leaflet .leaflet-interactive:focus { outline: none; }
+
+/* Calques de la carte rangés par thème (Repères, Urbanisme et foncier…), chaque thème repliable */
+.carte-calques .carte-groupe { margin: 0; border-top: 1px solid var(--filet); padding: 4px 0 2px; }
+.carte-calques > li:first-child .carte-groupe { border-top: 0; }
+.carte-groupe > summary { display: flex; align-items: center; gap: 6px; cursor: pointer; font: 12px var(--police-forte); color: var(--texte);
+                          padding: 4px 0; list-style: none; }
+.carte-groupe > summary::-webkit-details-marker { display: none; }
+.carte-groupe > summary::before { content: "▸"; color: var(--texte-2); font-size: 10px; transition: transform .15s; }
+.carte-groupe[open] > summary::before { transform: rotate(90deg); }
+.carte-groupe-compte { margin-left: auto; min-width: 18px; padding: 0 5px; border-radius: 9px; font: 11px/18px var(--police-forte);
+                       text-align: center; background: var(--accent); color: var(--sur-accent); }
+.carte-groupe > ul { list-style: none; margin: 2px 0 6px; padding: 0 0 0 14px; display: flex; flex-direction: column; gap: 6px; }
+.carte-groupe li { display: flex; flex-direction: column; gap: 3px; }

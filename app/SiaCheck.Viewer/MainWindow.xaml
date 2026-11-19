@@ -261,14 +261,33 @@
                 <!-- Benchmark : comparer un projet à ceux qui lui ressemblent -->
                 <DockPanel Grid.Column="2" Margin="{StaticResource HomeColumnRight}" Grid.IsSharedSizeScope="True">
                     <StackPanel DockPanel.Dock="Top">
-                        <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Benchmark" />
-                        <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"
-                                   Text="Comparer un projet à ceux qui lui ressemblent." />
-                        <ui:Button Margin="0,24,0,0" Appearance="Primary" Icon="{ui:SymbolIcon ChartMultiple20}"
-                                   Content="Ouvrir le benchmark" Command="{Binding OpenBenchmarkCommand}"
-                                   MinHeight="{StaticResource TargetSize}"
-                                   ToolTipService.ShowOnDisabled="True"
-                                   ToolTip="Comparer les projets de la base (choisissez d'abord le dossier de la base)" />
+                        <DockPanel>
+                            <!-- Module Données SIG (docs/V6_PLAN.md, partie 8) : la carte de toute la base et ses fiches SIG -->
+                            <ui:Button DockPanel.Dock="Right" VerticalAlignment="Top" Margin="16,0,0,0" Appearance="Secondary"
+                                       Icon="{ui:SymbolIcon Map20}" Content="Données SIG" Command="{Binding OpenSigModuleCommand}"
+                                       MinHeight="{StaticResource TargetSize}" ToolTipService.ShowOnDisabled="True"
+                                       AutomationProperties.Name="Ouvrir le module Données SIG"
+                                       ToolTip="Le contexte de chaque projet de la base sur la carte : zone, desserte, densités, parcelle, points de vigilance,&#x0a;avec des filtres pour trouver les projets (zone, desserte, type de site…)." />
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource TextSection}" Margin="0" Text="Benchmark" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource TextTitle}" TextWrapping="Wrap"
+                                           Text="Comparer un projet à ceux qui lui ressemblent." />
+                            </StackPanel>
+                        </DockPanel>
+                        <StackPanel Margin="0,24,0,0" Orientation="Horizontal">
+                            <ui:Button Appearance="Primary" Icon="{ui:SymbolIcon ChartMultiple20}"
+                                       Content="Ouvrir le benchmark" Command="{Binding OpenBenchmarkCommand}"
+                                       MinHeight="{StaticResource TargetSize}"
+                                       ToolTipService.ShowOnDisabled="True"
+                                       ToolTip="Comparer les projets de la base (choisissez d'abord le dossier de la base)" />
+                            <!-- Version HTML autonome (docs/V6_PLAN.md) : secondaire, à côté du lancement principal -->
+                            <ui:Button Margin="8,0,0,0" Appearance="Transparent" Icon="{ui:SymbolIcon Globe20}"
+                                       Content="Version HTML" Command="{Binding OpenBenchmarkHtmlCommand}"
+                                       MinHeight="{StaticResource TargetSize}"
+                                       ToolTipService.ShowOnDisabled="True"
+                                       AutomationProperties.Name="Ouvrir la version HTML du benchmark"
+                                       ToolTip="Ouvrir la version HTML partagée du benchmark (version Admin, complète), dans le navigateur.&#x0a;Les versions Admin et Light sont mises à jour à chaque modification de la base, dans les dossiers « Benchmark Admin » et « Benchmark Light » à côté de la base." />
+                        </StackPanel>
                         <TextBlock Margin="0,8,0,0" Style="{StaticResource TextCaption}" Text="{Binding BenchmarkSummary}"
                                    Visibility="{Binding BenchmarkSummary, Converter={StaticResource VisibleWhen}}" />
                         <TextBlock Margin="0,4,0,0" Style="{StaticResource TextCaption}" Foreground="{DynamicResource BrushVerdictWarning}"
@@ -530,7 +549,7 @@
                     <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon ArrowLeft20}" Command="{Binding CloseDashboardCommand}"
                                ToolTip="{Binding CloseDashboardTooltip}" AutomationProperties.Name="Retour"
                                MinWidth="{StaticResource TargetSize}" MinHeight="{StaticResource TargetSize}" />
-                    <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextTitle}" Text="Benchmark" />
+                    <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextTitle}" Text="{Binding DashboardTitle}" />
                     <TextBlock Margin="16,0,0,0" VerticalAlignment="Center" Style="{StaticResource TextCaption}" Text="{Binding BenchmarkSummary}" />
                     <StackPanel Margin="16,0,0,0" Orientation="Horizontal" VerticalAlignment="Center"
                                 Visibility="{Binding IsBenchmarkLoading, Converter={StaticResource BoolToVisibility}}">

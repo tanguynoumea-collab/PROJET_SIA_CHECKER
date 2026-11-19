@@ -3,7 +3,7 @@
 // l'application : une couleur par catégorie SIA, la SP en dalle plus sombre sous les pièces, les contours de chaque
 // surface, calques, bâtiments, niveau, éclatement. three.js est livré dans vendor/ : aucun accès réseau.
 import * as THREE from "three";
-import { OrbitControls } from "./vendor/OrbitControls.js";
+import { OrbitControls } from "three/orbit";
 
 const SP_DESCENTE = 0.04;   // m : dessus de la SP sous celui des pièces (joints visibles), comme SceneController
 const SP_TEINTE = 0.72;     // SP plus foncée que sa couleur de légende
@@ -16,8 +16,19 @@ let v = null;   // la visionneuse : renderer, scène, caméra, contrôles (cré�
 let m = null;   // la maquette affichée et son état (calques, bâtiments, niveau, éclatement)
 let jeton = 0;  // ouverture en cours : une ouverture plus récente annule le chargement d'une plus ancienne
 
-/** Lit une maquette : JSON compressé en gzip (ou déjà décompressé par le serveur). */
-async function lire(url) {
+/** Lit une maquette : JSON compressé en gzip (ou déjà décompressé par le serveur). La source est une adresse, ou
+ *  les octets de la maquette intégrée à la version HTML autonome. */
+async function lire(source) {
+  const brut = source instanceof Uint8Array ? source : await telecharger(source);
+  const gzip = brut[0] === 0x1f && brut[1] === 0x8b;
+  const texte = gzip ? await new Response(new Blob([brut]).stream().pipeThrough(new DecompressionStream("gzip"))).text()
+                     : new TextDecoder().decode(brut);
+  const d = JSON.parse(texte);
+  if (d.format !== "sia-check-maquette" || d.version !== 1) throw new Error("format de maquette inconnu");
+  return d;
+}
+
+async function telecharger(url) {
   let r;
   try {
     r = await fetch(url, { cache: "no-store" });
@@ -25,13 +36,7 @@ async function lire(url) {
     throw new Error("fichier de la maquette inaccessible (dossier de la base hors d'atteinte, ou maquette non servie)");
   }
   if (!r.ok) throw new Error(r.status === 404 ? "maquette introuvable dans la base" : `erreur ${r.status}`);
-  const brut = new Uint8Array(await r.arrayBuffer());
-  const gzip = brut[0] === 0x1f && brut[1] === 0x8b;
-  const texte = gzip ? await new Response(new Blob([brut]).stream().pipeThrough(new DecompressionStream("gzip"))).text()
-                     : new TextDecoder().decode(brut);
-  const d = JSON.parse(texte);
-  if (d.format !== "sia-check-maquette" || d.version !== 1) throw new Error("format de maquette inconnu");
-  return d;
+  return new Uint8Array(await r.arrayBuffer());
 }
 
 const teinte = (c, f) => new THREE.Color(c).multiplyScalar(f);
@@ -109,11 +114,21 @@ function choisir(indice) {
 }
 
 /** Contours d'une surface : les arêtes qui n'appartiennent qu'à un de ses triangles. */
-function contours(pos, idx, de, a, sortie) {
+function contours(pos, idx, de, a, sortie, v) {
+  // Sommets reconnus par leur position (centimètres entiers de la maquette), pas par leur numéro : une maquette dont
+  // chaque triangle a ses propres sommets (projets générés depuis l'IFC) ferait sinon d'une arête intérieure un bord,
+  // et toute la triangulation serait tracée.
+  const ids = new Map(), id = (p) => {
+    const cle = `${v[3 * p]},${v[3 * p + 1]},${v[3 * p + 2]}`;
+    let n = ids.get(cle);
+    if (n === undefined) ids.set(cle, (n = p));
+    return n;
+  };
   const vues = new Map();
   for (let t = de; t < a; t++)
     for (let k = 0; k < 3; k++) {
-      const p = idx[3 * t + k], q = idx[3 * t + ((k + 1) % 3)];
+      const p = id(idx[3 * t + k]), q = id(idx[3 * t + ((k + 1) % 3)]);
+      if (p === q) continue;     // triangle dégénéré
       const cle = p < q ? `${p},${q}` : `${q},${p}`;
       vues.set(cle, (vues.get(cle) || 0) + 1);
     }
@@ -161,7 +176,7 @@ function construire(d) {
     mesh.userData = { lot, code: lot.code };
     const traits = [];
     const nTri = lot.i.length / 3;
-    lot.t.forEach((de, k) => contours(pos, lot.i, de, k + 1 < lot.t.length ? lot.t[k + 1] : nTri, traits));
+    lot.t.forEach((de, k) => contours(pos, lot.i, de, k + 1 < lot.t.length ? lot.t[k + 1] : nTri, traits, lot.v));
     const lignes = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(traits, 3)),
       new THREE.LineBasicMaterial({ color: teinte(cat.couleur, CONTOUR_TEINTE) }));
     lignes.userData = { code: lot.code };

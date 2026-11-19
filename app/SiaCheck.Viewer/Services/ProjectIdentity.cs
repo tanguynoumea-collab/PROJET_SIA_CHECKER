@@ -60,7 +60,16 @@ public static class ProjectIdentity
 {
     public const string Id = "ID projet", Nom = "Nom Projet HRS", Canton = "Canton", Commune = "Commune",
                         Typologie = "Categorie d'Ouvrage", Intervention = "Type d'intervention", Phase = "Phase du projet",
-                        Adresse = "Adresse", Forme = "Forme", FormeOrigine = "Forme (origine)";
+                        Adresse = "Adresse", Forme = "Forme", FormeOrigine = "Forme (origine)",
+                        Groupe = "Groupe d'utilisateurs", Terrain = "Surface du terrain (m²)";
+
+    /// <summary>
+    /// Groupes d'utilisateurs (docs/V6_PLAN.md) : une version HTML du benchmark chacun, dans son dossier à côté de la base.
+    /// Le premier voit tout (version complète) ; un autre ne voit que les projets de son groupe. Un projet sans groupe
+    /// reste au premier.
+    /// </summary>
+    public static IReadOnlyList<string> UserGroups { get; } = ["Admin", "Light"];
+    public static string FullGroup => UserGroups[0];
 
     /// <summary>Champs nécessaires pour entrer dans le benchmark (fiche marquée *).</summary>
     public static IReadOnlyList<(string Key, string Label)> RequiredForBase { get; } =
@@ -77,7 +86,8 @@ public static class ProjectIdentity
     {
         [Id] = p.Id, [Nom] = p.Name, [Canton] = p.Canton, [Commune] = p.Commune, [Typologie] = p.Typologie,
         [Intervention] = p.Intervention, [Phase] = p.Phase, [Adresse] = p.Adresse,
-        [Forme] = p.Forme, [FormeOrigine] = p.Forme.Length > 0 ? p.FormeOrigine : "",
+        [Forme] = p.Forme, [FormeOrigine] = p.Forme.Length > 0 ? p.FormeOrigine : "", [Groupe] = p.Groupe,
+        [Terrain] = p.Terrain,
     };
 
     /// <summary>La fiche écrite pour le moteur ; les champs vides n'effacent rien dans le MDP.</summary>

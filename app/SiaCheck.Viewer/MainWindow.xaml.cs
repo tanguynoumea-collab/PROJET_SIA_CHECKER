@@ -303,8 +303,8 @@ public partial class MainWindow : FluentWindow, IShell
     {
         public Grid Grid { get; } = new() { MinWidth = 560 };
         public event Action? Changed;
-        private readonly System.Windows.Controls.TextBox _id, _nom, _commune, _adresse;
-        private readonly System.Windows.Controls.ComboBox _typologie, _canton, _intervention, _phase;
+        private readonly System.Windows.Controls.TextBox _id, _nom, _commune, _adresse, _terrain;
+        private readonly System.Windows.Controls.ComboBox _typologie, _canton, _intervention, _phase, _groupe;
         private readonly System.Windows.Controls.TextBlock _rappel;
         private readonly List<(string Building, System.Windows.Controls.ComboBox Box)> _formes = [];
         private string _formeOrigine;
@@ -325,10 +325,21 @@ public partial class MainWindow : FluentWindow, IShell
                 ToolTip = "Rue et numéro, puis NPA et localité (« Avenue de Morges 26, 1004 Lausanne ») : le projet est placé " +
                           "exactement sur la carte du benchmark. Sans adresse, il est placé au centre de sa commune.",
             });
+            // V6, partie 7 : sans saisie, la parcelle du cadastre (fiche SIG) ; à corriger pour un projet sur plusieurs parcelles
+            _terrain = Add("Surface du terrain (m²)", new System.Windows.Controls.TextBox
+            {
+                Text = initial.Terrain,
+                ToolTip = "Facultatif. Sans saisie, le benchmark prend la parcelle du cadastre à l'adresse du projet. À saisir quand " +
+                          "le projet couvre plusieurs parcelles ou une partie seulement : c'est le dénominateur de l'indice d'utilisation.",
+            });
             _intervention = Add("Type d'intervention *", Liste(lists.Interventions, initial.Intervention, false));
             _phase = Add("Phase SIA", Liste(lists.Phases, initial.Phase, true));
             _formeOrigine = initial.FormeOrigine;
             Add("Forme", FormeRows(initial, lists));
+            // V6 : version HTML du benchmark où le projet est diffusé ; sans groupe, la version complète seulement
+            _groupe = Add("Groupe d'utilisateurs", Liste(ProjectIdentity.UserGroups, initial.Groupe.Length > 0 ? initial.Groupe : ProjectIdentity.FullGroup, false));
+            _groupe.ToolTip = $"Versions HTML du benchmark qui montrent ce projet. « {ProjectIdentity.FullGroup} » : la version complète seulement. " +
+                              "« Light » : aussi la version light. Les droits de chaque version se gèrent sur son dossier SharePoint.";
             if (idReadOnly) _id.ToolTip = "L'ID relie toutes les tables du MDP : il ne se modifie pas ici.";
             _nameTouched = initial.Name.Length > 0;
 
@@ -339,9 +350,9 @@ public partial class MainWindow : FluentWindow, IShell
             Grid.SetColumnSpan(_rappel, 2);
             Grid.Children.Add(_rappel);
 
-            foreach (var box in new[] { _id, _nom, _commune, _adresse }) box.TextChanged += (_, _) => Changed?.Invoke();
+            foreach (var box in new[] { _id, _nom, _commune, _adresse, _terrain }) box.TextChanged += (_, _) => Changed?.Invoke();
             _nom.TextChanged += (_, _) => { if (_nom.IsKeyboardFocusWithin) _nameTouched = true; };
-            foreach (var list in new[] { _typologie, _canton, _intervention, _phase }) list.SelectionChanged += (_, _) => Changed?.Invoke();
+            foreach (var list in new[] { _typologie, _canton, _intervention, _phase, _groupe }) list.SelectionChanged += (_, _) => Changed?.Invoke();
         }
 
         private T Add<T>(string label, T control) where T : FrameworkElement
@@ -428,6 +439,11 @@ public partial class MainWindow : FluentWindow, IShell
             Id = _id.Text.Trim(), Name = _nom.Text.Trim(), Typologie = _typologie.SelectedItem as string ?? "",
             Canton = _canton.SelectedItem as string ?? "", Commune = _commune.Text.Trim(), Adresse = _adresse.Text.Trim(),
             Intervention = _intervention.SelectedItem as string ?? "", Phase = _phase.SelectedItem as string ?? "",
+            Groupe = _groupe.SelectedItem as string ?? "",
+            // nombre seulement (« 4 611 », « 4611,5 ») : le moteur ignore une saisie illisible
+            Terrain = double.TryParse(_terrain.Text.Replace(" ", "").Replace("'", "").Replace(',', '.'),
+                                      System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var m2) && m2 > 0
+                ? m2.ToString(System.Globalization.CultureInfo.InvariantCulture) : "",
             Forme = BuildingShapes.Encode(_formes.Where(f => f.Box.SelectedItem is string { Length: > 0 })
                                                  .ToDictionary(f => f.Building, f => (string)f.Box.SelectedItem!)),
             FormeOrigine = _formes.Any(f => f.Box.SelectedItem is string { Length: > 0 })

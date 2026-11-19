@@ -28,6 +28,10 @@ public sealed class MdpProject
     public string Forme { get; set; } = "";
     /// <summary>Qui a renseigné la forme : « saisie » ou « IA » ; l'IA ne remplace une saisie qu'avec l'accord de l'utilisateur.</summary>
     public string FormeOrigine { get; set; } = "";
+    /// <summary>Groupe d'utilisateurs (V6) : version HTML du benchmark où le projet est diffusé (ProjectIdentity.UserGroups).</summary>
+    public string Groupe { get; set; } = "";
+    /// <summary>Surface du terrain en m² (V6, partie 7) : prime sur la parcelle du cadastre (projet sur plusieurs parcelles…).</summary>
+    public string Terrain { get; set; } = "";
     /// <summary>Bâtiments du projet, pour la fiche (une forme par bâtiment) : non enregistrés.</summary>
     [System.Text.Json.Serialization.JsonIgnore] public IReadOnlyList<string> Buildings { get; set; } = [];
 }

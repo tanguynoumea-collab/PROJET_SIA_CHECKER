@@ -78,6 +78,10 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--apercu", type=Path, help="bilan par niveau et ratios (JSON), avec --depuis-cache et --corrections")
     ap.add_argument("--benchmark", type=Path, help="dossier des tableaux MDP de la base du benchmark")
     ap.add_argument("--benchmark-json", type=Path, help="fichier du benchmark à écrire (avec --benchmark)")
+    ap.add_argument("--benchmark-sig", action="store_true",
+                    help="avec --benchmark : collecte le contexte SIG (geo.admin.ch) des projets qui n'ont pas de fiche SIG-<id>.json")
+    ap.add_argument("--benchmark-groupe",
+                    help="version d'un groupe d'utilisateurs (avec --benchmark) : seuls les projets de ce groupe, « Admin » = tous")
     ap.add_argument("--adresses", type=Path,
                     help="registre des adresses de swisstopo (CSV zippé) : place les projets à leur adresse sur la carte")
     ap.add_argument("--identite", type=Path, help="fiche « Identité du projet » (JSON) écrite dans InfosProjet du MDP")
@@ -532,11 +536,23 @@ def _benchmark(args: argparse.Namespace) -> int:
     projets, erreurs = benchmark.lire_dossier(args.benchmark)
     for e in erreurs:
         log.warning("%s", e)
+    if args.benchmark_groupe:
+        # version d'un groupe d'utilisateurs : recalculée sur ses seuls projets ; les erreurs (noms de fichiers) n'y vont pas
+        projets, erreurs = benchmark.du_groupe(projets, args.benchmark_groupe), []
     out = args.benchmark_json or (args.out or Path(".")) / "benchmark.json"
     try:
         registre = _registre(args)
         try:
-            benchmark.ecrire(benchmark.construire(projets, erreurs, dossier=args.benchmark, registre=registre), out)
+            complete = not args.benchmark_groupe or args.benchmark_groupe.strip().lower() == benchmark.GROUPE_COMPLET.lower()
+            if args.benchmark_sig and complete:
+                from . import sig
+                faites, reportees = sig.synchroniser(args.benchmark, [(p.id, *benchmark.position(p, registre)) for p in projets])
+                if faites or reportees:
+                    print(f"SIG : {faites} fiche{'s' if faites > 1 else ''} collectée{'s' if faites > 1 else ''}"
+                          + (f", {reportees} reportée{'s' if reportees > 1 else ''} (réseau)" if reportees else ""))
+            # version d'un groupe : sans les données SIG (V6_PLAN, partie 3)
+            benchmark.ecrire(benchmark.construire(projets, erreurs, dossier=args.benchmark, registre=registre,
+                                                  avec_sig=complete), out)
         finally:
             if registre is not None:
                 registre.close()

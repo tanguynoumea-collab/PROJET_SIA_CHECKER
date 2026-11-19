@@ -4,26 +4,63 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Benchmark des surfaces</title>
-  <link rel="stylesheet" href="style.css?v=5.0-18">
-  <!-- three.js livré avec la page (vendor/, MIT) : la vue 3D des maquettes n'a besoin d'aucun réseau -->
-  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+  <link rel="stylesheet" href="style.css?v=6.0-8">
+  <!-- three.js livré avec la page (vendor/, MIT) : la vue 3D des maquettes n'a besoin d'aucun réseau. Modules
+       nommés par l'import map seulement : la version HTML autonome (docs/V6_PLAN.md) les remplace par leur contenu. -->
+  <!-- Version HTML autonome (docs/V6_PLAN.md, balise ajoutée par SIA Check) : page de garde, et thème propre à chaque
+       poste (Amber clair par défaut) appliqué avant tout affichage -->
+  <script>
+    if (document.querySelector('meta[name="sia-autonome"]')) {
+      let theme = null;
+      try { theme = localStorage.getItem("sia-check.benchmark.theme"); } catch { /* stockage indisponible */ }
+      document.documentElement.dataset.theme = theme || "amber";
+      document.documentElement.classList.add("mode-garde", "autonome");
+    }
+  </script>
+  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js", "three/orbit": "./vendor/OrbitControls.js", "sia/vue3d": "./vue3d.js?v=6.0-8" } }</script>
 </head>
 <body>
+  <!-- Accueil de la version HTML autonome (affiché seulement en mode-garde). Les tuiles viennent d'app.js (TUILES) :
+       un outil de plus = une entrée de plus dans la liste. -->
+  <section id="garde" class="garde" aria-labelledby="garde-titre">
+    <header class="garde-entete">
+      <div class="garde-marque">
+        <span class="garde-logo" data-icone="graphe" aria-hidden="true"></span>
+        <span><strong>SIA Check</strong><span class="secondaire">Surfaces SIA 416 des projets HRS</span></span>
+      </div>
+      <div class="garde-theme">
+        <button type="button" id="garde-theme" class="icone-btn" data-icone="theme" aria-haspopup="menu" aria-expanded="false"
+                aria-controls="garde-themes" title="Changer le thème" aria-label="Changer le thème"></button>
+        <div id="garde-themes" class="menu-themes" role="menu" aria-label="Thèmes" hidden></div>
+      </div>
+    </header>
+    <div class="garde-corps">
+      <h1 id="garde-titre">Accueil</h1>
+      <p class="secondaire garde-intro">Choisissez un outil.</p>
+      <div id="garde-tuiles" class="garde-tuiles"></div>
+    </div>
+    <footer id="garde-pied" class="garde-pied secondaire"></footer>
+  </section>
   <!-- Dashboard du benchmark (docs/DESIGN_PLAN.md, Évolution 3.1). Sans dépendance : la même page tourne dans
        SIA Check (WebView2, données transmises par l'application) et sur un serveur web (benchmark.json à côté). -->
   <!-- Une seule barre (V5_PLAN, partie 1) : les onglets puis le pré-filtre, pour laisser la hauteur aux vues -->
   <header class="entete-page">
+  <!-- Version HTML autonome seulement : retour à l'accueil -->
+  <button type="button" id="bouton-accueil" class="icone-btn bouton-accueil" data-icone="maison" title="Revenir à l'accueil" aria-label="Revenir à l'accueil"></button>
   <nav class="tabs" role="tablist" aria-label="Vues du benchmark">
     <button role="tab" id="tab-ratios" aria-controls="vue-ratios" aria-selected="true">Tendances</button>
     <button role="tab" id="tab-programmer" aria-controls="vue-programmer" aria-selected="false" tabindex="-1">Programmer</button>
     <button role="tab" id="tab-base" aria-controls="vue-base" aria-selected="false" tabindex="-1">Base</button>
     <button role="tab" id="tab-typologies" aria-controls="vue-typologies" aria-selected="false" tabindex="-1">Typologies</button>
+    <!-- Données SIG des projets (V6_PLAN, partie 5) : seulement si la base en contient (version Admin) -->
+    <button role="tab" id="tab-contexte" aria-controls="vue-contexte" aria-selected="false" tabindex="-1" hidden>Contexte</button>
   </nav>
   <!-- Sélection commune à toutes les vues (DESIGN_PLAN, Évolution 3.5) -->
   <form id="selection" class="selection" aria-label="Sélection des projets" autocomplete="off">
     <label>Typologie <select name="typologie"></select></label>
     <label>Canton <select name="canton"></select></label>
     <label>Intervention <select name="intervention"></select></label>
+    <label title="Densité alentour : habitants + emplois à l'hectare dans 300 m. Urbain dense dès 150, urbain dès 60, périurbain dès 20, rural en dessous." hidden>Type de site <select name="site"></select></label>
     <span id="selection-resume" class="secondaire"></span>
     <button type="button" id="selection-reinit" class="icone-btn" data-icone="reinit" title="Réinitialiser le pré-filtre" aria-label="Réinitialiser le pré-filtre" hidden></button>
   </form>
@@ -97,7 +134,7 @@
                 <details open><summary>Fond de carte</summary><div id="carte-fonds" class="carte-filtres"></div></details>
                 <details><summary>Calques</summary><ul id="carte-calques" class="carte-calques"></ul></details>
                 <details><summary>Projets</summary><ul id="carte-legende" class="carte-legende"></ul></details>
-                <details><summary>Filtres de la carte</summary>
+                <details class="hors-module"><summary>Filtres de la carte</summary>
                   <div class="carte-filtres">
                     <label>Phase <select id="carte-phase"></select></label>
                     <label>Forme des bâtiments <select id="carte-forme"></select></label>
@@ -111,7 +148,7 @@
                     <p class="secondaire">Ils ne changent que l'affichage ; le pré-filtre, en haut, choisit les projets.</p>
                   </div>
                 </details>
-                <details><summary>Rayon autour d'une maquette</summary>
+                <details class="hors-module"><summary>Rayon autour d'une maquette</summary>
                   <div class="carte-filtres">
                     <select id="carte-rayon-centre" aria-label="Maquette comparée au centre du cercle"></select>
                     <label class="carte-km"><input id="carte-rayon-km" type="number" min="1" step="1" value="10" inputmode="numeric" aria-label="Rayon en kilomètres"> km</label>
@@ -119,7 +156,7 @@
                     <p class="secondaire">La référence devient : les projets fiables du pré-filtre situés dans le cercle.</p>
                   </div>
                 </details>
-                <details id="carte-sans-bloc"><summary id="carte-sans-titre">Sans position</summary>
+                <details id="carte-sans-bloc" class="hors-module"><summary id="carte-sans-titre">Sans position</summary>
                   <ul id="carte-sans" class="liste"></ul>
                   <p class="secondaire">Ni adresse ni commune dans leur MDP : pas de point sur la carte. L'adresse se saisit dans l'identité du projet.</p>
                 </details>
@@ -262,11 +299,71 @@
       <div id="boites"></div>
       <p class="secondaire">Boîte : quartiles ; trait : médiane ; moustaches : minimum et maximum. Grisé : moins de 3 projets.</p>
     </section>
+
+    <section id="vue-contexte" role="tabpanel" aria-labelledby="tab-contexte" hidden>
+      <!-- Contexte (V6_PLAN, partie 6) : trouver les projets de la base au contexte le plus proche de mon projet,
+           d'après sa seule adresse (aucune surface nécessaire) -->
+      <div class="ctx-recherche">
+        <h2>Mon projet</h2>
+        <form id="ctx-form" class="ctx-form" autocomplete="off">
+          <label class="ctx-adresse">Adresse <input id="ctx-adresse" type="search" placeholder="Rue et numéro, NPA localité" required></label>
+          <label>Typologie <select id="ctx-typologie"></select></label>
+          <button type="submit" class="bouton-principal">Chercher les projets similaires</button>
+        </form>
+        <ul id="ctx-choix" class="ctx-choix" hidden></ul>
+        <p id="ctx-etat" class="secondaire" aria-live="polite"></p>
+        <p class="secondaire">L'adresse est située par le service de recherche de geo.admin.ch, puis son contexte y est lu
+          (zone, desserte, densités…), comme pour les projets de la base. Elle reste mémorisée dans ce navigateur seulement.</p>
+      </div>
+      <div id="ctx-resultat" class="ctx-resultat" hidden>
+        <div id="ctx-mien" class="ctx-mien"></div>
+        <div class="ctx-similaires-bloc">
+          <div class="ctx-tete">
+            <h2 id="ctx-titre-similaires">Projets les plus similaires</h2>
+            <button type="button" id="ctx-utiliser" class="bouton-export"></button>
+            <button type="button" id="ctx-effacer" class="lien">Effacer mon projet</button>
+          </div>
+          <ol id="ctx-similaires" class="ctx-similaires"></ol>
+          <p id="ctx-methode" class="secondaire"></p>
+        </div>
+      </div>
+      <h2>Fiches de contexte des projets de la base</h2>
+      <div id="ctx-fiches" class="ctx-fiches"></div>
+      <p class="secondaire">Fiches prises sur geo.admin.ch à l'intégration de chaque projet, à son adresse, puis figées.
+        Densités : moyenne dans un rayon de 300 m, dernière année publiée. Survoler une valeur donne sa source et son année.</p>
+    </section>
   </main>
 
+  <!-- Module Données SIG (docs/V6_PLAN.md, partie 8) : toute la base sur la carte, filtres et fiches SIG à gauche.
+       La carte des Tendances (#vue-carte) est déplacée dans #sig-carte-hote le temps du module. -->
+  <section id="module-sig" class="module-sig" hidden aria-labelledby="sig-titre">
+    <header class="entete-page sig-entete">
+      <button type="button" id="sig-accueil" class="icone-btn bouton-accueil" data-icone="maison" title="Revenir à l'accueil" aria-label="Revenir à l'accueil"></button>
+      <span data-icone="carte" class="icone-seule" aria-hidden="true"></span>
+      <h1 id="sig-titre" class="titre-vue">Données SIG</h1>
+      <span id="sig-compte" class="secondaire"></span>
+      <span class="sig-actions">
+        <button type="button" id="sig-cadrer" class="bouton-export" title="Cadrer la carte sur les projets filtrés"><span data-icone="cadrer" aria-hidden="true"></span>Cadrer</button>
+        <button type="button" id="sig-benchmark" class="bouton-export"><span data-icone="graphe" aria-hidden="true"></span>Ouvrir le benchmark</button>
+      </span>
+    </header>
+    <div class="sig-corps">
+      <aside class="sig-panneau" aria-label="Filtres et fiches SIG des projets">
+        <div class="sig-filtres-bloc">
+          <div class="sig-filtres-tete"><h2>Filtres</h2><button type="button" id="sig-reinit" class="lien" hidden>Effacer les filtres</button></div>
+          <form id="sig-filtres" class="sig-filtres" autocomplete="off" onsubmit="return false"></form>
+        </div>
+        <div id="sig-liste" class="sig-liste"></div>
+        <p class="secondaire">Fiches prises sur geo.admin.ch à l'intégration de chaque projet, à son adresse, puis figées.
+          Survoler une valeur donne sa source et son année.</p>
+      </aside>
+      <div id="sig-carte-hote" class="sig-carte-hote"></div>
+    </div>
+  </section>
+
   <!-- ?v= : à changer à chaque version de la page, pour qu'aucun navigateur ne garde l'ancienne en cache -->
-  <script src="xlsx.js?v=5.0-18" defer></script>
-  <script src="app.js?v=5.0-18"></script>
-  <script src="carte.js?v=5.0-18"></script>
+  <script src="xlsx.js?v=6.0-8" defer></script>
+  <script src="app.js?v=6.0-8"></script>
+  <script src="carte.js?v=6.0-8"></script>
 </body>
 </html>

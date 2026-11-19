@@ -103,6 +103,8 @@ class Registre:
         if not lignes:
             return None
         # même rue ailleurs en Suisse : garder celle du NPA, sinon de la commune (fiche ou adresse), sinon du canton
+        # filtres cumulés tant que la rue reste dans plusieurs communes (un NPA peut en couvrir deux : 1213 Lancy et Genève)
+        communes = lambda ls: len({(l[2], l[3]) for l in ls})
         for garde in (lambda l: npa and l[1] == npa,
                       lambda l: commune and l[2] == cle(commune),
                       lambda l: lieu and l[2] == cle(lieu),
@@ -110,9 +112,14 @@ class Registre:
             choix = [l for l in lignes if garde(l)]
             if choix:
                 lignes = choix
+            if communes(lignes) == 1:
                 break
-        if len({(l[2], l[3]) for l in lignes}) > 1:
-            return None                 # rue homonyme dans plusieurs communes, rien pour trancher
+        if communes(lignes) > 1:
+            # le numéro tranche s'il n'existe que dans une des communes
+            avec_numero = [l for l in lignes if numero and l[0] == numero]
+            if not avec_numero or communes(avec_numero) > 1:
+                return None             # rue homonyme dans plusieurs communes, rien pour trancher
+            lignes = avec_numero
         exact = [l for l in lignes if numero and l[0] == numero] or \
                 [l for l in lignes if numero and re.sub(r"\D.*$", "", l[0]) == re.sub(r"\D.*$", "", numero)]
         if exact:

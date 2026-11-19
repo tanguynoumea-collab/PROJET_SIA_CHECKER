@@ -49,7 +49,9 @@ const CALQUES = [
   { groupe: "Urbanisme et foncier", id: "ch.are.bauzonen", nom: "Zones à bâtir (ARE)", actif: false, opacite: 0.55, source: "ARE",
     identify: (a) => a.ch_bez_f && `Zone à bâtir : ${a.ch_bez_f}` },
   { groupe: "Urbanisme et foncier", id: "ch.kantone.cadastralwebmap-farbe", nom: "Parcelles cadastrales (mensuration officielle)",
-    wms: true, desature: true, actif: false, opacite: 0.8, source: "cantons" },   // plan en couleur : gris sur le fond gris
+    wms: true, desature: true, actif: false, opacite: 0.8, source: "cantons",   // plan en couleur : gris sur le fond gris
+    // en dessous, le serveur ne dessine pas les parcelles mais des carrés d'aperçu, en mosaïque sur la carte
+    zoomMin: 13 },
   { groupe: "Urbanisme et foncier", id: "ch.bfs.gebaeude_wohnungs_register", nom: "Bâtiments RegBL : existants, projetés, en construction",
     actif: false, opacite: 0.85, source: "OFS", tolerance: 12,     // un point par bâtiment : clic à proximité
     identify: (a) => a.egid && [`Bâtiment ${a.strname_deinr || `EGID ${a.egid}`} : ${STATUT_REGBL[a.gstat] || "statut inconnu"}`,
@@ -106,8 +108,8 @@ const CALQUES = [
 const TYPO_COULEURS = ["#2563EB", "#E8590C", "#0E9F6E", "#7C3AED", "#DB2777", "#0891B2"];
 const NON_IDENTIFIEE_COULEUR = "#64748B";
 const CENTRE_SUISSE = [46.8, 8.23];
-const CLE_FOND = "benchmark.carte.fond";
-const CLE_CALQUES = "benchmark.carte.calques";
+const CLE_FOND = STOCKAGE + "benchmark.carte.fond";
+const CLE_CALQUES = STOCKAGE + "benchmark.carte.calques";
 
 const carte = { L: null, map: null, fond: null, fonds: {}, calques: {}, hors: null, donnees: null, projets: null,
                 rayonCercle: null, outil: null, actif: false, enLigne: navigator.onLine !== false,
@@ -152,6 +154,7 @@ const kmEntre = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) / 1000;
 
 /** Projets montrés : ceux du pré-filtre qui passent les filtres de la carte (affichage seulement). */
 function projetsCarte() {
+  if (etat.moduleSig) return projetsSig();
   const f = carte.filtres;
   return projetsSelection().filter((p) => (!f.fiables || p.fiable) && (!f.maquette || p.maquette)
     && (!f.precision || (f.precision === "adresse" ? ["adresse", "rue"].includes(p.precision) : p.precision === "commune"))
@@ -198,24 +201,33 @@ async function ouvrirCarte() {
   document.getElementById("bouton-carte").setAttribute("aria-pressed", "true");
   window.scrollTo(0, 0);
   ajuster3D();
+  if (!(await chargerCarte())) return;
+  carte.map.invalidateSize();
+  majCarte();
+}
+
+/** Leaflet, le fond hors ligne et la carte, au premier usage (Tendances ou module SIG) ; false si elle ne peut s'afficher. */
+async function chargerCarte() {
   const statut = document.getElementById("carte-etat");
   if (!carte.map) {
     statut.hidden = false;
     statut.textContent = "Chargement de la carte…";
     try {
       carte.L = await chargerLeaflet();
-      const r = await fetch("carte-suisse.json");
-      if (!r.ok) throw new Error(`fond hors ligne : erreur ${r.status}`);
-      carte.donnees = await r.json();
+      carte.donnees = jsonIntegre("carte-suisse.json");   // version HTML autonome (docs/V6_PLAN.md)
+      if (!carte.donnees) {
+        const r = await fetch("carte-suisse.json");
+        if (!r.ok) throw new Error(`fond hors ligne : erreur ${r.status}`);
+        carte.donnees = await r.json();
+      }
       construireCarte();
       statut.hidden = true;
     } catch (e) {
       statut.textContent = `La carte ne peut pas s'afficher : ${e.message || e}.`;
-      return;
+      return false;
     }
   }
-  carte.map.invalidateSize();
-  majCarte();
+  return true;
 }
 
 function fermerCarte(sansRetour = false) {
@@ -274,12 +286,15 @@ function construireCarte() {
     else if (c.id === "districts")
       carte.calques[c.id] = vecteur("districts", () => ({ color: "#3A3F4B", weight: 1.6, dashArray: "6 4", opacity: c.opacite, fill: false }), { interactive: false });
     // couche WMS (pas de tuiles précalculées chez geo.admin.ch : cadastre, statistiques à l'hectare…) ou WMTS
-    else if (c.wms) carte.calques[c.id] = L.tileLayer.wms("https://wms.geo.admin.ch/", { layers: c.id, format: "image/png",
+    else if (c.wms) carte.calques[c.id] = L.tileLayer.wms("https://wms.geo.admin.ch/", { layers: c.id, format: "image/png", minZoom: c.zoomMin ?? 0,
       transparent: true, version: "1.3.0", maxZoom: 19, opacity: c.opacite, crossOrigin: true, pane: "calques",
       className: c.desature ? "calque-desature" : "", attribution: `${SWISSTOPO}, ${c.source}` });
     else carte.calques[c.id] = L.tileLayer(WMTS(c.id), { maxNativeZoom: 18, maxZoom: 19, opacity: c.opacite, crossOrigin: true,
       pane: "calques", attribution: `${SWISSTOPO}, ${c.source}` });
   }
+  // toute couche en tuiles : tuile en échec redemandée, tuiles restées en attente relancées (voir relancerTuiles)
+  for (const t of [...Object.values(carte.fonds), ...Object.values(carte.calques)]) if (t instanceof L.TileLayer) t.on("tileerror", reessayerTuile);
+  map.on("moveend", () => { clearTimeout(carte.relance); carte.relance = setTimeout(relancerTuiles, ATTENTE_TUILES); });
   carte.projets = L.layerGroup().addTo(map);
 
   // réglages mémorisés (fond, calques actifs et opacités) ; hors ligne au départ : fond minimum
@@ -295,6 +310,27 @@ function construireCarte() {
   brancherCarte();
   window.addEventListener("online", () => majEnLigne(true));
   window.addEventListener("offline", () => majEnLigne(false));
+}
+
+// Tuiles : Leaflet tient une tuile en échec pour chargée et ne la redemande jamais ; une requête bloquée (proxy, réseau
+// lent) laisse sa case vide, l'ancien niveau de zoom étiré et flou dessous. Une tuile en échec est redemandée deux fois,
+// espacées ; après chaque déplacement, celles qui ne sont pas arrivées au bout de quelques secondes sont relancées.
+const ESSAIS_TUILE = 2, ATTENTE_TUILES = 6000;
+const urlEssai = (src, n) => { const base = src.replace(/[?&]essai=\d+$/, ""); return `${base}${base.includes("?") ? "&" : "?"}essai=${n}`; };
+
+function reessayerTuile(e) {
+  const img = e.tile, n = (img._essais = (img._essais || 0) + 1);
+  if (n > ESSAIS_TUILE || !carte.enLigne || !img.src.startsWith("http")) return;
+  setTimeout(() => { if (img.isConnected) img.src = urlEssai(img.src, n); }, 800 * n);
+}
+
+function relancerTuiles() {
+  if (!carte.map || !carte.enLigne) return;
+  carte.map.getContainer().querySelectorAll("img.leaflet-tile:not(.leaflet-tile-loaded)").forEach((img) => {
+    if (!img.src.startsWith("http") || (img.complete && img.naturalWidth > 0)) return;     // data: : tuile retirée par Leaflet
+    const n = (img._relances = (img._relances || 0) + 1);
+    if (n <= ESSAIS_TUILE) img.src = urlEssai(img.src, 10 + n);
+  });
 }
 
 function choisirFond(id, memoriser = true) {
@@ -372,7 +408,8 @@ function panneauFondsCalques() {
     cb.checked = c.actif;
     cb.disabled = !enLigne;
     cb.addEventListener("change", () => { c.actif = cb.checked; appliquerCalque(c); memoriserCalques(); panneauFondsCalques(); });
-    const ligne = el("li", {}, el("label", { class: "case", title: enLigne ? "" : "Hors ligne : calque indisponible" }, cb, c.nom));
+    const ligne = el("li", {}, el("label", { class: "case", title: enLigne ? (c.zoomMin ? "Visible en zoomant à l'échelle du quartier" : "") : "Hors ligne : calque indisponible" },
+      cb, c.nom, c.zoomMin ? el("span", { class: "secondaire", text: " (de près)" }) : null));
     if (!c.actif) return ligne;
     const op = el("input", { type: "range", min: "0.1", max: "1", step: "0.05", "aria-label": `Opacité : ${c.nom}`, title: "Opacité" });
     op.value = String(c.opacite);
@@ -414,7 +451,8 @@ function dessinerProjets() {
     // Marqueur HTML (et non cercle SVG) : toujours recalé au zoom, et ses couleurs suivent le thème par CSS. Les cercles
     // SVG dans un panneau à part restaient parfois à l'échelle d'un zoom précédent, minuscules ou énormes.
     const diametre = Math.round(2 * r);
-    const classes = ["carte-projet", !p.fiable ? "ecarte" : coche ? "coche" : "hors", approx ? "approx" : "", c ? "comparee" : ""];
+    const classes = ["carte-projet", etat.moduleSig ? (p.fiable ? "coche" : "ecarte") : !p.fiable ? "ecarte" : coche ? "coche" : "hors",
+                     approx ? "approx" : "", c && !etat.moduleSig ? "comparee" : "", etat.moduleSig && sigModule.choisi === p.id ? "choisi" : ""];
     const m = L.marker(latlng, { pane: "projets", riseOnHover: true, keyboard: true,
       icon: L.divIcon({ className: classes.filter(Boolean).join(" "), iconSize: [diametre, diametre],
         // pastille + étiquette (ID), l'étiquette à droite de la pastille
@@ -428,9 +466,13 @@ function dessinerProjets() {
       p.infos?.categorie || "Typologie non identifiée",
       p.infos?.forme ? `Forme : ${p.infos.forme.replace(/</g, "&lt;")}` : "",
       [sp ? `SP hors-sol ${F0.format(sp)} m²` : "", sup != null ? `SUP / SP hors-sol ${F1.format(sup * 100)} %` : ""].filter(Boolean).join(" · "),
-      !p.fiable ? "Écarté : hors des références" : coche ? "Dans la référence · clic pour le retirer" : "Hors de la référence · clic pour l'ajouter",
-      c ? "Maquette comparée" : ""].filter(Boolean).join("<br>"), { className: "carte-info-bulle", direction: "top", offset: [0, -r] });
-    m.on("click", (e) => { L.DomEvent.stopPropagation(e); basculerReference(p.id, etat.exclus.has(p.id)); });
+      etat.moduleSig ? [valSig(p, "site"), classeDesserte(p) && `desserte ${classeDesserte(p)}`, zoneCourte(valSig(p, "zone"))].filter(Boolean).join(" · ") + "<br>Clic : sa fiche à gauche"
+        : !p.fiable ? "Écarté : hors des références" : coche ? "Dans la référence · clic pour le retirer" : "Hors de la référence · clic pour l'ajouter",
+      c && !etat.moduleSig ? "Maquette comparée" : ""].filter(Boolean).join("<br>"), { className: "carte-info-bulle", direction: "top", offset: [0, -r] });
+    m.on("click", (e) => {
+      L.DomEvent.stopPropagation(e);
+      etat.moduleSig ? choisirSig(p.id, { defiler: true }) : basculerReference(p.id, etat.exclus.has(p.id));
+    });
     m.addTo(groupe);
   });
   dessinerRayon();
@@ -463,7 +505,8 @@ function panneauCarte() {
   document.getElementById("carte-legende").replaceChildren(
     ...[...typos].sort((a, b) => b[1] - a[1]).map(([t, n]) => el("li", {}, el("i", { class: "carte-symbole coche", style: `--c:${typoCouleur(t)}` }),
       `${t || "Typologie non identifiée"} (${n})`)),
-    symbole("coche neutre", "Dans la référence"), symbole("neutre", "Hors de la référence"), symbole("ecarte", "Écarté"),
+    ...(etat.moduleSig ? [symbole("ecarte", "Surfaces non fiables")]
+      : [symbole("coche neutre", "Dans la référence"), symbole("neutre", "Hors de la référence"), symbole("ecarte", "Écarté")]),
     symbole("approx", "Au centre de la commune (sans adresse)"),
     el("li", { class: "secondaire" }, "Taille : SP hors-sol · anneau de couleur : maquette comparée"));
   const f = carte.filtres;
@@ -599,6 +642,7 @@ function brancherCarte() {
 function zoomer(pas) { carte.map?.setZoom(carte.map.getZoom() + pas); }
 
 function brancherOutilsCarte() {
+  brancherModuleSig();
   document.getElementById("bouton-carte").addEventListener("click", () => (etat.carte ? fermerCarte() : ouvrirCarte()));
   document.getElementById("carte-fermer").addEventListener("click", () => fermerCarte());
   document.getElementById("carte-plus").addEventListener("click", () => zoomer(1));
@@ -639,6 +683,239 @@ function brancherOutilsCarte() {
     majReference();
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && etat.carte && !e.target.closest?.("input, select, textarea")) fermerCarte();
+    if (e.key === "Escape" && etat.carte && !etat.moduleSig && !e.target.closest?.("input, select, textarea")) fermerCarte();
   });
+}
+
+// ------------------------------------------------------------------ module Données SIG (docs/V6_PLAN.md, partie 8)
+// La carte en grand, toute la base (sans pré-filtre ni référence), avec à gauche les filtres sur les données SIG et la
+// fiche de chaque projet. La vue carte des Tendances (#vue-carte) est déplacée dans le module, puis rendue en sortant.
+
+const sigModule = { retour: null, choisi: null, aide: null, f: { texte: "", fiables: false, choix: {}, plages: {} } };
+
+/** Critères à cocher : plusieurs valeurs d'un même critère s'additionnent (ou), les critères se cumulent (et). */
+const CRITERES_SIG = [
+  { id: "typologie", titre: "Typologie", de: (p) => p.infos?.categorie || "Non identifiée" },
+  { id: "canton", titre: "Canton", de: (p) => p.infos?.canton || null },
+  { id: "site", titre: "Type de site", de: (p) => valSig(p, "site"), ordre: TYPES_SITE },
+  { id: "desserte", titre: "Desserte TP", de: (p) => classeDesserte(p), ordre: ["A", "B", "C", "D"],
+    aide: "Classe de desserte de l'ARE : A très bonne, D faible" },
+  { id: "zone", titre: "Zone à bâtir", de: (p) => zoneCourte(valSig(p, "zone")) },
+  { id: "vigilance", titre: "Points de vigilance", plusieurs: (p) => vigilances(p).map((v) => v.texte.split(" :")[0].replace(/^Sol .*/, "Sol meuble")),
+    ordre: ["Site ISOS", "Radon", "Sol meuble"], aide: "Projets qui ont ce point de vigilance" },
+];
+/** Plages : un minimum et un maximum facultatifs. */
+const PLAGES_SIG = [
+  { id: "densite", titre: "Habitants + emplois / ha", de: (p) => sigDe(p, "site")?.densite, pas: 10 },
+  { id: "centre", titre: "Temps jusqu'au centre (min)", de: (p) => valSig(p, "temps_centre"), pas: 5 },
+  { id: "arret", titre: "Distance à l'arrêt (m)", de: (p) => sigDe(p, "arret")?.distance, pas: 50 },
+  { id: "terrain", titre: "Terrain (m²)", de: (p) => p.totaux?.TERRAIN, pas: 500 },
+  { id: "ius", titre: "Indice d'utilisation", de: (p) => p.kpis?.[KPI_IUS]?.valeur, pas: 0.1 },
+];
+
+const valeursCritere = (c, p) => (c.plusieurs ? c.plusieurs(p) : [c.de(p)].filter((v) => v != null && v !== ""));
+
+/** Le projet passe les filtres du module ; `sauf` ignore un critère (comptes affichés à côté de chaque valeur). */
+function passeFiltresSig(p, sauf = null) {
+  const f = sigModule.f;
+  if (!p.sig) return false;
+  if (f.fiables && !p.fiable) return false;
+  if (f.texte && ![p.id, p.nom, p.infos?.commune, p.infos?.adresse].some((v) => v != null && norm(v).includes(norm(f.texte)))) return false;
+  for (const c of CRITERES_SIG) {
+    const voulus = f.choix[c.id];
+    if (c.id === sauf || !voulus?.size) continue;
+    if (!valeursCritere(c, p).some((v) => voulus.has(v))) return false;
+  }
+  for (const pl of PLAGES_SIG) {
+    const { min, max } = f.plages[pl.id] || {};
+    if (min == null && max == null) continue;
+    const v = pl.de(p);
+    if (v == null || (min != null && v < min) || (max != null && v > max)) return false;
+  }
+  return true;
+}
+
+const projetsSig = () => (etat.data?.projets ?? []).filter((p) => passeFiltresSig(p));
+
+async function ouvrirModuleSig() {
+  if (!avecContexte()) return;
+  if (etat.vue3d) fermer3D(true);
+  if (etat.carte && !etat.moduleSig) fermerCarte();
+  etat.moduleSig = true;
+  const racine = document.documentElement;
+  racine.classList.remove("mode-garde");
+  racine.classList.add("mode-sig");
+  document.getElementById("module-sig").hidden = false;
+  const vue = document.getElementById("vue-carte");
+  sigModule.retour ??= { parent: vue.parentNode, suivant: vue.nextSibling };
+  document.getElementById("sig-carte-hote").append(vue);
+  vue.hidden = false;
+  const aide = vue.querySelector(".carte-aide");
+  sigModule.aide ??= aide.textContent;
+  aide.textContent = "Clic sur un projet : sa fiche à gauche · clic ailleurs : commune et calques à cet endroit · clic dans la carte, puis molette pour zoomer";
+  etat.carte = true;
+  window.chrome?.webview?.postMessage("module:sig");     // SIA Check : le titre de l'écran suit
+  window.scrollTo(0, 0);
+  dessinerFiltresSig();
+  dessinerListeSig();
+  if (!(await chargerCarte())) return;
+  carte.map.invalidateSize();
+  majCarte();
+  requestAnimationFrame(() => { carte.map.invalidateSize(); cadrerSig(); });
+}
+
+function fermerModuleSig() {
+  if (!etat.moduleSig) return;
+  etat.moduleSig = false;
+  etat.carte = false;
+  const vue = document.getElementById("vue-carte");
+  vue.hidden = true;
+  vue.querySelector(".carte-aide").textContent = sigModule.aide;
+  sigModule.retour.parent.insertBefore(vue, sigModule.retour.suivant);
+  document.getElementById("module-sig").hidden = true;
+  document.documentElement.classList.remove("mode-sig");
+  window.chrome?.webview?.postMessage("module:");
+  requestAnimationFrame(() => FIGURES.forEach((b) => b.isConnected && b._dessiner?.()));
+}
+
+function cadrerSig() {
+  if (!carte.map) return;
+  const places = projetsSig().filter((p) => p.position).map((p) => versWgs84(p.position));
+  if (places.length) carte.map.fitBounds(places, { padding: [60, 60], maxZoom: 14 });
+}
+
+/** Les filtres ont changé : liste, carte et comptes. */
+function majModuleSig({ cadrer = true } = {}) {
+  dessinerFiltresSig();
+  dessinerListeSig();
+  majCarte();
+  if (cadrer) cadrerSig();
+}
+
+function dessinerFiltresSig() {
+  const f = sigModule.f, tous = etat.data.projets.filter((p) => p.sig);
+  const form = document.getElementById("sig-filtres");
+  const blocs = CRITERES_SIG.map((c) => {
+    const valeurs = [...new Set(tous.flatMap((p) => valeursCritere(c, p)))]
+      .sort((a, b) => c.ordre ? (c.ordre.indexOf(a) + 1 || 99) - (c.ordre.indexOf(b) + 1 || 99) : String(a).localeCompare(String(b), "fr"));
+    if (!valeurs.length) return null;
+    const voulus = f.choix[c.id] ??= new Set();
+    const base = tous.filter((p) => passeFiltresSig(p, c.id));
+    return el("fieldset", { class: "sig-critere", title: c.aide ?? "" }, el("legend", { text: c.titre }),
+      ...valeurs.map((v) => {
+        const n = base.filter((p) => valeursCritere(c, p).includes(v)).length;
+        const b = el("button", { type: "button", class: "sig-puce", "aria-pressed": String(voulus.has(v)), text: `${v} ` },
+          el("span", { class: "secondaire", text: String(n) }));
+        if (!n && !voulus.has(v)) b.disabled = true;
+        b.addEventListener("click", () => { voulus.has(v) ? voulus.delete(v) : voulus.add(v); majModuleSig(); });
+        return b;
+      }));
+  });
+  const plages = el("fieldset", { class: "sig-plages" }, el("legend", { text: "Plages" }), ...PLAGES_SIG.map((pl) => {
+    const r = f.plages[pl.id] ??= {};
+    const champ = (cle, ph) => {
+      const i = el("input", { type: "number", step: String(pl.pas), placeholder: ph, inputmode: "decimal", "aria-label": `${pl.titre} ${ph}` });
+      if (r[cle] != null) i.value = String(r[cle]);
+      i.addEventListener("change", () => { r[cle] = i.value.trim() === "" ? null : Number(i.value); majModuleSig(); });
+      return i;
+    };
+    return el("label", { class: "sig-plage" }, el("span", { text: pl.titre }), el("span", { class: "carte-plage" }, champ("min", "min"), el("span", { "aria-hidden": "true", text: "–" }), champ("max", "max")));
+  }));
+  const recherche = el("input", { type: "search", placeholder: "Chercher (ID, nom, commune)", "aria-label": "Chercher un projet", value: f.texte });
+  recherche.value = f.texte;
+  recherche.addEventListener("input", () => { f.texte = recherche.value.trim(); dessinerListeSig(); majCarte(); compteSig(); });
+  const fiables = el("input", { type: "checkbox" });
+  fiables.checked = f.fiables;
+  fiables.addEventListener("change", () => { f.fiables = fiables.checked; majModuleSig(); });
+  form.replaceChildren(recherche, ...blocs.filter(Boolean), plages,
+    el("label", { class: "case" }, fiables, " Surfaces fiables seulement"));
+  const actifs = CRITERES_SIG.some((c) => f.choix[c.id]?.size) || PLAGES_SIG.some((pl) => f.plages[pl.id]?.min != null || f.plages[pl.id]?.max != null)
+    || f.texte || f.fiables;
+  document.getElementById("sig-reinit").hidden = !actifs;
+  compteSig();
+}
+
+function compteSig() {
+  const n = projetsSig().length, total = etat.data.projets.filter((p) => p.sig).length;
+  document.getElementById("sig-compte").textContent = `${n} projet${n > 1 ? "s" : ""} sur ${total} avec une fiche`;
+}
+
+/** Libellés et mise en forme de toutes les données d'une fiche, dans l'ordre d'affichage. */
+const DONNEES_SIG = [
+  ["site", "Type de site", (s) => `${s.valeur} (${F0.format(s.densite)} habitants + emplois / ha)`],
+  ["parcelle", "Parcelle", (s) => [s.numero && `n° ${s.numero}`, s.valeur && `${F0.format(s.valeur)} m²`, s.egrid].filter(Boolean).join(" · ")],
+  ["zone", "Zone à bâtir", (s) => s.valeur],
+  ["isos", "Site ISOS", (s) => s.valeur],
+  ["desserte", "Desserte TP", (s) => s.valeur],
+  ["arret", "Arrêt le plus proche", (s) => [s.valeur, s.distance != null && `${F0.format(s.distance)} m`, s.moyen].filter(Boolean).join(" · ")],
+  ["temps_centre", "Temps jusqu'au centre", (s) => `${F0.format(s.valeur)} min en transports publics`],
+  ["accessibilite", "Accessibilité TP", (s) => `${F0.format(s.valeur)} habitants et emplois atteignables`],
+  ["habitants", "Habitants", (s) => `${F1.format(s.valeur)} par ha dans 300 m`],
+  ["logements", "Logements", (s) => `${F1.format(s.valeur)} par ha dans 300 m`],
+  ["emplois", "Emplois (EPT)", (s) => `${F1.format(s.valeur)} par ha dans 300 m`],
+  ["radon", "Radon", (s) => `${F0.format(s.valeur)} % de probabilité de dépasser 300 Bq/m³`],
+  ["sol", "Sol de fondation", (s) => `classe ${s.valeur}`],
+  ["batiment", "Bâtiment le plus proche (RegBL)", (s) => [s.valeur, s.annee_construction, s.niveaux && `${s.niveaux} niveaux`,
+    s.logements && `${s.logements} logements`].filter(Boolean).join(" · ")],
+  ["chaleur", "Besoin de chaleur du bâtiment", (s) => `${F0.format(s.valeur)} MWh/an`],
+];
+
+function ficheSig(p) {
+  const choisi = sigModule.choisi === p.id, site = valSig(p, "site"), a = sigDe(p, "arret"), ius = p.kpis?.[KPI_IUS]?.valeur;
+  const ligne = (terme, texte) => (texte ? [el("dt", { text: terme }), el("dd", { text: texte })] : []);
+  const desserte = valSig(p, "desserte");
+  const toutes = el("details", { class: "sig-toutes" }, el("summary", { text: "Toutes les données SIG" }),
+    el("dl", {}, ...DONNEES_SIG.flatMap(([cle, nom, texte]) => {
+      const s = sigDe(p, cle);
+      if (!s) return [];
+      return [el("dt", { text: nom }), el("dd", { text: texte(s) || "—", title: sourceSig(s) },
+        el("span", { class: "secondaire", text: [s.annee, s.source].filter(Boolean).join(" · ") ? ` (${[s.annee, s.source].filter(Boolean).join(", ")})` : "" }))];
+    })));
+  const carteFiche = el("article", { class: "ctx-fiche sig-fiche" + (choisi ? " choisie" : "") + (p.fiable ? "" : " ecarte"), id: `sig-fiche-${p.id}`, tabindex: "0",
+                                     title: "Cliquer pour centrer la carte sur ce projet" },
+    el("header", {},
+      el("div", {}, el("span", { class: "mono", text: p.id }), el("b", { text: ` ${p.nom}` }),
+        el("div", { class: "secondaire", text: [p.infos?.commune, p.infos?.canton, p.infos?.categorie, p.fiable ? null : "surfaces non fiables"].filter(Boolean).join(" · ") })),
+      site ? el("span", { class: "ctx-site", text: site }) : null),
+    el("dl", {},
+      ...ligne("Terrain", p.totaux?.TERRAIN && `${F0.format(p.totaux.TERRAIN)} m²${ius != null ? ` · IUS ${F2.format(ius)}` : ""}`),
+      ...ligne("Desserte", desserte && desserte.replace(/^\s*([A-D])\s*-\s*/i, "$1 · ")),
+      ...ligne("Arrêt", a && `${a.valeur}${a.distance != null ? `, ${F0.format(a.distance)} m` : ""}`),
+      ...ligne("Zone", zoneCourte(valSig(p, "zone"))),
+      ...ligne("Alentour", sigDe(p, "site") && `${F0.format(sigDe(p, "site").densite)} habitants et emplois par ha`),
+      ...ligne("Centre", valSig(p, "temps_centre") != null && `${F0.format(valSig(p, "temps_centre"))} min en TP`)),
+    vigilances(p).length ? el("div", { class: "ctx-alertes" }, ...vigilances(p).map((x) => el("span", { class: "ctx-alerte", title: x.aide, text: x.texte }))) : null,
+    toutes);
+  const choisir = (e) => { if (e.target.closest("details")) return; choisirSig(p.id, { centrer: true }); };
+  carteFiche.addEventListener("click", choisir);
+  carteFiche.addEventListener("keydown", (e) => { if (e.key === "Enter") choisirSig(p.id, { centrer: true }); });
+  return carteFiche;
+}
+
+function dessinerListeSig() {
+  const liste = projetsSig().sort((a, b) => String(a.id).localeCompare(String(b.id), "fr", { numeric: true }));
+  document.getElementById("sig-liste").replaceChildren(...(liste.length ? liste.map(ficheSig)
+    : [el("p", { class: "secondaire", text: "Aucun projet ne passe ces filtres." })]));
+}
+
+/** Un projet choisi (clic sur sa fiche ou sur son point) : fiche en évidence, point entouré, carte centrée au besoin. */
+function choisirSig(id, { centrer = false, defiler = false } = {}) {
+  sigModule.choisi = sigModule.choisi === id && !defiler ? null : id;
+  document.querySelectorAll(".sig-fiche").forEach((f) => f.classList.toggle("choisie", f.id === `sig-fiche-${sigModule.choisi}`));
+  majCarte();
+  const p = etat.projets.get(id);
+  if (sigModule.choisi && centrer && p?.position && carte.map) carte.map.setView(versWgs84(p.position), Math.max(carte.map.getZoom(), 15));
+  if (sigModule.choisi && defiler) document.getElementById(`sig-fiche-${id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function brancherModuleSig() {
+  document.getElementById("sig-reinit").addEventListener("click", () => {
+    Object.assign(sigModule.f, { texte: "", fiables: false, choix: {}, plages: {} });
+    majModuleSig();
+  });
+  document.getElementById("sig-benchmark").addEventListener("click", () => { fermerModuleSig(); montrerVue("ratios"); window.scrollTo(0, 0); });
+  document.getElementById("sig-accueil").addEventListener("click", () => revenirAccueil());
+  document.getElementById("sig-cadrer").addEventListener("click", cadrerSig);
+  // la carte change de cadre (module, Tendances, fenêtre) : Leaflet doit remesurer, sinon les tuiles n'en couvrent qu'une partie
+  if ("ResizeObserver" in window) new ResizeObserver(() => carte.map?.invalidateSize()).observe(document.getElementById("carte-scene"));
 }

@@ -10,6 +10,32 @@
 "use strict";
 
 const PARAMS = new URLSearchParams(location.search);
+
+// ------------------------------------------------------------------ version HTML autonome (docs/V6_PLAN.md)
+// Ouverte depuis SharePoint, la page est un fichier local : le navigateur n'y permet ni fetch ni module chargé depuis
+// un fichier. SIA Check y intègre alors chaque fichier dans un bloc <script type="application/…" data-fichier="nom">
+// (JSON en clair, maquettes gzip en base64), placé avant les scripts de la page.
+
+/** Contenu texte d'un fichier intégré à la page, ou null (SIA Check, serveur). */
+function fichierIntegre(nom) {
+  if (!nom) return null;
+  for (const b of document.querySelectorAll("script[data-fichier]")) if (b.dataset.fichier === nom) return b.textContent;
+  return null;
+}
+const INTEGRE = fichierIntegre("benchmark.json") != null;
+/** JSON d'un fichier intégré, ou null. */
+const jsonIntegre = (nom) => { const t = fichierIntegre(nom); return t == null ? null : JSON.parse(t); };
+/** Octets d'un fichier binaire intégré (base64), ou null. */
+function octetsIntegres(nom) {
+  const t = fichierIntegre(nom);
+  if (t == null) return null;
+  const bin = atob(t.replace(/\s+/g, ""));
+  const o = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) o[i] = bin.charCodeAt(i);
+  return o;
+}
+/** Préfixe des clés de stockage : en fichier local, le stockage est commun à toutes les pages locales du navigateur. */
+const STOCKAGE = INTEGRE ? "sia-check." : "";
 const MIN_REFERENCE = 3;     // en dessous, la référence est fragile (V3_PLAN §4.4)
 const TAILLE_GROUPE = 5;
 const MAX_COMPAREES = 6;     // une couleur chacune (style.css, --cmp1 à --cmp6)
@@ -93,6 +119,9 @@ const ICONES = {
   zoneMoins: '<rect x="3.5" y="3.5" width="17" height="17" rx="2" stroke-dasharray="3 2.5"/><path d="M8.5 12h7"/>',
   moins: '<path d="M5 12h14"/>',
   cadrer: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  theme: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>',
+  graphe: '<path d="M3 20h18M6 17v-5M11 17V6M16 17v-8M21 17v-3"/>',
+  maison: '<path d="M4 10.5L12 4l8 6.5"/><path d="M6 9v11h12V9"/><path d="M10 20v-6h4v6"/>',
 };
 
 function icone(nom) {
@@ -145,8 +174,13 @@ const norm = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").trim().to
 
 // ------------------------------------------------------------------ Sélection (Évolution 3.5)
 
-const CLE_SELECTION = "benchmark.selection";
-const CRITERES = [["typologie", "categorie", "Toutes"], ["canton", "canton", "Tous"], ["intervention", "intervention", "Toutes"]];
+const CLE_SELECTION = STOCKAGE + "benchmark.selection";
+const CRITERES = [["typologie", "categorie", "Toutes"], ["canton", "canton", "Tous"], ["intervention", "intervention", "Toutes"],
+                  ["site", "site", "Tous"]];
+/** Types de site (sia_check.sig.TYPES_SITE), du plus dense au moins dense : version avec données SIG seulement. */
+const TYPES_SITE = ["Urbain dense", "Urbain", "Périurbain", "Rural"];
+/** Valeur d'un critère : la fiche identité du MDP, sauf le type de site, tiré de la fiche SIG. */
+const valeurCritere = (p, info) => (info === "site" ? p.sig?.site?.valeur : p.infos?.[info]);
 const NON_IDENTIFIEE = "__non_identifiee";
 const KPI_CLES = ["SUP/SP_HS", "VITRE/PLEINE", "FORME"];
 /** Groupes de ratios (DESIGN_PLAN, Évolution 4.3), dans l'ordre de l'onglet Ratios de l'application. La pastille
@@ -157,15 +191,17 @@ const GROUPES = [
   { titre: "USPI 2014", definition: "surfaces habitables et de vente", couleur: "#22A08C", familles: ["USPI 2014"] },
   { titre: "Enveloppe", definition: "façades, vitrages et toitures", couleur: "#A8A29E", familles: ["Enveloppe"] },
   { titre: "Programme", definition: "cages d'escalier et logements", couleur: "#6B7280", familles: ["Programme"] },
+  { titre: "Terrain", definition: "plancher hors-sol par m² de parcelle", couleur: "#9A7B4F", familles: ["Terrain"] },
 ];
-const sel = { typologie: "", canton: "", intervention: "" };
+const sel = { typologie: "", canton: "", intervention: "", site: "" };
 
 /** Le projet passe la sélection ; `sauf` ignore un critère (comptes des listes, suggestions d'élargissement). */
 function dansSelection(p, sauf = null, s = sel) {
   return CRITERES.every(([cle, info]) => {
     if (cle === sauf || !s[cle]) return true;
-    if (s[cle] === NON_IDENTIFIEE) return !p.infos?.[info];
-    return p.infos?.[info] != null && norm(p.infos[info]) === norm(s[cle]);
+    const v = valeurCritere(p, info);
+    if (s[cle] === NON_IDENTIFIEE) return !v;
+    return v != null && norm(v) === norm(s[cle]);
   });
 }
 
@@ -203,8 +239,11 @@ function remplirSelection() {
   const form = document.getElementById("selection").elements;
   for (const [cle, info, tous] of CRITERES) {
     const base = etat.data.projets.filter((p) => p.fiable && dansSelection(p, cle));
-    const compte = (v) => base.filter((p) => v === NON_IDENTIFIEE ? !p.infos?.[info] : p.infos?.[info] && norm(p.infos[info]) === norm(v)).length;
-    const valeurs = [...new Set(etat.data.projets.map((p) => p.infos?.[info]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
+    const compte = (v) => base.filter((p) => { const x = valeurCritere(p, info); return v === NON_IDENTIFIEE ? !x : x && norm(x) === norm(v); }).length;
+    const valeurs = [...new Set(etat.data.projets.map((p) => valeurCritere(p, info)).filter(Boolean))]
+      .sort((a, b) => cle === "site" ? TYPES_SITE.indexOf(a) - TYPES_SITE.indexOf(b) : a.localeCompare(b, "fr"));
+    // type de site : seulement si la base a des fiches SIG (pas dans la version Light)
+    if (cle === "site") form[cle].closest("label").hidden = !valeurs.length && !sel.site;
     if (sel[cle] && sel[cle] !== NON_IDENTIFIEE && !valeurs.some((v) => norm(v) === norm(sel[cle]))) valeurs.push(sel[cle]);
     const options = [el("option", { value: "", text: `${tous} (${base.length})` }),
       ...valeurs.map((v) => el("option", { value: v, text: `${v} (${compte(v)})` }))];
@@ -247,6 +286,7 @@ function majReference() {
   dessinerProgramme();
   dessinerBase();
   dessinerTypologies();
+  dessinerContexte();
   majVue3D();
   majCarte();
 }
@@ -257,13 +297,14 @@ function majComparees() {
   dessinerVolets();
   dessinerRatios();
   dessinerAnatomie();
+  dessinerContexte();
   majVue3D();
   majCarte();
 }
 
 /** Élargissement qui redonne le plus de projets fiables, en retirant un seul critère (canton d'abord). */
 function suggestionElargir() {
-  for (const cle of ["canton", "intervention", "typologie"]) {
+  for (const cle of ["site", "canton", "intervention", "typologie"]) {
     if (!sel[cle]) continue;
     const n = etat.data.projets.filter((p) => p.fiable && dansSelection(p, cle)).length;
     if (n > fiablesSelection().length) return { cle, n };
@@ -273,9 +314,9 @@ function suggestionElargir() {
 
 // ------------------------------------------------------------------ Volets : maquettes comparées et projets de référence
 
-const CLE_EXCLUS = "benchmark.exclus";
-const CLE_COMPAREES = "benchmark.comparees";
-const CLE_MENU = "benchmark.menuComparees";
+const CLE_EXCLUS = STOCKAGE + "benchmark.exclus";
+const CLE_COMPAREES = STOCKAGE + "benchmark.comparees";
+const CLE_MENU = STOCKAGE + "benchmark.menuComparees";
 
 function initVolets() {
   try {
@@ -458,7 +499,7 @@ function dessinerVolets() {
 
 // ------------------------------------------------------------------ Tendances (Évolution 4.10)
 
-const NOMS_CRITERES = { typologie: "la typologie", canton: "le canton", intervention: "le type d'intervention" };
+const NOMS_CRITERES = { typologie: "la typologie", canton: "le canton", intervention: "le type d'intervention", site: "le type de site" };
 
 function dessinerRatios() {
   const ref = reference(), fiables = fiablesSelection(), tous = projetsSelection();
@@ -847,9 +888,9 @@ function typologiesSelection() {
 // ------------------------------------------------------------------ Maquette 3D (V5_PLAN, partie 2)
 
 let module3d = null;     // vue3d.js et three.js, chargés à la première ouverture
-/** Version des fichiers de la page (index.html porte la même) : un module chargé à la demande n'est pas repris du cache. */
-const VERSION_PAGE = "5.0-18";
-const charger3d = () => (module3d ??= import(`./vue3d.js?v=${VERSION_PAGE}`));
+// Module nommé par l'import map d'index.html (version des fichiers comprise : il n'est pas repris du cache), que la
+// version HTML autonome fait pointer vers son contenu intégré.
+const charger3d = () => (module3d ??= import("sia/vue3d"));
 
 function boutonCube(p) {
   const actif = etat.vue3d === p.id;
@@ -877,7 +918,7 @@ async function ouvrir3D(id) {
   try {
     const vue = await charger3d();
     if (etat.vue3d !== id) return;
-    const affichee = await vue.afficher(BASE_MAQUETTES + p.maquette, document.getElementById("v3-scene"), document.getElementById("v3-calques"));
+    const affichee = await vue.afficher(octetsIntegres(p.maquette) ?? BASE_MAQUETTES + p.maquette,document.getElementById("v3-scene"), document.getElementById("v3-calques"));
     if (affichee && etat.vue3d === id) statut.hidden = true;
   } catch (e) {
     if (etat.vue3d !== id) return;
@@ -940,7 +981,8 @@ function ajuster3D() {
 
 function brancher3D() {
   window.addEventListener("resize", ajuster3D);
-  document.getElementById("v3-fermer").addEventListener("click", fermer3D);
+  // sans argument : l'événement du clic serait pris pour « sansRetour », et la page resterait en mode vue, sans graphiques
+  document.getElementById("v3-fermer").addEventListener("click", () => fermer3D());
   document.getElementById("v3-dessus").addEventListener("click", () => module3d?.then((vue) => vue.cadrer("dessus")));
   document.getElementById("v3-perspective").addEventListener("click", () => module3d?.then((vue) => vue.cadrer("3d")));
   document.getElementById("v3-ref").addEventListener("change", (e) => {
@@ -1097,7 +1139,7 @@ const SURFACES = [["SP_HS", "SP hors-sol"], ["SP_SS", "SP sous-sol"], ["SUP_HS",
                   ["SI", "SI"], ["SUS_HS", "SUS hors-sol"], ["SVN", "SVN"], ["FACADE", "Façade hors-sol"], ["VITRE", "Vitrages"], ["TOITURE", "Toitures"], ["VB", "VB (m³)"]];
 const MIX = [["0", "Studios"], ["1", "1 chambre"], ["2", "2 chambres"], ["3", "3 chambres"], ["4", "4 ch. et plus"]];
 const CHF_KPIS = new Set(["SUP/SP_HS", "SVN/SP_HS"]);
-const CLE_SAISIE = "benchmark.monProjet";
+const CLE_SAISIE = STOCKAGE + "benchmark.monProjet";
 
 function initSaisie() {
   const form = document.getElementById("saisie-form");
@@ -1300,7 +1342,7 @@ window.verifierDistances = verifierDistances;
 
 // ------------------------------------------------------------------ Programmer (programmation inverse, Évolution 3.3)
 
-const CLE_PROGRAMME = "benchmark.programme";
+const CLE_PROGRAMME = STOCKAGE + "benchmark.programme";
 // Légende SIA 416, comme dans l'application (report.py, SIA_COLORS)
 const COULEURS_SIA = { SUP: "#D5003B", SUS: "#F0A900", SD: "#F2E900", SI: "#0C9DDA", SC: "#A3AAB6" };
 /** Dernier programme calculé (hypothèses, lignes du tableau et parts de la barre) : repris tel quel par l'export Excel. */
@@ -1553,13 +1595,14 @@ function legendeXl(x, points) {
 /** Morceaux de texte enrichi des légendes : `g` en gras, `t` courant. */
 const RT = { g: (t, couleur = XL.noir) => ({ t, gras: true, couleur, taille: 9 }), t: (t) => ({ t, couleur: XL.noir, taille: 9 }) };
 
-/** Le classeur de l'écran : KPI (référence et maquettes comparées hors référence), projets de référence, détail par
+/** Le classeur de l'écran : KPI (référence et maquettes comparées), projets de référence, détail par
  *  projet et, si une SP est saisie dans Programmer, le programme attendu. Une seule valeur centrale : la médiane,
  *  celle de Tendances et de Programmer ; la fourchette va du 1er au 3e quartile. */
 function classeurBenchmark() {
   const ref = reference(), fiables = fiablesSelection(), kpis = kpisOrdonnes();
   const idsRef = new Set(ref.map((p) => p.id));
-  // les maquettes comparées déjà dans la référence ne sont pas répétées : elles sont repérées dans les listes de projets
+  // feuille KPI : toutes les maquettes comparées ; listes de projets : celles déjà dans la référence ne sont pas répétées,
+  // une pastille les repère
   const cmp = comparees(), hors = cmp.filter((m) => !idsRef.has(m.p.id)), dedans = new Map(cmp.filter((m) => idsRef.has(m.p.id)).map((m) => [m.p.id, m]));
   const stats = new Map(kpis.map(({ kpi }) => [kpi.id, combiner(ref, kpi)]));
   const date = new Date().toLocaleString("fr-CH", { dateStyle: "long", timeStyle: "short" });
@@ -1589,22 +1632,25 @@ function classeurBenchmark() {
   const legendeCouleurs = [RT.g("Bleu", XL.bon), RT.t(" : du bon côté selon le sens de lecture. "), RT.g("Rouge", XL.mauvais), RT.t(" : du mauvais côté. "),
     RT.g("Gris"), RT.t(" : ratio sans bon ni mauvais sens (un choix de projet).")];
 
-  // 1. KPI : un ratio par ligne, rangé par groupe ; la référence, puis trois colonnes par maquette comparée hors référence
-  const k = feuilleXl("KPI", [31, 52, 16, 8, 11, 11, 11, ...hors.flatMap(() => [12, 17, 22])]);
+  // 1. KPI : un ratio par ligne, rangé par groupe ; la référence, puis trois colonnes par maquette comparée (dans la
+  // référence ou non : c'est la feuille où on lit une maquette face au projet type)
+  const k = feuilleXl("KPI", [31, 52, 16, 8, 11, 11, 11, ...cmp.flatMap(() => [12, 17, 22])]);
   enteteXl(k, "Benchmark des surfaces SIA 416 — ratios de la référence",
     "Un ratio par ligne. La médiane est la valeur du projet type : la moitié des projets de référence est au-dessus, l'autre en dessous. "
     + "La fourchette P25–P75 encadre la moitié centrale des projets."
-    + (hors.length ? " À droite, chaque maquette comparée : sa valeur, son écart à la médiane et sa place par rapport à la fourchette." : ""), contexte);
+    + (cmp.length ? " À droite, chaque maquette comparée : sa valeur, son écart à la médiane et sa place par rapport à la fourchette." : ""), contexte);
   // sur-titre d'un bloc de colonnes : bleu foncé pour la référence, orange pour chaque maquette comparée
   const sur = { taille: 10, bordure: { gauche: XL.blanc, bas: XL.blanc } }, surCmp = { ...sur, fond: XL.orange };
   const k1 = k.ligne([tete("Ratio", { h: "left", retrait: 1 }), tete("En clair, pour le projet type", { h: "left" }), tete("Sens de lecture"),
     tete(`Projets de référence (${ref.length})`, sur), tete(null, sur), tete(null, sur), tete(null, sur),
-    ...hors.flatMap((m) => [tete(nomCompare(m), surCmp), tete(null, surCmp), tete(null, surCmp)])], 24);
+    ...cmp.flatMap((m) => [tete(dedans.has(m.p.id) ? `${nomCompare(m)}
+(dans la référence)` : nomCompare(m), surCmp), tete(null, surCmp), tete(null, surCmp)])],
+    cmp.some((m) => dedans.has(m.p.id)) ? 36 : 24);
   const k2 = k.ligne([tete(null), tete(null), tete(null), tete("Projets (n)", blancG), tete("Bas (P25)"), tete("Médiane", teteMediane), tete("Haut (P75)"),
-    ...hors.flatMap(() => [tete("Valeur", blancG), tete("Écart à la médiane"), tete("Place dans la fourchette")])], 28);
+    ...cmp.flatMap(() => [tete("Valeur", blancG), tete("Écart à la médiane"), tete("Place dans la fourchette")])], 28);
   for (const c of [0, 1, 2]) k.fusion(k1, c, k2, c);
   k.fusion(k1, 3, k1, 6);
-  hors.forEach((_, i) => k.fusion(k1, 7 + 3 * i, k1, 9 + 3 * i));
+  cmp.forEach((_, i) => k.fusion(k1, 7 + 3 * i, k1, 9 + 3 * i));
   const SENS_XL = { 1: "Plus haut = mieux", "-1": "Plus bas = mieux", 0: "Ni bon ni mauvais : choix de projet" };
   let groupe = null, famille = null;
   for (const { kpi, groupe: g, famille: f } of kpis) {
@@ -1627,12 +1673,13 @@ function classeurBenchmark() {
       c.n ? { v: c.q1, s: nombre } : absent,
       c.n ? { v: c.mediane, s: { ...nombre, gras: true, couleur: XL.bleu, fond: XL.mediane } } : { ...absent, s: { ...absent.s, fond: XL.mediane } },
       c.n ? { v: c.q3, s: nombre } : absent,
-      ...hors.flatMap((m) => {
+      ...cmp.flatMap((m) => {
         const v = m.p.kpis?.[kpi.id]?.valeur, bord = { bordure: { ...filet.bordure, ...gauche } };
         if (v == null) return [{ ...absent, s: { ...absent.s, ...bord } }, { s: filet }, { s: filet }];
         const valeurM = { v, s: { ...nombre, gras: true, ...bord } };
         if (!c.n) return [valeurM, { s: filet }, { s: filet }];
-        const e = ecartXl(kpi, v - c.mediane), place = placeXl(c, v), j = jugementXl(kpi, place);
+        // fourchette jugée à partir de MIN_REFERENCE projets, comme les couleurs de la feuille « Détail par projet »
+        const e = ecartXl(kpi, v - c.mediane), place = placeXl(c, v), j = c.n >= MIN_REFERENCE ? jugementXl(kpi, place) : null;
         return [valeurM,
           { v: e, s: { ...filet, ...droite, format: formatEcart(kpi), couleur: XL[jugementXl(kpi, Math.sign(e))] || XL.gris } },
           { v: place > 0 ? "▲ Au-dessus du P75" : place < 0 ? "▼ Sous le P25" : "Dans la fourchette",
@@ -1643,23 +1690,26 @@ function classeurBenchmark() {
     [RT.g("Médiane : "), RT.t("la valeur centrale de la référence, celle des onglets Tendances et Programmer. "), RT.g("Fourchette (P25 à P75) : "),
      RT.t("un quart des projets est sous le P25, un quart au-dessus du P75. Avec peu de projets, la fourchette reste indicative.")],
     [RT.g("Sens de lecture : "), RT.t("dit de quel côté de la médiane un projet fait mieux. « Choix de projet » : le ratio décrit le projet sans le juger.")],
-    ...(hors.length ? [
+    ...(cmp.length ? [
       [RT.g("Écart à la médiane : "), RT.t("valeur de la maquette moins la médiane, dans l'unité du ratio (pt = point de pourcentage). ▲ au-dessus de la médiane, ▼ en dessous. "),
        ...legendeCouleurs],
       [RT.g("Place dans la fourchette : "), RT.t("la maquette est-elle dans la moitié centrale des projets de référence ? Hors fourchette, la case est colorée : bleu clair du bon côté, rouge pâle du mauvais, gris sans jugement.")]] : []),
-    ...(dedans.size ? [[RT.g("Maquettes comparées déjà dans la référence : "),
-      RT.t(`${[...dedans.values()].map((m) => `${m.p.id} ${m.p.nom}`).join(", ")}. Leurs valeurs pèsent dans la médiane ; elles se lisent dans la feuille « Détail par projet ».`)]] : []),
+    ...(dedans.size ? [[RT.g("Maquette comparée « dans la référence » : "),
+      RT.t("elle fait aussi partie des projets de référence, sa valeur pèse donc dans la médiane et la fourchette auxquelles elle est comparée.")]] : []),
   ]);
   Object.assign(k.f, { figer: { lignes: k2 + 1, colonnes: 1 }, impression: impression([k1, k2]) });
 
   // 2. Projets de référence : identité et surfaces principales, total et médiane en pied
   const SURFACES_REF = [["SP", "SP (m²)"], ["SP_HS", "SP hors-sol (m²)"], ["SP_SS", "SP sous-sol (m²)"], ["SUP", "SUP (m²)"]];
-  const r = feuilleXl("Projets de référence", [8, 30, 40, 23, 26, 8, 18, 26, 8, 12, 12, 12, 12, 11, 9, 11]);
+  // contexte (V6_PLAN, partie 7) : type de site, desserte et zone, si la base a des fiches SIG (pas en version Light)
+  const CTX = avecContexte();
+  const r = feuilleXl("Projets de référence", [8, 30, 40, 23, 26, 8, 18, 26, 8, 12, 12, 12, 12, 11, 9, 12, 11, ...(CTX ? [14, 10, 22] : [])]);
   enteteXl(r, "Projets de référence",
     "Les projets dont sont tirées la médiane et la fourchette de chaque ratio : les projets fiables du pré-filtre, cochés à l'écran. "
     + "Les flèches de l'en-tête trient et filtrent la liste.", contexte);
   const rTete = r.ligne([tete("ID"), ...["Nom", "Typologie", "Intervention", "Forme"].map((t) => tete(t, { h: "left" })), tete("Canton"), tete("Commune", { h: "left" }),
-    tete("Adresse", { h: "left" }), tete("Phase SIA"), ...SURFACES_REF.map(([, t]) => tete(t)), tete("Logements"), tete("Étages hors-sol"), tete("Maquette 3D")], 32);
+    tete("Adresse", { h: "left" }), tete("Phase SIA"), ...SURFACES_REF.map(([, t]) => tete(t)), tete("Logements"), tete("Étages hors-sol"), tete("Terrain (m²)"), tete("Maquette 3D"),
+    ...(CTX ? [tete("Type de site", { h: "left" }), tete("Desserte TP"), tete("Zone à bâtir", { h: "left" })] : [])], 32);
   ref.forEach((p, i) => {
     const base = { ...filet, ...(i % 2 ? { fond: XL.bande } : {}) };
     const centre = { ...base, h: "center" }, nombre = { ...base, ...droite, format: "#,##0" };
@@ -1668,14 +1718,16 @@ function classeurBenchmark() {
     r.ligne([{ v: idCellule(p.id), s: { ...centre, couleur: XL.gris } }, { v: nomRef(p), s: { ...base, gras: true, couleur: XL.noir, retour: true } },
       texte(p.infos?.categorie), texte(p.infos?.intervention), texte(p.infos?.forme), { v: p.infos?.canton || "", s: centre }, texte(p.infos?.commune), texte(p.infos?.adresse),
       { v: p.infos?.phase ?? "", s: centre }, ...SURFACES_REF.map(([c]) => ({ v: p.totaux?.[c], s: nombre })),
-      { v: p.infos?.logements || null, s: nombre }, { v: p.totaux?.ETAGES_HS, s: centre },
-      { v: p.maquette ? "oui" : "—", s: { ...centre, couleur: p.maquette ? XL.noir : XL.clair } }], 7 + 13.5 * lignes);
+      { v: p.infos?.logements || null, s: nombre }, { v: p.totaux?.ETAGES_HS, s: centre }, { v: p.totaux?.TERRAIN ?? null, s: nombre },
+      { v: p.maquette ? "oui" : "—", s: { ...centre, couleur: p.maquette ? XL.noir : XL.clair } },
+      ...(CTX ? [texte(valSig(p, "site")), { v: classeDesserte(p) ?? "", s: centre }, texte(zoneCourte(valSig(p, "zone")))] : [])], 7 + 13.5 * lignes);
   });
   const rFin = r.f.lignes.length - 1;
   const colonneRef = (lire) => ref.map(lire).filter((v) => v != null && Number.isFinite(v)).sort((a, b) => a - b);
-  const mesures = [...SURFACES_REF.map(([c]) => colonneRef((p) => p.totaux?.[c])), colonneRef((p) => p.infos?.logements || null), colonneRef((p) => p.totaux?.ETAGES_HS)];
+  const mesures = [...SURFACES_REF.map(([c]) => colonneRef((p) => p.totaux?.[c])), colonneRef((p) => p.infos?.logements || null), colonneRef((p) => p.totaux?.ETAGES_HS),
+    colonneRef((p) => p.totaux?.TERRAIN ?? null)];
   const pied = (titre, calcul, s) => r.ligne([{ s }, { v: titre, s: { ...s, gras: true } }, ...Array.from({ length: 7 }, () => ({ s })),
-    ...mesures.map((v, i) => ({ v: v.length ? calcul(v, i) : null, s: { ...s, gras: true, format: "#,##0", ...(i === 5 ? { h: "center" } : droite) } })), { s }], 20);
+    ...mesures.map((v, i) => ({ v: v.length ? calcul(v, i) : null, s: { ...s, gras: true, format: "#,##0", ...(i === 5 ? { h: "center" } : droite) } })), { s }, ...(CTX ? [{ s }, { s }, { s }] : [])], 20);
   if (ref.length) {
     pied(`Total des ${pl(ref.length, "projet")}`, (v, i) => (i === 5 ? null : v.reduce((a, b) => a + b, 0)), { v: "center", couleur: XL.bleu, fond: XL.section, bordure: { haut: XL.bleu } });
     pied("Médiane", (v) => quantile(v, 0.5), { v: "center", couleur: XL.bleu, fond: XL.mediane });
@@ -1684,6 +1736,8 @@ function classeurBenchmark() {
     [RT.g("Projet fiable : "), RT.t("maquette dont les surfaces passent les contrôles du benchmark (surfaces brutes et nettes, cohérence, informations du projet).")],
     [RT.g("SP : "), RT.t("surface de plancher (SIA 416), hors-sol et sous-sol. "), RT.g("SUP : "), RT.t("surface utile principale. "),
      RT.g("Total et médiane : "), RT.t("sur les projets listés, sans tenir compte d'un filtre posé dans Excel.")],
+    [RT.g("Terrain : "), RT.t("surface de la parcelle, saisie dans le MDP ou, à défaut, lue au cadastre à l'adresse du projet. Elle donne l'indice d'utilisation (SP hors-sol / terrain) de l'onglet des ratios."),
+     ...(CTX ? [RT.g(" Type de site, desserte, zone : "), RT.t("contexte lu sur geo.admin.ch à l'intégration du projet (densité d'habitants et d'emplois dans 300 m, classe de desserte TP de l'ARE de A à D, zone à bâtir).")] : [])],
     ...pastilles]);
   Object.assign(r.f, { figer: { lignes: rTete + 1, colonnes: 2 }, impression: impression([rTete, rTete]), ...(ref.length ? { filtre: [rTete, 0, rFin, r.nc - 1] } : {}) });
 
@@ -1807,9 +1861,369 @@ function exporterExcel() {
   setTimeout(() => URL.revokeObjectURL(a.href), 60000);
 }
 
+// ------------------------------------------------------------------ Contexte (V6_PLAN, partie 5)
+
+/** Valeur d'une fiche SIG (champ `sig` du projet, version Admin seulement) : { valeur, unite, annee, source, … }. */
+const sigDe = (p, cle) => p?.sig?.[cle] ?? null;
+const valSig = (p, cle) => sigDe(p, cle)?.valeur ?? null;
+/** Classe de desserte TP de l'ARE : « B - bonne desserte » → B (A la meilleure, D la plus faible). */
+const classeDesserte = (p) => { const m = /^\s*([A-D])\b/i.exec(valSig(p, "desserte") ?? ""); return m ? m[1].toUpperCase() : null; };
+/** « Zones d'activités économiques » → « Activités économiques ». */
+const zoneCourte = (v) => {
+  if (!v) return null;
+  const s = String(v).replace(/^Zones?\s+/i, "").replace(/^(d'|de |des )/i, "");
+  return s[0].toUpperCase() + s.slice(1);
+};
+const sourceSig = (s) => s ? [s.unite, s.annee && `année ${s.annee}`, s.source && `source ${s.source}`].filter(Boolean).join(" · ") : "";
+
+/** Points de vigilance : rares mais lourds de conséquences, signalés plutôt que chiffrés. */
+const RADON_ELEVE = 10;              // % de probabilité de dépasser 300 Bq/m³ (carte du radon de l'OFSP)
+const SOLS_MOUS = ["D", "E", "F"];   // classes de sol de fondation à amplification sismique (SIA 261)
+function vigilances(p) {
+  const v = [], radon = valSig(p, "radon"), sol = String(valSig(p, "sol") ?? "").trim().toUpperCase();
+  if (valSig(p, "isos")) v.push({ texte: `Site ISOS : ${valSig(p, "isos")}`, aide: "Site construit d'importance nationale (OFC) : gabarits et façades sous contrainte" });
+  if (radon != null && radon >= RADON_ELEVE) v.push({ texte: `Radon : ${F0.format(radon)} %`, aide: "Probabilité élevée de dépasser 300 Bq/m³ (OFSP) : étanchéité au radon à prévoir" });
+  if (SOLS_MOUS.includes(sol)) v.push({ texte: `Sol ${sol}`, aide: "Sol de fondation meuble (OFEV) : amplification sismique, à intégrer au dimensionnement" });
+  return v;
+}
+
+// --- Mon projet : son contexte lu sur geo.admin.ch depuis son adresse (même collecte que sia_check.sig, limitée aux
+// données qui servent à comparer). Seuls le texte de l'adresse (recherche) puis ses coordonnées partent sur le réseau.
+
+const GEO_API = "https://api3.geo.admin.ch/rest/services/api";
+const RAYON_SIG = 300, SURFACE_HA_SIG = Math.PI * RAYON_SIG ** 2 / 10000;
+/** Seuils du type de site : mêmes valeurs que sia_check.sig.TYPES_SITE (habitants + emplois par ha dans 300 m). */
+const SEUILS_SITE = [["Urbain dense", 150], ["Urbain", 60], ["Périurbain", 20], ["Rural", 0]];
+
+async function chercherAdresses(texte) {
+  const q = new URLSearchParams({ searchText: texte, type: "locations", origins: "address", sr: "2056", limit: "6" });
+  const r = await fetch(`${GEO_API}/SearchServer?${q}`);
+  if (!r.ok) throw new Error(`recherche d'adresse refusée (${r.status})`);
+  // y : est, x : nord (LV95) ; « detail » finit par « ch <canton> »
+  return ((await r.json()).results || []).map(({ attrs: a }) => ({
+    label: String(a.label || "").replace(/\s*<b>\s*/, ", ").replace(/<[^>]+>/g, "").trim(), position: [Math.round(a.y), Math.round(a.x)],
+    canton: (/\bch ([a-z]{2})\s*$/.exec(a.detail || "") || [])[1]?.toUpperCase() ?? null,
+    commune: String(a.label || "").replace(/^.*<b>\s*\d{4}\s*/, "").replace(/<\/b>.*$/, "") || null,
+  }));
+}
+
+async function identifierSig(couche, [e, n], tolerance, { geometrie = false, annee = null } = {}) {
+  const q = new URLSearchParams({ geometryType: "esriGeometryPoint", geometry: `${e},${n}`, sr: "2056", imageDisplay: "1000,1000,96",
+    mapExtent: `${e - 500},${n - 500},${e + 500},${n + 500}`, tolerance: String(tolerance), layers: `all:${couche}`,
+    returnGeometry: String(geometrie), lang: "fr" });
+  if (annee) q.set("timeInstant", String(annee));
+  const r = await fetch(`${GEO_API}/MapServer/identify?${q}`);
+  return r.ok ? ((await r.json()).results || []) : [];
+}
+
+/** Densité dans le rayon, dernière année complète (une année qui perd plus de la moitié de la précédente est écartée). */
+async function densiteSig(couche, pos) {
+  const totaux = [];
+  for (let annee = new Date().getFullYear(); annee > new Date().getFullYear() - 8 && totaux.length < 2; annee--) {
+    const res = await identifierSig(couche, pos, RAYON_SIG, { annee });
+    if (res.length) totaux.push([annee, res.reduce((s, x) => s + (x.attributes?.number || 0), 0)]);
+  }
+  if (!totaux.length) return null;
+  const [annee, total] = totaux.length === 2 && totaux[0][1] < 0.5 * totaux[1][1] ? totaux[1] : totaux[0];
+  return { valeur: Math.round(total / SURFACE_HA_SIG * 10) / 10, unite: "par ha (300 m)", annee };
+}
+
+/** Parcelle sous le point, comme sia_check.sig.parcelle : le plus grand immeuble trouvé (un DDP se superpose au bien-fonds). */
+async function parcelleSig(pos) {
+  const q = new URLSearchParams({ geometryType: "esriGeometryPoint", geometry: `${pos[0]},${pos[1]}`, sr: "2056", imageDisplay: "1000,1000,96",
+    mapExtent: `${pos[0] - 500},${pos[1] - 500},${pos[0] + 500},${pos[1] + 500}`, tolerance: "0",
+    layers: "all:ch.kantone.cadastralwebmap-farbe", returnGeometry: "true", geometryFormat: "geojson", lang: "fr" });
+  const r = await fetch(`${GEO_API}/MapServer/identify?${q}`);
+  if (!r.ok) return null;
+  const aire = (a) => Math.abs(a.reduce((s, [x1, y1], i) => { const [x2, y2] = a[(i + 1) % a.length]; return s + x1 * y2 - x2 * y1; }, 0)) / 2;
+  const surface = (g) => (g?.type === "Polygon" ? [g.coordinates] : g?.type === "MultiPolygon" ? g.coordinates : [])
+    .reduce((s, [ext, ...trous]) => s + aire(ext) - trous.reduce((t, x) => t + aire(x), 0), 0);
+  const trouves = ((await r.json()).results || []).map((x) => ({ s: surface(x.geometry), a: x.properties || x.attributes || {} })).filter((x) => x.s > 0);
+  if (!trouves.length) return null;
+  const { s, a } = trouves.reduce((m, x) => (x.s > m.s ? x : m));
+  return { valeur: Math.round(s), unite: "m²", numero: a.number, egrid: a.egris_egrid, source: "Mensuration officielle (cantons)" };
+}
+
+function typeSite(v) {
+  const h = v.habitants?.valeur, e = v.emplois?.valeur;
+  if (h == null && e == null) return null;
+  const d = (h || 0) + (e || 0);
+  return { valeur: SEUILS_SITE.find(([, s]) => d >= s)[0], densite: Math.round(d * 10) / 10, unite: "habitants + emplois par ha (300 m)" };
+}
+
+async function collecterContexte(pos) {
+  const premier = async (couche, tol = 5) => (await identifierSig(couche, pos, tol))[0]?.attributes ?? null;
+  const [parcelle, zone, isos, radon, sol, desserte, temps, arrets, habitants, emplois] = await Promise.all([
+    parcelleSig(pos), premier("ch.are.bauzonen"), premier("ch.bak.bundesinventar-schuetzenswerte-ortsbilder"), premier("ch.bag.radonkarte"),
+    premier("ch.bafu.gefahren-baugrundklassen"), premier("ch.are.gueteklassen_oev"), premier("ch.are.reisezeit-oev"),
+    identifierSig("ch.bav.haltestellen-oev", pos, 500, { geometrie: true }),
+    densiteSig("ch.bfs.volkszaehlung-bevoelkerungsstatistik_einwohner", pos),
+    densiteSig("ch.bfs.betriebszaehlungen-beschaeftigte_vollzeitaequivalente", pos)]);
+  const v = {};
+  if (parcelle) v.parcelle = parcelle;
+  if (zone?.ch_bez_f) v.zone = { valeur: zone.ch_bez_f, source: "ARE" };
+  if (isos) v.isos = { valeur: isos.ortsbildname || isos.name || isos.label, source: "OFC" };
+  if (radon?.probability_prozent != null) v.radon = { valeur: radon.probability_prozent, source: "OFSP" };
+  if (sol?.bgk || sol?.label) v.sol = { valeur: sol.bgk || sol.label, source: "OFEV" };
+  if (desserte?.klasse_fr) v.desserte = { valeur: desserte.klasse_fr, source: "ARE" };
+  if (temps?.oev_reisezeit_z != null) v.temps_centre = { valeur: temps.oev_reisezeit_z, unite: "min en TP", source: "ARE" };
+  const dist = (r) => { const g = r.geometry || {}, [x, y] = "x" in g ? [g.x, g.y] : (g.points?.[0] ?? [NaN, NaN]); return Math.hypot(x - pos[0], y - pos[1]); };
+  const desservis = arrets.filter((r) => r.attributes?.name && r.attributes?.verkehrsmittel_fr).sort((a, b) => dist(a) - dist(b));
+  if (desservis.length) {
+    const a = desservis[0];
+    v.arret = { valeur: a.attributes.name, moyen: a.attributes.verkehrsmittel_fr, source: "OFT" };
+    if (Number.isFinite(dist(a))) v.arret.distance = Math.round(dist(a));
+  }
+  if (habitants) v.habitants = { ...habitants, source: "OFS STATPOP" };
+  if (emplois) v.emplois = { ...emplois, source: "OFS STATENT (EPT)" };
+  if (typeSite(v)) v.site = typeSite(v);
+  return v;
+}
+
+// --- Similarité de contexte : chaque critère donne un écart de 0 (identique) à 1 (opposé), pondéré par son importance.
+
+const groupeZone = (z) => !z ? null : /habitation/i.test(z) ? "habitation" : /central|mixte/i.test(z) ? "centrale ou mixte" : zoneCourte(z).toLowerCase();
+const mixite = (v) => { const h = v.habitants?.valeur, e = v.emplois?.valeur; return h == null || e == null || h + e === 0 ? null : e / (h + e); };
+const desserteDe = (v) => (/^\s*([A-D])\b/i.exec(v.desserte?.valeur ?? "") || [])[1]?.toUpperCase() ?? null;
+
+const CRITERES_SIMILARITE = [
+  { nom: "Densité alentour", poids: 3, de: (v) => v.site?.densite,
+    ecart: (a, b) => Math.min(1, Math.abs(Math.log10(a + 1) - Math.log10(b + 1))),     // un facteur 10 : écart maximal
+    texte: (x) => `${F0.format(x)} hab.+empl./ha` },
+  { nom: "Desserte TP", poids: 3, de: desserteDe, ecart: (a, b) => Math.abs(a.charCodeAt(0) - b.charCodeAt(0)) / 3, texte: (x) => `desserte ${x}` },
+  { nom: "Zone à bâtir", poids: 2, de: (v) => groupeZone(v.zone?.valeur), ecart: (a, b) => (a === b ? 0 : 1), texte: (x) => `zone ${x}` },
+  { nom: "Canton", poids: 2, de: (v, p) => p.canton, ecart: (a, b) => (norm(a) === norm(b) ? 0 : 1), texte: (x) => x },
+  { nom: "Temps jusqu'au centre", poids: 1, de: (v) => v.temps_centre?.valeur, ecart: (a, b) => Math.min(1, Math.abs(a - b) / 45),
+    texte: (x) => `${F0.format(x)} min du centre` },
+  { nom: "Mixité habitants / emplois", poids: 1, de: mixite, ecart: (a, b) => Math.min(1, Math.abs(a - b) / 0.5),
+    texte: (x) => `${F0.format(100 * x)} % d'emplois alentour` },
+  { nom: "Site ISOS", poids: 1, de: (v) => !!v.isos, ecart: (a, b) => (a === b ? 0 : 1), texte: (x) => (x ? "site ISOS" : "hors site ISOS") },
+];
+
+/** Similarité (0 à 1) entre mon projet et un projet de la base, et le détail critère par critère. */
+function similarite(mien, p) {
+  let somme = 0, poids = 0;
+  const details = CRITERES_SIMILARITE.map((c) => {
+    const a = c.de(mien.sig, mien), b = c.de(p.sig, { canton: p.infos?.canton });
+    if (a == null || b == null) return null;
+    const e = c.ecart(a, b);
+    somme += c.poids * e; poids += c.poids;
+    return { c, a, b, e };
+  }).filter(Boolean);
+  return { score: poids ? 1 - somme / poids : 0, details };
+}
+
+const CLE_RECHERCHE = STOCKAGE + "benchmark.contexte.projet";
+const ctx = { projet: null, choisis: null };     // projet : { adresse, label, position, canton, commune, typologie, sig }
+const avecContexte = () => !!etat.data?.projets.some((p) => p.sig);
+
+function initContexte() {
+  document.getElementById("tab-contexte").hidden = !avecContexte();
+  if (!avecContexte()) return;
+  try { ctx.projet = JSON.parse(localStorage.getItem(CLE_RECHERCHE) || "null"); } catch { /* stockage indisponible */ }
+  const form = document.getElementById("ctx-form"), adresse = document.getElementById("ctx-adresse");
+  const typos = [...new Set(etat.data.projets.map((p) => p.infos?.categorie).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
+  const typo = document.getElementById("ctx-typologie");
+  typo.replaceChildren(el("option", { value: "", text: "Toutes" }), ...typos.map((t) => el("option", { value: t, text: t })));
+  if (ctx.projet) { adresse.value = ctx.projet.adresse ?? ""; typo.value = ctx.projet.typologie ?? ""; }
+  typo.addEventListener("change", () => { if (ctx.projet) { ctx.projet.typologie = typo.value; ctx.choisis = null; sauverRecherche(); dessinerSimilaires(); } });
+  form.addEventListener("submit", (e) => { e.preventDefault(); lancerRecherche(); });
+  document.getElementById("ctx-utiliser").addEventListener("click", () => utiliserCommeReference());
+  document.getElementById("ctx-effacer").addEventListener("click", () => {
+    ctx.projet = null; ctx.choisis = null; adresse.value = ""; sauverRecherche(); dessinerSimilaires();
+    document.getElementById("ctx-etat").textContent = "";
+  });
+}
+
+function sauverRecherche() {
+  try { ctx.projet ? localStorage.setItem(CLE_RECHERCHE, JSON.stringify(ctx.projet)) : localStorage.removeItem(CLE_RECHERCHE); } catch { /* stockage indisponible */ }
+}
+
+async function lancerRecherche(choix = null) {
+  const etatTexte = document.getElementById("ctx-etat"), liste = document.getElementById("ctx-choix");
+  const texte = document.getElementById("ctx-adresse").value.trim(), bouton = document.querySelector("#ctx-form button[type=submit]");
+  if (!texte && !choix) return;
+  liste.hidden = true;
+  bouton.disabled = true;
+  try {
+    let lieu = choix;
+    if (!lieu) {
+      etatTexte.textContent = "Recherche de l'adresse sur geo.admin.ch…";
+      const trouvees = await chercherAdresses(texte);
+      if (!trouvees.length) { etatTexte.textContent = "Adresse introuvable : vérifier la rue, le numéro et la localité."; return; }
+      if (trouvees.length > 1 && norm(trouvees[0].label) !== norm(texte)) {
+        etatTexte.textContent = "Plusieurs adresses correspondent : choisir la bonne.";
+        liste.replaceChildren(...trouvees.map((t) => {
+          const b = el("button", { type: "button", class: "lien", text: t.label });
+          b.addEventListener("click", () => { document.getElementById("ctx-adresse").value = t.label; lancerRecherche(t); });
+          return el("li", {}, b);
+        }));
+        liste.hidden = false;
+        return;
+      }
+      lieu = trouvees[0];
+    }
+    etatTexte.textContent = `Lecture du contexte de ${lieu.label} sur geo.admin.ch…`;
+    const sig = await collecterContexte(lieu.position);
+    ctx.projet = { adresse: lieu.label, ...lieu, typologie: document.getElementById("ctx-typologie").value, sig, date: new Date().toISOString().slice(0, 10) };
+    ctx.choisis = null;
+    sauverRecherche();
+    etatTexte.textContent = "";
+    dessinerSimilaires();
+  } catch (ex) {
+    etatTexte.textContent = `geo.admin.ch injoignable (${ex.message}) : réessayer quand le réseau est disponible.`;
+  } finally {
+    bouton.disabled = false;
+  }
+}
+
+function dessinerContexte() {
+  if (!avecContexte()) return;
+  dessinerSimilaires();
+  dessinerFiches();
+}
+
+/** Les projets de la base classés par similarité de contexte avec mon projet, dans la typologie choisie. Indépendant
+ *  du pré-filtre et des cases cochées : on cherche dans toute la base. */
+function classement() {
+  const typo = ctx.projet?.typologie;
+  return etat.data.projets.filter((p) => p.sig && (!typo || norm(p.infos?.categorie ?? "") === norm(typo)))
+    .map((p) => ({ p, ...similarite(ctx.projet, p) })).sort((a, b) => b.score - a.score);
+}
+
+function dessinerSimilaires() {
+  const bloc = document.getElementById("ctx-resultat");
+  bloc.hidden = !ctx.projet;
+  if (!ctx.projet) return;
+  const rangs = classement();
+  // présélection : les plus similaires aux surfaces fiables, autant que le groupe de référence des Tendances
+  ctx.choisis ??= new Set(rangs.filter((r) => r.p.fiable).slice(0, TAILLE_GROUPE).map((r) => r.p.id));
+  dessinerMien();
+  const typo = ctx.projet.typologie;
+  document.getElementById("ctx-titre-similaires").textContent = rangs.length
+    ? `Projets les plus similaires${typo ? ` · ${typo}` : ""} (${rangs.length})`
+    : `Aucun projet de la base${typo ? ` en « ${typo} »` : ""} n'a de fiche de contexte`;
+  document.getElementById("ctx-similaires").replaceChildren(...rangs.map(({ p, score, details }, i) => {
+    const cb = el("input", { type: "checkbox", "aria-label": `Prendre ${p.nom} comme référence` });
+    cb.checked = ctx.choisis.has(p.id);
+    cb.disabled = !p.fiable;
+    cb.addEventListener("change", () => { cb.checked ? ctx.choisis.add(p.id) : ctx.choisis.delete(p.id); majBoutonUtiliser(); dessinerMien(); });
+    const ius = p.kpis?.[KPI_IUS]?.valeur;
+    const puces = details.sort((a, b) => b.c.poids - a.c.poids || a.e - b.e).map(({ c, a, b, e }) =>
+      el("span", { class: "ctx-puce " + (e < 0.2 ? "proche" : e < 0.6 ? "moyen" : "loin"),
+                   title: `${c.nom} — mon projet : ${c.texte(a)} ; ${p.nom} : ${c.texte(b)} (importance ${c.poids})`,
+                   text: e < 0.2 ? `${c.texte(b)}` : `${c.texte(b)} (moi : ${c.texte(a)})` }));
+    return el("li", { class: "ctx-similaire" + (p.fiable ? "" : " ecarte") },
+      el("label", { class: "ctx-case" }, cb),
+      el("div", { class: "ctx-score", title: "Similarité de contexte" },
+        el("b", { text: `${F0.format(100 * score)} %` }),
+        el("span", { class: "ctx-jauge" }, el("i", { style: `width:${Math.max(2, 100 * score)}%` }))),
+      el("div", { class: "ctx-ident" },
+        el("div", {}, el("span", { class: "secondaire", text: `${i + 1}. ` }), el("span", { class: "mono", text: p.id }), el("b", { text: ` ${p.nom}` })),
+        el("div", { class: "secondaire", text: [p.infos?.commune, p.infos?.categorie, valSig(p, "site"),
+          ius != null && `IUS ${F2.format(ius)}`, p.fiable ? null : "surfaces non fiables : hors référence"].filter(Boolean).join(" · ") })),
+      el("div", { class: "ctx-puces" }, ...puces));
+  }));
+  document.getElementById("ctx-methode").textContent =
+    "Similarité : chaque critère compare mon projet au projet de la base, du plus important au moins important : " +
+    CRITERES_SIMILARITE.map((c) => `${c.nom.toLowerCase()} (×${c.poids})`).join(", ") +
+    ". Vert : proche ; orange : assez proche ; gris : différent. Seuls les projets aux surfaces fiables peuvent servir de référence.";
+  majBoutonUtiliser();
+}
+
+const KPI_IUS = "SP_HS/TERRAIN";
+
+/** Colonne de gauche : la fiche de mon projet et le potentiel de sa parcelle d'après les projets cochés. */
+function dessinerMien() {
+  const mien = { id: "", nom: "Mon projet", infos: { commune: [ctx.projet.label, ctx.projet.canton].filter(Boolean).join(" · ") }, sig: ctx.projet.sig };
+  document.getElementById("ctx-mien").replaceChildren(ficheContexte(mien, { mien: true }), potentiel() ?? "");
+}
+
+/** SP hors-sol qu'on peut espérer sur ma parcelle : l'indice d'utilisation des projets cochés × la surface de la parcelle. */
+function potentiel() {
+  const terrain = ctx.projet?.sig?.parcelle?.valeur;
+  const ius = etat.data.projets.filter((p) => ctx.choisis?.has(p.id)).map((p) => p.kpis?.[KPI_IUS]?.valeur).filter((v) => v != null).sort((a, b) => a - b);
+  const bloc = (...enfants) => el("div", { class: "ctx-potentiel" }, el("p", { class: "td-sur", text: "Potentiel de la parcelle" }), ...enfants);
+  if (!terrain) return bloc(el("p", { class: "secondaire", text: "Parcelle introuvable à cette adresse : potentiel non estimé." }));
+  if (!ius.length) return bloc(el("p", { class: "secondaire", text: "Aucun projet coché n'a d'indice d'utilisation (surface de terrain inconnue)." }));
+  const n = ius.length, med = quantile(ius, 0.5), [lo, hi] = n >= MIN_REFERENCE ? [quantile(ius, 0.25), quantile(ius, 0.75)] : [ius[0], ius.at(-1)];
+  const sp = Math.round(med * terrain / 10) * 10;
+  const bouton = el("button", { type: "button", class: "bouton-export", text: "Programmer avec cette SP" });
+  bouton.addEventListener("click", () => {
+    const champ = document.getElementById("prog-form").elements.SP_HS;
+    champ.value = String(sp);
+    utiliserCommeReference("programmer");
+    champ.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  return bloc(
+    el("div", { class: "td-valeur" }, F0.format(sp), el("small", { text: " m² de SP hors-sol" })),
+    el("p", { class: "td-phrase", text: `IUS médian ${F2.format(med)} des ${n} projet${n > 1 ? "s" : ""} coché${n > 1 ? "s" : ""} × ${F0.format(terrain)} m² de parcelle` }),
+    el("p", { class: "secondaire", text: `${n >= MIN_REFERENCE ? "Moitié centrale" : "De"} ${F0.format(lo * terrain)} à ${F0.format(hi * terrain)} m². ` +
+      "L'indice autorisé par le règlement de la zone prime : à vérifier." }),
+    bouton);
+}
+
+function majBoutonUtiliser() {
+  const n = ctx.choisis?.size ?? 0, b = document.getElementById("ctx-utiliser");
+  b.disabled = !n;
+  b.textContent = n ? `Comparer avec ${n === 1 ? "ce projet" : `ces ${n} projets`} dans les Tendances` : "Cocher des projets à comparer";
+}
+
+/** Les projets cochés deviennent la référence : pré-filtre sur la typologie choisie, tous les autres décochés. */
+function utiliserCommeReference(vue = "ratios") {
+  if (!ctx.choisis?.size) return;
+  for (const [cle] of CRITERES) sel[cle] = "";
+  sel.typologie = ctx.projet?.typologie ?? "";
+  etat.exclus = new Set(etat.data.projets.filter((p) => p.fiable && !ctx.choisis.has(p.id)).map((p) => p.id));
+  majSelection();
+  montrerVue(vue);
+  window.scrollTo(0, 0);
+}
+
+/** Fiche courte d'un projet (de la base, ou mon projet) : l'essentiel du contexte, en mots. */
+function ficheContexte(p, { mien = false } = {}) {
+  const dansRef = mien || (p.fiable && !etat.exclus.has(p.id)), c = mien ? null : etat.comparees.find((x) => x.id === p.id);
+  const ligne = (terme, texte, s) => texte ? [el("dt", { text: terme }), el("dd", { text: texte, title: sourceSig(s) })] : [];
+  const a = sigDe(p, "arret"), site = sigDe(p, "site"), desserte = valSig(p, "desserte"), parc = sigDe(p, "parcelle");
+  // terrain : celui du benchmark (saisie du MDP, sinon cadastre) pour un projet de la base, la parcelle pour mon projet
+  const terrain = mien ? parc?.valeur : p.totaux?.TERRAIN, ius = mien ? null : p.kpis?.[KPI_IUS]?.valeur;
+  const origine = mien ? (parc?.numero ? `parcelle ${parc.numero}` : "") : String(p.infos?.terrain_source ?? "").replace(/ \(cadastre\)$/, "");
+  const corps = p.sig ? [
+    el("dl", {},
+      ...ligne("Terrain", terrain && [`${F0.format(terrain)} m²`, origine && `(${origine === "MDP" ? "saisie du MDP" : origine})`,
+        ius != null && `· IUS ${F2.format(ius)}`].filter(Boolean).join(" "),
+        { source: mien || origine !== "MDP" ? "Mensuration officielle (cantons)" : "MDP", unite: ius != null ? "IUS = SP hors-sol / terrain" : null }),
+      ...ligne("Desserte", desserte && desserte.replace(/^\s*([A-D])\s*-\s*/i, "$1 · "), sigDe(p, "desserte")),
+      ...ligne("Arrêt", a && `${a.valeur}${a.distance != null ? `, ${F0.format(a.distance)} m` : ""}${a.moyen ? ` (${a.moyen.toLowerCase()})` : ""}`, a),
+      ...ligne("Zone", zoneCourte(valSig(p, "zone")), sigDe(p, "zone")),
+      ...ligne("Alentour", site && `${F0.format(site.densite)} habitants et emplois par ha`, site),
+      ...ligne("Centre", valSig(p, "temps_centre") != null && `${F0.format(valSig(p, "temps_centre"))} min en transports publics`, sigDe(p, "temps_centre"))),
+    vigilances(p).length ? el("div", { class: "ctx-alertes" }, ...vigilances(p).map((x) => el("span", { class: "ctx-alerte", title: x.aide, text: x.texte }))) : null,
+  ] : [el("p", { class: "absent", text: "Pas de fiche de contexte : adresse à compléter dans le MDP." })];
+  const carte = el("article", { class: "ctx-fiche" + (mien ? " ctx-fiche-mien" : "") + (dansRef ? "" : " ecarte"), tabindex: mien ? "-1" : "0",
+                                title: mien ? "" : c ? "Comparée : cliquer pour la voir dans les Tendances" : "Ajouter aux maquettes comparées et ouvrir les Tendances" },
+    el("header", {},
+      el("div", {}, c ? pastille(couleurDe(c)) : null, p.id ? el("span", { class: "mono", text: p.id }) : null, el("b", { text: ` ${p.nom}` }),
+        el("div", { class: "secondaire", text: [p.infos?.commune, mien ? null : !p.fiable ? "écarté" : !dansRef ? "décoché" : null].filter(Boolean).join(" · ") })),
+      site ? el("span", { class: "ctx-site", text: site.valeur }) : null),
+    ...corps);
+  if (!mien) {
+    const ouvrir = () => { if (!c && etat.comparees.length < MAX_COMPAREES) basculerComparee(p.id); montrerVue("ratios"); };
+    carte.addEventListener("click", ouvrir);
+    carte.addEventListener("keydown", (e) => { if (e.key === "Enter") ouvrir(); });
+  }
+  return carte;
+}
+
+/** Les fiches de tous les projets de la base qui ont une fiche, ou non (adresse à compléter), sans tenir compte du pré-filtre. */
+function dessinerFiches() {
+  const tous = [...etat.data.projets].sort((a, b) => !!b.sig - !!a.sig || String(a.id).localeCompare(String(b.id), "fr", { numeric: true }));
+  document.getElementById("ctx-fiches").replaceChildren(...tous.map((p) => ficheContexte(p)));
+}
+
 // ------------------------------------------------------------------ onglets et démarrage
 
-const VUES = ["ratios", "programmer", "base", "typologies"];
+const VUES = ["ratios", "programmer", "base", "typologies", "contexte"];
 
 function montrerVue(nom) {
   for (const v of VUES) {
@@ -1821,13 +2235,14 @@ function montrerVue(nom) {
 }
 
 function brancherOnglets() {
-  VUES.forEach((v, i) => {
+  VUES.forEach((v) => {
     const tab = document.getElementById(`tab-${v}`);
     tab.addEventListener("click", () => montrerVue(v));
     tab.addEventListener("keydown", (e) => {
       const pas = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
       if (!pas) return;
-      const suivant = VUES[(i + pas + VUES.length) % VUES.length];
+      const vues = VUES.filter((x) => !document.getElementById(`tab-${x}`).hidden);     // Contexte : version Admin seulement
+      const suivant = vues[(vues.indexOf(v) + pas + vues.length) % vues.length];
       montrerVue(suivant);
       document.getElementById(`tab-${suivant}`).focus();
     });
@@ -1859,8 +2274,10 @@ function demarrer(data) {
   initProgrammer();
   const ecart = verifierDistances();
   if (ecart > 0.002) console.warn(`Distances de la page et du moteur différentes (écart max ${ecart}) : formules à réaligner.`);
+  initContexte();
   dessinerBase();
   dessinerTypologies();
+  dessinerContexte();
   // un projet demandé (SIA Check, lien) est ajouté aux maquettes comparées
   const demande = PARAMS.get("projet");
   if ((demande === MIEN || etat.projets.has(demande)) && !estComparee(demande)) basculerComparee(demande);
@@ -1869,7 +2286,145 @@ function demarrer(data) {
   dessinerRatios();
   dessinerAnatomie();
   montrerVue("ratios");
+  // SIA Check ouvre directement le module Données SIG (bouton de l'accueil, ?module=sig)
+  if (PARAMS.get("module") === "sig") ouvrirModuleSig();
 }
+
+/** Version HTML autonome : une maquette annoncée par la base mais absente du fichier perd son icône cube (elle ne
+ *  pourrait pas s'ouvrir). */
+function retirerMaquettesAbsentes(data) {
+  for (const p of data?.projets ?? []) if (p.maquette && fichierIntegre(p.maquette) == null) p.maquette = null;
+}
+
+// ------------------------------------------------------------------ page de garde (version HTML autonome)
+
+/** Thèmes de SIA Check (Services/AppTheme.cs : DashboardId, libellé) ; pastille = fond et accent du thème. */
+const THEMES = [
+  { id: "amber", nom: "Amber clair", fond: "#FFFBF6", accent: "#FF7A00" },
+  { id: "amber-dark", nom: "Amber sombre", fond: "#14131C", accent: "#FF7A00" },
+  { id: "light", nom: "Pervenche clair", fond: "#F3F4F6", accent: "#5A50D6" },
+  { id: "dark", nom: "Pervenche sombre", fond: "#15171C", accent: "#8B83FF" },
+  { id: "mint", nom: "Mint clair", fond: "#F5FEFC", accent: "#14B8A6" },
+  { id: "mint-dark", nom: "Mint sombre", fond: "#041716", accent: "#14B8A6" },
+];
+/** Même clé que le script d'en-tête d'index.html, qui applique le thème avant tout affichage. */
+const CLE_THEME = "sia-check.benchmark.theme";
+
+/**
+ * Outils de l'accueil, une tuile chacun : un outil de plus = une entrée de plus. `detail(data)` : ligne d'état sous la
+ * description (facultative) ; `ouvrir(data)` : ce que fait le bouton.
+ */
+const TUILES = [
+  {
+    id: "benchmark", icone: "graphe", titre: "Benchmark", bouton: "Ouvrir le benchmark",
+    description: "Comparer un projet à ceux qui lui ressemblent : ratios de surfaces, programmation, carte, maquettes 3D et export Excel.",
+    detail: (data) => {
+      const projets = data?.projets ?? [], fiables = projets.filter((p) => p.fiable).length;
+      return projets.length ? `${fiables} projet${fiables > 1 ? "s" : ""} de référence sur ${projets.length}`
+        : "Aucun projet n'est encore diffusé dans cette version.";
+    },
+    actif: (data) => (data?.projets?.length ?? 0) > 0,
+    ouvrir: (data) => ouvrirBenchmark(data),
+  },
+  {
+    // module Données SIG (V6_PLAN, partie 8) : seulement dans une version avec données SIG
+    id: "sig", icone: "carte", titre: "Données SIG", bouton: "Ouvrir les données SIG",
+    description: "Le contexte de chaque projet de la base sur la carte : zone, desserte, densités, parcelle et points de vigilance, avec des filtres pour trouver les projets.",
+    detail: (data) => {
+      const n = (data?.projets ?? []).filter((p) => p.sig).length;
+      return n ? `${n} projet${n > 1 ? "s" : ""} avec une fiche SIG` : "Pas de données SIG dans cette version.";
+    },
+    actif: (data) => (data?.projets ?? []).some((p) => p.sig),
+    ouvrir: (data) => ouvrirBenchmark(data, "sig"),
+  },
+];
+
+/** Accueil : une tuile par outil, choix du thème (gardé sur ce poste), date de la base en pied de page. */
+function montrerGarde(data) {
+  const jour = /^(\d{4})-(\d{2})-(\d{2})/.exec(data?.genere || "");
+  // version partagée d'un groupe d'utilisateurs (balise ajoutée par SIA Check), docs/V6_PLAN.md
+  const version = document.querySelector('meta[name="sia-version"]')?.content;
+  document.getElementById("garde-pied").textContent = `${version ? `Version ${version} · ` : ""}`
+    + `${jour ? `Base du ${jour[3]}.${jour[2]}.${jour[1]} · ` : ""}Données confidentielles HRS, publiées par SIA Check.`;
+  document.getElementById("garde-tuiles").replaceChildren(...TUILES.map((t) => {
+    const bouton = el("button", { type: "button", class: "bouton-principal", id: `garde-${t.id}` }, icone(t.icone), t.bouton);
+    if (t.actif && !t.actif(data)) bouton.disabled = true;
+    bouton.addEventListener("click", () => t.ouvrir(data));
+    return el("article", { class: "tuile", "aria-labelledby": `tuile-${t.id}` },
+      el("span", { class: "tuile-icone", "aria-hidden": "true" }, icone(t.icone)),
+      el("h2", { id: `tuile-${t.id}`, text: t.titre }),
+      el("p", { text: t.description }),
+      t.detail ? el("p", { class: "tuile-detail", text: t.detail(data) }) : null,
+      el("span", { class: "tuile-espace" }),
+      bouton);
+  }));
+  brancherThemes();
+  document.getElementById("bouton-accueil").addEventListener("click", revenirAccueil);
+  document.querySelector(".garde-tuiles .bouton-principal")?.focus();
+}
+
+/** Le benchmark démarre à sa première ouverture, une fois visible (ses graphiques prennent la largeur réelle) ; aux
+ *  suivantes, il reprend où on l'a laissé. */
+function ouvrirBenchmark(data, module = null) {
+  document.documentElement.classList.remove("mode-garde");
+  const suite = () => (module === "sig" ? ouvrirModuleSig() : fermerModuleSig());
+  if (etat.data) {
+    suite();
+    if (module === "sig") return;
+    requestAnimationFrame(() => {
+      FIGURES.forEach((b) => b.isConnected && b._dessiner?.());
+      if (etat.carte) carte.map?.invalidateSize();
+      window.scrollTo(0, etat.accueilDefilement || 0);
+    });
+    return;
+  }
+  window.scrollTo(0, 0);
+  // le dashboard a besoin des scripts qui suivent app.js (carte.js, xlsx.js)
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { demarrer(data); suite(); }, { once: true });
+  else { demarrer(data); suite(); }
+}
+
+function revenirAccueil() {
+  etat.accueilDefilement = window.scrollY;
+  document.documentElement.classList.add("mode-garde");
+  window.scrollTo(0, 0);
+  document.getElementById("garde-benchmark")?.focus();
+}
+
+function brancherThemes() {
+  const bouton = document.getElementById("garde-theme"), menu = document.getElementById("garde-themes");
+  const actuel = () => document.documentElement.dataset.theme || "amber";
+  const fermer = () => { menu.hidden = true; bouton.setAttribute("aria-expanded", "false"); };
+  const remplir = () => menu.replaceChildren(...THEMES.map((t) => {
+    const b = el("button", { type: "button", role: "menuitemradio", "aria-checked": String(t.id === actuel()) },
+      el("span", { class: "pastille", style: `background: linear-gradient(135deg, ${t.fond} 50%, ${t.accent} 50%)` }), t.nom);
+    b.addEventListener("click", () => {
+      document.documentElement.dataset.theme = t.id;
+      try { localStorage.setItem(CLE_THEME, t.id); } catch { /* stockage indisponible : thème pour cette ouverture */ }
+      fermer();
+      bouton.focus();
+    });
+    return b;
+  }));
+  bouton.addEventListener("click", () => {
+    if (!menu.hidden) { fermer(); return; }
+    remplir();
+    menu.hidden = false;
+    bouton.setAttribute("aria-expanded", "true");
+    menu.querySelector('[aria-checked="true"]')?.focus();
+  });
+  document.addEventListener("click", (e) => { if (!menu.hidden && !e.target.closest(".garde-theme")) fermer(); });
+  menu.addEventListener("keydown", (e) => {
+    const items = [...menu.querySelectorAll("button")], i = items.indexOf(document.activeElement);
+    if (e.key === "Escape") { fermer(); bouton.focus(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+  });
+}
+
+/** Les données peuvent arriver (SIA Check, fetch) avant les scripts qui suivent app.js (carte.js, xlsx.js) :
+ *  le dashboard démarre une fois la page entière lue. */
+const quandPret = (fn) => (document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", fn, { once: true }) : fn());
 
 function charger() {
   poserIcones();
@@ -1880,15 +2435,22 @@ function charger() {
     hote.addEventListener("message", (e) => {
       const m = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
       if (m && m.monProjet) recevoirProjetSiaCheck(m.monProjet);
-      else demarrer(m);
+      else quandPret(() => demarrer(m));
     });
     hote.postMessage("pret");
+    return;
+  }
+  if (INTEGRE) {   // version HTML autonome : la base est dans la page
+    let data;
+    try { data = jsonIntegre("benchmark.json"); } catch { afficherEtat("La base intégrée à ce fichier est illisible : exportez-le à nouveau depuis SIA Check."); return; }
+    retirerMaquettesAbsentes(data);
+    montrerGarde(data);
     return;
   }
   fetch(PARAMS.get("data") || "benchmark.json", { cache: "no-store" })
     .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
     // une erreur de la page reste dans la console : seule l'absence de la base donne ce message
-    .then(demarrer, () => afficherEtat("La base n'a pas encore été lue (benchmark.json introuvable)."));
+    .then((data) => quandPret(() => demarrer(data)), () => afficherEtat("La base n'a pas encore été lue (benchmark.json introuvable)."));
 }
 
 charger();

@@ -27,3 +27,6 @@ dashboard/MAQ-*.json.gz
 
 # Base de données projets locale (MDP réels, maquettes, Power BI) : jamais dans le dépôt public
 00_RESSOURCES/
+
+# Version HTML autonome du benchmark (V6) : contient les données de la base
+*Benchmark*.html

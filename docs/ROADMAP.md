@@ -7,6 +7,10 @@ Idées validées pour les prochaines versions, pas encore développées. Les ver
 
 ### Version locale HTML, ouverte depuis SharePoint
 
+> Faite le 18.11.2026 (branche v6-html-sharepoint), voir docs/V6_PLAN.md : HTML autonome avec accueil, versions
+> partagées Admin et Light publiées à chaque lecture de la base. Restent les points ouverts du plan (bibliothèque
+> définitive, droits, raccourci des utilisateurs sans SIA Check).
+
 - **But :** consulter le benchmark sans installer SIA Check. Un fichier HTML déposé dans une bibliothèque
   SharePoint lance l'interface du dashboard dans le navigateur (Tendances, Programmer, carte, vue 3D, export
   Excel), avec les données de la base.
@@ -22,6 +26,11 @@ Idées validées pour les prochaines versions, pas encore développées. Les ver
   public ni sur un hébergement public ; rien n'est déployé sans feu vert explicite, ni sans l'accord de l'IT.
 
 ### Onglet « Contexte » du benchmark (cartes et données SIG)
+
+> Fait le 18.11.2026, voir docs/V6_PLAN.md parties 5 à 7 : type de site au pré-filtre ; l'onglet trouve les
+> projets de la base au contexte le plus proche d'une adresse, estime la SP de sa parcelle (indice d'utilisation)
+> et la passe au Programmer ; contexte et terrain dans l'export Excel ; module « Données SIG » (partie 8 : carte
+> de toute la base, fiches et filtres SIG). Restent les plans d'affectation.
 
 - **But :** un onglet à part, dédié aux données SIG des projets (voir « Données SIG des projets du benchmark »
   ci-dessous, qui en est la source).
@@ -41,6 +50,9 @@ adresse, sinon le centre de sa commune) et la carte interroge déjà une trentai
 données décrivent le contexte du projet ; les conserver permettrait des ratios propres à l'emplacement.
 
 ### Étape 1 — Collecte à l'intégration au benchmark
+
+> Faite le 18.11.2026, voir docs/V6_PLAN.md partie 4 (rayon de 300 m pour les densités, fiche figée, collecte à
+> chaque lecture de la base).
 
 - **Quand :** à la validation de l'intégration d'un projet à la base (« Ajouter à la base »), et à sa republication
   si sa position a changé. Un rattrapage pour les projets déjà dans la base.
@@ -70,4 +82,4 @@ données décrivent le contexte du projet ; les conserver permettrait des ratios
   plan de quartier, PPA, degré de sensibilité au bruit, indices d'utilisation). Les plans d'affectation cantonaux
   ne sont pas tous sur geo.admin.ch : sources cantonales à recenser (Vaud : géoportail cantonal ; Genève : SITG).
   Rapprocher les indices réglementaires des surfaces réellement construites (SP / surface de parcelle).
-- **Dans les exports :** colonnes de contexte dans l'Excel du benchmark et dans les fiches projet.
+- **Dans les exports :** colonnes de contexte dans l'Excel du benchmark et dans les fiches projet. *(Excel du benchmark fait le 18.11.2026, partie 7.)*

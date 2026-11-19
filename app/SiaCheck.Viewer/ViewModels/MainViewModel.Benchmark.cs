@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SiaCheck.Viewer.Models;
@@ -84,6 +85,27 @@ public sealed partial class MainViewModel
     [ObservableProperty] private bool _isBenchmarkLoading;
     [ObservableProperty] private string? _benchmarkActivity;
     [ObservableProperty] private string? _benchmarkError;
+    partial void OnBenchmarkErrorChanged(string? value) { if (value is not null) PublicationLog($"erreur de la base : {value}"); }
+
+    /// <summary>
+    /// Journal des lectures de la base et des publications HTML de ce poste (benchmark\publication.log, 200 lignes au
+    /// plus) : qui a republié quoi, et pourquoi une version n'a pas suivi la base.
+    /// </summary>
+    private void PublicationLog(string line)
+    {
+        try
+        {
+            var path = Path.Combine(Path.GetDirectoryName(_paths.BenchmarkFile)!, "publication.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var lines = File.Exists(path) ? File.ReadAllLines(path).TakeLast(199).ToList() : [];
+            lines.Add($"{DateTime.Now:yyyy-MM-dd HH:mm:ss}  {line}");
+            File.WriteAllLines(path, lines);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // journal indisponible : sans conséquence
+        }
+    }
     [ObservableProperty] private string? _benchmarkSummary;
     [ObservableProperty] private string? _benchmarkWarning;
     [ObservableProperty] private string? _benchmarkEmptyMessage;
@@ -127,7 +149,15 @@ public sealed partial class MainViewModel
     private async Task InitBenchmarkAsync()
     {
         await SyncBaseModelsAsync();
-        if (IsBenchmarkStale) await RefreshBenchmarkAsync();
+        var stale = IsBenchmarkStale;
+        PublicationLog($"ouverture : base {BenchmarkFolder}, {(stale ? "modifiée, relue" : "inchangée")}");
+        if (stale) { await RefreshBenchmarkAsync(); return; }
+        // base inchangée, mais l'app a peut-être changé de version (pages du dashboard) : les versions HTML sont
+        // reconstruites, et seule une version différente de celle publiée est réécrite (empreinte)
+        if (IsBenchmarkLoading || !File.Exists(_paths.BenchmarkFile)) return;
+        IsBenchmarkLoading = true;
+        try { await PublishBenchmarkHtmlAsync(File.Exists(_paths.AddressRegisterFile) ? _paths.AddressRegisterFile : null); }
+        finally { IsBenchmarkLoading = false; BenchmarkActivity = null; }
     }
 
     /// <summary>
@@ -213,11 +243,37 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Module de la page ouvert d'emblée : « sig » (Données SIG, docs/V6_PLAN.md partie 8), sinon le benchmark.</summary>
+    public string DashboardModule { get; private set; } = "";
+    public string DashboardTitle => DashboardModule == SigModule ? "Données SIG" : "Benchmark";
+    private const string SigModule = "sig";
+
+    /// <summary>Module affiché par la page (message « module:… ») : le titre de l'écran suit, la page n'est pas rechargée.</summary>
+    public void ShowDashboardModule(string module) => SetDashboardModule(module == SigModule ? SigModule : "");
+
+    private void SetDashboardModule(string module)
+    {
+        DashboardModule = module;
+        OnPropertyChanged(nameof(DashboardModule));
+        OnPropertyChanged(nameof(DashboardTitle));
+    }
+
     [RelayCommand(CanExecute = nameof(CanOpenBenchmark))]
     private void OpenBenchmark()
     {
         HomeError = null;
         MyProjectJson = null;
+        SetDashboardModule("");
+        IsDashboard = true;
+    }
+
+    /// <summary>Module Données SIG : la carte de toute la base, les fiches SIG et leurs filtres (même page que le benchmark).</summary>
+    [RelayCommand(CanExecute = nameof(CanOpenBenchmark))]
+    private void OpenSigModule()
+    {
+        HomeError = null;
+        MyProjectJson = null;
+        SetDashboardModule(SigModule);
         IsDashboard = true;
     }
 
@@ -244,6 +300,7 @@ public sealed partial class MainViewModel
         }
         var json = Path.Combine(Path.GetDirectoryName(_paths.BenchmarkFile)!, "mon-projet.json");
         MyProjectJson = null;
+        SetDashboardModule("");
         IsDashboard = true;
         IsBenchmarkLoading = true;
         BenchmarkActivity = $"Lecture des surfaces de « {ProjectName} »…";
@@ -271,6 +328,88 @@ public sealed partial class MainViewModel
     }
 
     private bool CanOpenBenchmark() => BenchmarkProjects.Count > 0;
+
+    // ------------------------------------------------------------------ versions HTML partagées (docs/V6_PLAN.md)
+
+    /// <summary>
+    /// Dossier de la version HTML d'un groupe d'utilisateurs : « Benchmark &lt;groupe&gt; », à côté du dossier de la base
+    /// (même bibliothèque SharePoint, synchronisée chez chaque utilisateur de l'app). Les droits se gèrent sur ce dossier.
+    /// </summary>
+    internal static string PublicationFolder(string baseFolder, string group) =>
+        Path.Combine(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(baseFolder)))!, $"Benchmark {group}");
+
+    /// <summary>La version complète, celle qu'ouvre le bouton « Version HTML ».</summary>
+    public string BenchmarkHtmlFile => Path.Combine(PublicationFolder(BenchmarkFolder, ProjectIdentity.FullGroup), StandaloneDashboard.DefaultFileName);
+
+    /// <summary>
+    /// Les versions HTML partagées, une par groupe d'utilisateurs, refaites sur la base qui vient d'être lue : la version
+    /// complète depuis benchmark.json, les autres recalculées par le moteur sur les seuls projets de leur groupe. Une
+    /// version inchangée n'est pas réécrite (empreinte). Appelée après chaque lecture de la base : ajout, republication,
+    /// identité, relecture, ouverture de l'app quand un autre utilisateur a modifié la base. Une erreur est signalée sans
+    /// bloquer la lecture.
+    /// </summary>
+    private async Task PublishBenchmarkHtmlAsync(string? addresses)
+    {
+        if (_engine is null || !HasBenchmarkFolder || !File.Exists(_paths.BenchmarkFile)) return;
+        var pages = Path.Combine(AppContext.BaseDirectory, "dashboard");
+        var folder = BenchmarkFolder;
+        var written = new List<string>();
+        foreach (var group in ProjectIdentity.UserGroups)
+        {
+            BenchmarkActivity = $"Version HTML « {group} »…";
+            var json = _paths.BenchmarkFile;
+            if (group != ProjectIdentity.FullGroup)
+            {
+                json = Path.Combine(Path.GetDirectoryName(_paths.BenchmarkFile)!, $"benchmark-{group}.json");
+                var r = await _engine.BenchmarkAsync(folder, json, addresses, CancellationToken.None, group);
+                if (!r.Succeeded)
+                {
+                    _shell.Notify($"Version HTML « {group} » non mise à jour : {r.ErrorMessage ?? "lecture de la base impossible."}", isError: true);
+                    PublicationLog($"version {group} : moteur en échec {r.ErrorMessage}");
+                    continue;
+                }
+            }
+            var output = Path.Combine(PublicationFolder(folder, group), StandaloneDashboard.DefaultFileName);
+            try
+            {
+                var done = await Task.Run(() => StandaloneDashboard.Export(pages, json, folder, output, group));
+                if (done.Written) written.Add($"{group} ({done.Projects} projet{S(done.Projects)})");
+                PublicationLog($"version {group} : {done.Projects} projets, {(done.Written ? "publiée" : "inchangée")} -> {output}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
+            {
+                _shell.Notify($"Version HTML « {group} » non mise à jour : {ex.Message}", isError: true);
+                PublicationLog($"version {group} : échec ({ex.GetType().Name}) {ex.Message}");
+            }
+        }
+        if (written.Count > 0) _shell.Notify($"Versions HTML mises à jour : {string.Join(", ", written)}.");
+    }
+
+    /// <summary>
+    /// Ouvre la version HTML complète partagée dans le navigateur par défaut ; elle est publiée d'abord si elle manque
+    /// (première fois, dossier vidé).
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanOpenBenchmark))]
+    private async Task OpenBenchmarkHtmlAsync()
+    {
+        if (!File.Exists(_paths.BenchmarkFile)) { _shell.Notify("La base n'a pas encore été lue : relisez-la d'abord.", isError: true); return; }
+        var path = BenchmarkHtmlFile;
+        try
+        {
+            if (!File.Exists(path) && !IsBenchmarkLoading)
+            {
+                IsBenchmarkLoading = true;
+                try { await PublishBenchmarkHtmlAsync(File.Exists(_paths.AddressRegisterFile) ? _paths.AddressRegisterFile : null); }
+                finally { IsBenchmarkLoading = false; BenchmarkActivity = null; }
+            }
+            if (File.Exists(path)) _shell.OpenFile(path);
+            else _shell.Notify($"Version HTML introuvable : {path}", isError: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            _shell.Notify($"La version HTML n'a pas pu s'ouvrir : {ex.Message}", isError: true);
+        }
+    }
 
     /// <summary>Liste de la base dans l'ordre choisi ; à égalité, fiables d'abord puis par ID.</summary>
     private void FillBenchmarkProjects()
@@ -355,13 +494,26 @@ public sealed partial class MainViewModel
             await SyncBaseModelsAsync();
             var addresses = await EnsureAddressRegisterAsync();
             BenchmarkActivity = "Lecture de la base…";
-            var r = await _engine.BenchmarkAsync(BenchmarkFolder, _paths.BenchmarkFile, addresses, CancellationToken.None);
+            // contexte SIG collecté au passage pour les projets qui n'en ont pas (ajout, autre utilisateur, rattrapage)
+            var r = await _engine.BenchmarkAsync(BenchmarkFolder, _paths.BenchmarkFile, addresses, CancellationToken.None, sig: true);
             if (!r.Succeeded)
             {
                 BenchmarkError = r.ErrorMessage ?? "Lecture de la base impossible.";
                 return;
             }
             ShowBenchmark(BenchmarkBase.Load(_paths.BenchmarkFile));
+            // Adresses apparues à cette lecture (MDP saisi ailleurs, base d'un autre utilisateur) : le registre n'avait pas
+            // été demandé, la base lue d'abord. Il est téléchargé, puis la base relue pour placer les projets à leur adresse.
+            if (addresses is null && await EnsureAddressRegisterAsync() is { } register)
+            {
+                addresses = register;
+                BenchmarkActivity = "Lecture de la base (adresses)…";
+                r = await _engine.BenchmarkAsync(BenchmarkFolder, _paths.BenchmarkFile, addresses, CancellationToken.None, sig: true);
+                if (r.Succeeded) ShowBenchmark(BenchmarkBase.Load(_paths.BenchmarkFile));
+            }
+            ReportSig(r.Log);
+            // versions HTML partagées : toujours le reflet de la base (V6)
+            await PublishBenchmarkHtmlAsync(addresses);
         }
         catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
         {
@@ -374,11 +526,24 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Collecte SIG de cette lecture (ligne « SIG : … » du moteur) : journalisée ; reportée faute de réseau, signalée.</summary>
+    private void ReportSig(string log)
+    {
+        var line = log.Split('\n').Select(l => l.Trim()).LastOrDefault(l => l.StartsWith("SIG :", StringComparison.Ordinal));
+        if (line is null) return;
+        PublicationLog(line);
+        if (line.Contains("reportée", StringComparison.Ordinal))
+            _shell.Notify($"Données SIG : collecte reportée, geo.admin.ch injoignable. Elle reprendra à la prochaine lecture de la base. ({line})",
+                          isError: true);
+    }
+
     private void ShowBenchmark(BenchmarkData? data)
     {
         _benchmarkData = data;
         BenchmarkProjects.Clear();
         OpenBenchmarkCommand.NotifyCanExecuteChanged();
+        OpenSigModuleCommand.NotifyCanExecuteChanged();
+        OpenBenchmarkHtmlCommand.NotifyCanExecuteChanged();
         BenchmarkError = null;
         BenchmarkWarning = null;
         BenchmarkSummary = null;
@@ -407,6 +572,8 @@ public sealed partial class MainViewModel
         if (data.Errors.Count > 0)
             BenchmarkError = $"{data.Errors.Count} fichier{S(data.Errors.Count)} ignoré{S(data.Errors.Count)} : " + string.Join(" · ", data.Errors);
         OpenBenchmarkCommand.NotifyCanExecuteChanged();
+        OpenSigModuleCommand.NotifyCanExecuteChanged();
+        OpenBenchmarkHtmlCommand.NotifyCanExecuteChanged();
         DashboardVersion++;
     }
 
@@ -522,6 +689,8 @@ public sealed partial class MainViewModel
         if (id.Phase.Length == 0) id.Phase = Clean(p.Info("phase"));
         if (id.Forme.Length == 0) { id.Forme = p.Shapes; id.FormeOrigine = p.Info("forme_origine") ?? ""; }
         if (id.Buildings.Count == 0) id.Buildings = p.Buildings;
+        if (id.Groupe.Length == 0) id.Groupe = Clean(p.Info("groupe"));
+        if (id.Terrain.Length == 0) id.Terrain = Clean(p.Info("terrain"));
     }
 
     /// <summary>

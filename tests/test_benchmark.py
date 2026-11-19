@@ -299,3 +299,38 @@ def test_formes_encodage_et_libelle():
     assert formes.libelle(d) == "Îlot de bâtiments : Carré, Rectangle compact"
     assert formes.libelle({"": "En L"}) == "En L"
     assert formes.libelle({}) == ""
+
+
+def test_groupe_d_utilisateurs_ecrit_puis_relu(tmp_path):
+    """V6 : le groupe d'utilisateurs, ligne ajoutée à InfosProjet comme l'adresse, relu dans les infos du projet."""
+    from sia_check import mdp as mdp_mod
+    path = mdp(tmp_path / "MDP-9001-Test.xlsx")
+    assert b.lire(path).infos["groupe"] is None
+    mdp_mod.ecrire_identite(path, {"Groupe d'utilisateurs": "Light"})
+    assert b.lire(path).infos["groupe"] == "Light"
+
+
+def test_version_d_un_groupe_recalculee_sur_ses_projets(tmp_path):
+    """V6 : la version Light ne contient que les projets du groupe Light, base et distances comprises ; Admin : tous."""
+    mdp(tmp_path / "MDP-7001-A.xlsx", infos={"ID projet": 7001, "Groupe d'utilisateurs": "Light"}, sp_hs=800.0)
+    mdp(tmp_path / "MDP-7002-B.xlsx", infos={"ID projet": 7002, "Groupe d'utilisateurs": "Admin"}, sp_hs=900.0)
+    mdp(tmp_path / "MDP-7003-C.xlsx", infos={"ID projet": 7003}, sp_hs=1000.0)                  # sans groupe : Admin seulement
+    projets, _ = b.lire_dossier(tmp_path)
+    assert {p.id for p in b.du_groupe(projets, "Admin")} == {"7001", "7002", "7003"}
+    assert {p.id for p in b.du_groupe(projets, None)} == {"7001", "7002", "7003"}
+    assert [p.id for p in b.du_groupe(projets, "light")] == ["7001"]
+    out = tmp_path / "light.json"
+    assert cli.main(["--benchmark", str(tmp_path), "--benchmark-json", str(out), "--benchmark-groupe", "Light"]) == 0
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert [p["id"] for p in data["projets"]] == ["7001"]
+    texte = json.dumps({k: v for k, v in data.items() if k != "listes"})
+    assert "7002" not in texte and "7003" not in texte and "MDP-7002" not in texte    # ni valeurs, ni distances, ni fichiers
+    assert data["erreurs"] == []
+
+
+def test_version_d_un_groupe_vide(tmp_path):
+    """Aucun projet dans le groupe : un benchmark vide, pas une erreur (la page le dit)."""
+    mdp(tmp_path / "MDP-1-A.xlsx", infos={"ID projet": 1})
+    out = tmp_path / "light.json"
+    assert cli.main(["--benchmark", str(tmp_path), "--benchmark-json", str(out), "--benchmark-groupe", "Light"]) == 0
+    assert json.loads(out.read_text(encoding="utf-8"))["projets"] == []

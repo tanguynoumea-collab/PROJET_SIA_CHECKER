@@ -14,6 +14,9 @@ LIGNES = [
     ("Rue du Lac", "3", "1400 Yverdon-les-Bains", "Yverdon-les-Bains", "VD", 2539000.0, 1181000.0),
     ("Rue du Lac", "3", "1800 Vevey", "Vevey", "VD", 2554000.0, 1145600.0),
     ("Bahnhofstrasse", "1", "8001 Zürich", "Zürich", "ZH", 2683187.0, 1246862.0),
+    # un NPA sur deux communes (1213 : Lancy et Genève), comme au registre
+    ("Avenue du Cimetière", "26", "1213 Petit-Lancy", "Lancy", "GE", 2498227.0, 1117047.0),
+    ("Avenue du Cimetière", "1", "1213 Petit-Lancy", "Genève", "GE", 2498100.0, 1117300.0),
 ]
 
 
@@ -49,6 +52,8 @@ def test_analyse_d_une_adresse(texte, attendu):
     ("Rue du Lac 3", None, None),                                            # homonyme sans commune : pas de position
     ("Bahnhofstr. 1, 8001 Zürich", None, ([2683187, 1246862], "adresse")),
     ("Rue inventée 3", "Lausanne", None),
+    ("Avenue du Cimetière 26, 1213 Petit-Lancy", None, ([2498227, 1117047], "adresse")),  # le numéro tranche
+    ("Avenue du Cimetière 5, 1213 Petit-Lancy", None, None),                            # ni numéro ni commune
 ])
 def test_position_d_une_adresse(registre, adresse, commune, attendu):
     assert registre.position(adresse, commune, "VD" if commune else None) == attendu

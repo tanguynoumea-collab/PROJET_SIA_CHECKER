@@ -238,11 +238,15 @@ def projet_values(levels: pd.DataFrame, lots: pd.DataFrame) -> dict[str, object]
 
 # Identité d'un projet (fiche « Identité du projet » de la visionneuse) : descriptions de la feuille InfosProjet
 IDENTITE = ("ID projet", "Nom Projet HRS", "Canton", "Commune", "Categorie d'Ouvrage", "Type d'intervention",
-            "Phase du projet", "Adresse", "Forme", "Forme (origine)")
+            "Phase du projet", "Adresse", "Forme", "Forme (origine)", "Groupe d'utilisateurs", "Surface du terrain (m²)")
 # Champs ajoutés après le gabarit d'origine (V5) : absents des MDP existants, leur ligne est ajoutée à la première écriture.
 # Forme : une forme par bâtiment (sia_check.formes) ; origine : « saisie » ou « IA » (partie 5).
+# Groupe d'utilisateurs (V6) : la version HTML du benchmark où le projet est diffusé (« Admin » : réservé à la version
+# complète ; « Light » : aussi dans la version light).
 AJOUTS_INFOS = {"Adresse": "Identification du projet", "Forme": "Identification du projet",
-                "Forme (origine)": "Identification du projet"}
+                "Forme (origine)": "Identification du projet", "Groupe d'utilisateurs": "Identification du projet",
+                # V6, partie 7 : surface du terrain, quand la parcelle du cadastre ne convient pas (plusieurs parcelles…)
+                "Surface du terrain (m²)": "Identification du projet"}
 # Colonnes de la feuille « Listes formulaire » qui alimentent les listes déroulantes de la fiche
 LISTES = {"Categorie d'Ouvrage": "Categorie d'Ouvrage", "Canton": "Cantons", "Type d'intervention": "Type Intervention",
           "Phase du projet": "Phase du projet"}

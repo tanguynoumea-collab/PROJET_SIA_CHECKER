@@ -118,8 +118,14 @@ public sealed partial class AnalysisService(string enginePath)
 
     /// <summary>Base du benchmark : les MDP d'un dossier lus, normalisés et comparés (sia_check.benchmark).</summary>
     /// <param name="addresses">registre des adresses (s'il est là) : les projets sont placés à leur adresse sur la carte.</param>
-    public Task<EngineRun> BenchmarkAsync(string folder, string json, string? addresses, CancellationToken ct) =>
-        RunAsync(["--benchmark", folder, "--benchmark-json", json, .. addresses is null ? Array.Empty<string>() : ["--adresses", addresses]],
+    /// <param name="group">version d'un groupe d'utilisateurs (V6) : le benchmark recalculé sur les seuls projets du groupe.</param>
+    /// <param name="sig">collecte le contexte SIG (geo.admin.ch) des projets sans fiche SIG-&lt;id&gt;.json (V6, partie 4).</param>
+    public Task<EngineRun> BenchmarkAsync(string folder, string json, string? addresses, CancellationToken ct, string? group = null,
+                                          bool sig = false) =>
+        RunAsync(["--benchmark", folder, "--benchmark-json", json,
+                  .. addresses is null ? Array.Empty<string>() : ["--adresses", addresses],
+                  .. group is null ? Array.Empty<string>() : ["--benchmark-groupe", group],
+                  .. sig ? ["--benchmark-sig"] : Array.Empty<string>()],
                  null, ct);
 
     /// <summary>Totaux et ratios du projet (corrections comprises) au format d'un projet du benchmark (« Mon projet »).</summary>

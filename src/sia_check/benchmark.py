@@ -91,6 +91,9 @@ KPIS = [
         sens=1, objet="de SP hors-sol"),
     Kpi("FACADE/SP_HS", "Enveloppe", "Façade / SP hors-sol", ("FACADE",), ("SP_HS",), unite="", sens=-1, objet="de façade"),
     Kpi("VB/SP", "Enveloppe", "Hauteur brute moyenne : VB / SP", ("VB",), ("SP",), unite="m"),
+    # V6_PLAN, partie 7 : TERRAIN = surface de la parcelle (saisie du MDP, sinon cadastre de la fiche SIG)
+    Kpi("SP_HS/TERRAIN", "Terrain", "Indice d'utilisation : SP hors-sol / terrain", ("SP_HS",), ("TERRAIN",), unite="",
+        note="m² de plancher hors-sol par m² de parcelle. Proche de l'IUS réglementaire, sans ses déductions."),
     Kpi("SUP/LOG", "Programme", "SUP par logement", ("SUP",), ("LOG",), unite="m²", typologie="logement"),
     Kpi("SP_HS/LOG", "Programme", "SP hors-sol par logement", ("SP_HS",), ("LOG",), unite="m²", typologie="logement"),
     # Cages d'escalier (V3.1) : étages de logements desservis, sommés (moyenne des étages pondérée par leurs cages)
@@ -284,6 +287,9 @@ def _infos(df: pd.DataFrame) -> dict:
         "logements": _num(get("nbr total de logements")), "places_voiture": _num(get("nbr places de stationnement voiture dans")),
         "formes": formes or None, "forme": libelle(formes) or None,
         "forme_origine": raw.get(_key("forme (origine)")) if not _empty(raw.get(_key("forme (origine)"))) else None,
+        "groupe": get("groupe d'utilisateurs"),
+        # V6_PLAN, partie 7 : saisie qui prime sur la parcelle du cadastre (projet sur plusieurs parcelles…)
+        "terrain": _num(get("surface du terrain")),
     }
 
 
@@ -663,18 +669,52 @@ def maquette(dossier: Path, id_projet: str) -> str | None:
 
 
 def construire(projets: list[Projet], erreurs: list[str] | None = None, k: int = 5, dossier: Path | None = None,
-               registre=None) -> dict:
-    """Le contenu de benchmark.json, lu par le dashboard. `dossier` : celui de la base, où chercher les maquettes 3D ;
-    `registre` : registre des adresses (sia_check.adresses.Registre), pour placer les projets à leur adresse."""
+               registre=None, avec_sig: bool = True) -> dict:
+    """Le contenu de benchmark.json, lu par le dashboard. `dossier` : celui de la base, où chercher les maquettes 3D et
+    les fiches SIG ; `registre` : registre des adresses (sia_check.adresses.Registre), pour placer les projets à leur
+    adresse ; `avec_sig` : False pour une version d'un groupe d'utilisateurs sans données SIG (V6, version Light)."""
+    from . import sig
+    for p in projets:
+        terrain(p, dossier if avec_sig else None)
     return {
         "version": VERSION, "genere": dt.datetime.now().isoformat(timespec="seconds"),
         "kpis": [dataclasses.asdict(k_) for k_ in KPIS], "features": FEATURES, "filtres": list(FILTRES),
-        "projets": [{**_projet_json(p, projets, k, registre), "maquette": maquette(dossier, p.id) if dossier else None} for p in projets],
+        "projets": [{**_projet_json(p, projets, k, registre), "maquette": maquette(dossier, p.id) if dossier else None,
+                     # contexte SIG du projet (fiche SIG-<id>.json de la base, type de site compris), None sans fiche
+                     "sig": sig.valeurs_benchmark(dossier, p.id) if dossier and avec_sig else None}
+                    for p in projets],
         "base": {kpi.id: combiner(projets, kpi) for kpi in KPIS},
         "typologies": typologies(projets), "erreurs": erreurs or [],
         # listes déroulantes de la fiche « Identité du projet », formes des bâtiments comprises (partie 5)
         "listes": {**mdp.listes(), "Forme": list(FORMES)},
     }
+
+
+def terrain(p: Projet, dossier: Path | None) -> None:
+    """Surface du terrain du projet dans ses totaux (TERRAIN, dénominateur de l'indice d'utilisation) : la saisie du MDP,
+    sinon la parcelle de sa fiche SIG (`dossier` : celui de la base ; None pour une version sans données SIG). L'origine
+    est notée dans les infos (terrain_source)."""
+    from . import sig
+    p.totaux.pop("TERRAIN", None)
+    p.infos.pop("terrain_source", None)
+    if p.infos.get("terrain"):
+        p.totaux["TERRAIN"], p.infos["terrain_source"] = float(p.infos["terrain"]), "MDP"
+    elif dossier and (parc := ((sig.lire(dossier, p.id) or {}).get("valeurs") or {}).get("parcelle")) and parc.get("valeur"):
+        p.totaux["TERRAIN"] = float(parc["valeur"])
+        p.infos["terrain_source"] = f"parcelle {parc.get('numero', '?')} (cadastre)"
+
+
+# Version complète du benchmark (V6) : tous les projets, quel que soit leur groupe d'utilisateurs
+GROUPE_COMPLET = "Admin"
+
+
+def du_groupe(projets: list[Projet], groupe: str | None) -> list[Projet]:
+    """Les projets diffusés dans la version `groupe` (V6, docs/V6_PLAN.md) : tous pour « Admin » (ou sans groupe), sinon
+    ceux dont le « Groupe d'utilisateurs » est ce groupe. Un projet sans groupe reste réservé à la version complète."""
+    if not groupe or groupe.strip().lower() == GROUPE_COMPLET.lower():
+        return projets
+    cle = groupe.strip().lower()
+    return [p for p in projets if str(p.infos.get("groupe") or "").strip().lower() == cle]
 
 
 def ecrire(data: dict, path: Path) -> None:

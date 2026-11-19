@@ -27,7 +27,8 @@ public partial class MainWindow
             if (!_dashboardReady) await InitDashboardAsync();
             // Rechargée à chaque entrée et à chaque relecture de la base : données et thème à jour
             var mine = ViewModel.MyProjectJson is null ? "" : "&projet=mien";
-            DashboardView.CoreWebView2.Navigate($"https://{DashboardHost}/index.html?theme={ViewModel.DashboardTheme}&maquettes=https://{ModelsHost}/{mine}");
+            var module = ViewModel.DashboardModule.Length > 0 ? $"&module={ViewModel.DashboardModule}" : "";     // module Données SIG
+            DashboardView.CoreWebView2.Navigate($"https://{DashboardHost}/index.html?theme={ViewModel.DashboardTheme}&maquettes=https://{ModelsHost}/{mine}{module}");
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -56,7 +57,10 @@ public partial class MainWindow
         core.Settings.IsStatusBarEnabled = false;
         core.WebMessageReceived += (_, e) =>
         {
-            if (e.TryGetWebMessageAsString() != "pret") return;
+            var message = e.TryGetWebMessageAsString();
+            // la page passe du benchmark au module Données SIG ou l'inverse : le titre suit, sans recharger
+            if (message.StartsWith("module:", StringComparison.Ordinal)) { ViewModel.ShowDashboardModule(message["module:".Length..]); return; }
+            if (message != "pret") return;
             var json = File.Exists(ViewModel.BenchmarkFile) ? File.ReadAllText(ViewModel.BenchmarkFile) : "{}";
             core.PostWebMessageAsString(json);
             if (ViewModel.MyProjectJson is { } mine) core.PostWebMessageAsString($"{{\"monProjet\":{mine}}}");

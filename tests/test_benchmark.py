@@ -296,7 +296,7 @@ def test_formes_encodage_et_libelle():
     assert d == {"A": "Rectangle compact", "B": "Carré"}
     assert formes.encoder(d) == "A : Rectangle compact ; B : Carré"
     assert formes.encoder({"A": "barre"}) == "Barre"
-    assert formes.libelle(d) == "Îlot de bâtiments : Carré, Rectangle compact"
+    assert formes.libelle(d) == "Plusieurs bâtiments : Carré, Rectangle compact"
     assert formes.libelle({"": "En L"}) == "En L"
     assert formes.libelle({}) == ""
 

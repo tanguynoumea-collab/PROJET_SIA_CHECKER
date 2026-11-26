@@ -7,14 +7,16 @@ Une forme par bâtiment, choisie dans FORMES. Le MDP la porte dans InfosProjet (
 Le champ « Forme (origine) » dit qui l'a renseignée : « saisie » (l'utilisateur) ou « IA » (revue IA ou analyse IA
 de la génération). L'IA ne remplace une saisie qu'après confirmation de l'utilisateur (application).
 
-Au benchmark, un projet à plusieurs bâtiments est un « Îlot de bâtiments » suivi des formes de ses bâtiments.
+Au benchmark, un projet à plusieurs bâtiments est noté « Plusieurs bâtiments » suivi des formes de ses bâtiments ; sa
+forme d'ensemble est la forme bâtie a+t de la carte d'identité (chez a+t, un îlot est une forme précise : îlot fermé,
+ouvert, en U…, d'où le libellé, V7).
 """
 
 from __future__ import annotations
 
 FORMES = ("Carré", "Rectangle compact", "Barre", "En L", "En T", "En U", "Cour fermée / îlot", "À redans / en Z",
           "En peigne / en H", "Rond / ovale", "Courbe / arc", "Plusieurs plots", "Irrégulière")
-ILOT = "Îlot de bâtiments"
+ILOT = "Plusieurs bâtiments"
 ORIGINES = ("saisie", "IA")
 SEP_BATIMENTS, SEP_FORME = ";", ":"
 
@@ -48,7 +50,7 @@ def encoder(formes: dict[str, str]) -> str:
 
 
 def libelle(formes: dict[str, str]) -> str:
-    """Forme du projet en clair : la forme du bâtiment seul, ou « Îlot de bâtiments : Carré, Rectangle compact »."""
+    """Forme du projet en clair : la forme du bâtiment seul, ou « Plusieurs bâtiments : Carré, Rectangle compact »."""
     if not formes:
         return ""
     if len(formes) == 1:

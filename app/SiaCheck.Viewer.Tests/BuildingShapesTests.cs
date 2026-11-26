@@ -14,7 +14,7 @@ public class BuildingShapesTests
         Assert.Equal(2, two.Count);
         Assert.Equal("Carré", two["B"]);
         Assert.Equal("A : Rectangle compact ; B : Carré", BuildingShapes.Encode(two));
-        Assert.Equal("Îlot de bâtiments : Carré, Rectangle compact", BuildingShapes.Label(two));
+        Assert.Equal("Plusieurs bâtiments : Carré, Rectangle compact", BuildingShapes.Label(two));
         Assert.Equal("En L", BuildingShapes.Label(BuildingShapes.Decode("En L")));
     }
 

@@ -177,4 +177,4 @@ def test_forme_ajoutee_a_infos_projet(filled):
     df = pd.read_excel(filled, sheet_name="InfosProjet", header=None)
     lu = benchmark._infos(df)
     assert lu["formes"] == {"A": "Rectangle compact", "B": "Carré"}
-    assert lu["forme"] == "Îlot de bâtiments : Carré, Rectangle compact" and lu["forme_origine"] == "IA"
+    assert lu["forme"] == "Plusieurs bâtiments : Carré, Rectangle compact" and lu["forme_origine"] == "IA"

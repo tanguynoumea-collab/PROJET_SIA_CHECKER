@@ -24,6 +24,8 @@ public interface IShell
     /// </summary>
     Task<ProjectSheet?> AskProjectSheetAsync(ProjectSheet initial, IdentityLists lists, bool creating, Func<ProjectSheet, SheetCheck> check);
     void OpenFile(string path);
+    /// <summary>Carte d'identité d'un projet de la base (docs/CARTE_IDENTITE.md), fenêtre non modale.</summary>
+    void ShowIdentityCard(string title, string subtitle, IdentityCard card, IdentityCardActions actions);
     /// <summary>Cadre la caméra sur ces bornes (null = tout le modèle visible).</summary>
     void Frame(Rect3D? bounds);
     void ApplyTheme(string theme);

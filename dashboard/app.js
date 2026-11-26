@@ -176,13 +176,23 @@ const norm = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").trim().to
 
 const CLE_SELECTION = STOCKAGE + "benchmark.selection";
 const CRITERES = [["typologie", "categorie", "Toutes"], ["canton", "canton", "Tous"], ["intervention", "intervention", "Toutes"],
-                  ["site", "site", "Tous"]];
+                  ["site", "site", "Tous"], ["famille", "famille", "Toutes"], ["distribution", "distribution", "Toutes"]];
+/** Critères montrés seulement si la base a des valeurs (fiches SIG, cartes d'identité renseignées). */
+const CRITERES_OPTIONNELS = ["site", "famille", "distribution"];
 /** Types de site (sia_check.sig.TYPES_SITE), du plus dense au moins dense : version avec données SIG seulement. */
 const TYPES_SITE = ["Urbain dense", "Urbain", "Périurbain", "Rural"];
 /** Valeur d'un critère : la fiche identité du MDP, sauf le type de site, tiré de la fiche SIG. */
-const valeurCritere = (p, info) => (info === "site" ? p.sig?.site?.valeur : p.infos?.[info]);
+const valeurCritere = (p, info) => (info === "site" ? p.sig?.site?.valeur
+  : info === "famille" || info === "distribution" ? p.identite?.[info] : p.infos?.[info]);
+/** Ordre des valeurs d'un critère : types de site du plus dense au moins dense, familles a+t et distributions dans
+ *  l'ordre du moteur, le reste alphabétique. */
+function ordreCritere(cle) {
+  const liste = cle === "site" ? TYPES_SITE : cle === "famille" ? Object.keys(etat.data.formes_at || {})
+    : cle === "distribution" ? etat.data.distributions || [] : null;
+  return (a, b) => liste ? (liste.indexOf(a) + 1 || 99) - (liste.indexOf(b) + 1 || 99) || a.localeCompare(b, "fr") : a.localeCompare(b, "fr");
+}
 const NON_IDENTIFIEE = "__non_identifiee";
-const KPI_CLES = ["SUP/SP_HS", "VITRE/PLEINE", "FORME"];
+const KPI_CLES = ["SUP/SP_HS", "VITRE/FACADE", "FORME"];
 /** Groupes de ratios (DESIGN_PLAN, Évolution 4.3), dans l'ordre de l'onglet Ratios de l'application. La pastille
  *  reprend la couleur des surfaces mesurées (SP, SH, façade) ; le titre dit toujours le groupe. */
 const GROUPES = [
@@ -193,10 +203,15 @@ const GROUPES = [
   { titre: "Programme", definition: "cages d'escalier et logements", couleur: "#6B7280", familles: ["Programme"] },
   { titre: "Terrain", definition: "plancher hors-sol par m² de parcelle", couleur: "#9A7B4F", familles: ["Terrain"] },
 ];
-const sel = { typologie: "", canton: "", intervention: "", site: "" };
+const sel = { typologie: "", canton: "", intervention: "", site: "", famille: "", distribution: "", realises: "0" };
+
+/** Projet encore en études (phase SIA avant 41, moteur : identite.realise) : écarté quand « Réalisés et autorisés » est
+ *  cochée (V7). Décochée par défaut : la phase des MDP est souvent celle de l'étude, pas l'état actuel du projet. */
+const nonAutorise = (p) => p.identite?.realise === false;
 
 /** Le projet passe la sélection ; `sauf` ignore un critère (comptes des listes, suggestions d'élargissement). */
 function dansSelection(p, sauf = null, s = sel) {
+  if (sauf !== "realises" && s.realises === "1" && nonAutorise(p)) return false;
   return CRITERES.every(([cle, info]) => {
     if (cle === sauf || !s[cle]) return true;
     const v = valeurCritere(p, info);
@@ -213,22 +228,28 @@ const selectionActive = () => CRITERES.some(([cle]) => sel[cle]);
 
 function libelleSelection() {
   const parts = CRITERES.filter(([cle]) => sel[cle]).map(([cle]) => sel[cle] === NON_IDENTIFIEE ? "Typologie non identifiée" : sel[cle]);
+  if (sel.realises === "1") parts.push("réalisés et autorisés");
   return parts.length ? parts.join(" · ") : "Tous les projets";
 }
 
 function initSelection() {
   try { Object.assign(sel, JSON.parse(localStorage.getItem(CLE_SELECTION) || "{}")); } catch { /* stockage indisponible */ }
   for (const [cle] of CRITERES) if (PARAMS.has(cle)) sel[cle] = PARAMS.get(cle);     // un lien partagé fait foi
+  if (PARAMS.has("realises")) sel.realises = PARAMS.get("realises") === "1" ? "1" : "0";
   const form = document.getElementById("selection");
   // les volets collent sous la barre (onglets et pré-filtre), quelle que soit sa hauteur (retour à la ligne en fenêtre étroite)
   const barre = document.querySelector(".entete-page");
   const hauteur = () => { document.documentElement.style.setProperty("--haut-selection", `${barre.offsetHeight}px`); ajuster3D(); };
   hauteur();
   if ("ResizeObserver" in window) new ResizeObserver(hauteur).observe(barre);
-  form.addEventListener("change", (e) => { sel[e.target.name] = e.target.value; majSelection(); });
+  form.addEventListener("change", (e) => {
+    sel[e.target.name] = e.target.type === "checkbox" ? (e.target.checked ? "1" : "0") : e.target.value;
+    majSelection();
+  });
   form.addEventListener("submit", (e) => e.preventDefault());
   document.getElementById("selection-reinit").addEventListener("click", () => {
     for (const [cle] of CRITERES) sel[cle] = "";
+    sel.realises = "0";
     majSelection();
   });
   remplirSelection();
@@ -240,10 +261,10 @@ function remplirSelection() {
   for (const [cle, info, tous] of CRITERES) {
     const base = etat.data.projets.filter((p) => p.fiable && dansSelection(p, cle));
     const compte = (v) => base.filter((p) => { const x = valeurCritere(p, info); return v === NON_IDENTIFIEE ? !x : x && norm(x) === norm(v); }).length;
-    const valeurs = [...new Set(etat.data.projets.map((p) => valeurCritere(p, info)).filter(Boolean))]
-      .sort((a, b) => cle === "site" ? TYPES_SITE.indexOf(a) - TYPES_SITE.indexOf(b) : a.localeCompare(b, "fr"));
-    // type de site : seulement si la base a des fiches SIG (pas dans la version Light)
-    if (cle === "site") form[cle].closest("label").hidden = !valeurs.length && !sel.site;
+    const valeurs = [...new Set(etat.data.projets.map((p) => valeurCritere(p, info)).filter(Boolean))].sort(ordreCritere(cle));
+    // type de site (fiches SIG, pas dans la version Light), forme bâtie et distribution (cartes d'identité) : seulement
+    // si la base en a
+    if (CRITERES_OPTIONNELS.includes(cle)) form[cle].closest("label").hidden = !valeurs.length && !sel[cle];
     if (sel[cle] && sel[cle] !== NON_IDENTIFIEE && !valeurs.some((v) => norm(v) === norm(sel[cle]))) valeurs.push(sel[cle]);
     const options = [el("option", { value: "", text: `${tous} (${base.length})` }),
       ...valeurs.map((v) => el("option", { value: v, text: `${v} (${compte(v)})` }))];
@@ -252,10 +273,17 @@ function remplirSelection() {
     form[cle].replaceChildren(...options);
     form[cle].value = valeurs.find((v) => norm(v) === norm(sel[cle])) ?? sel[cle];
   }
+  // réalisés et autorisés : la case n'apparaît que si la base compte des projets encore en études
+  const enEtudes = etat.data.projets.filter((p) => p.fiable && nonAutorise(p) && dansSelection(p, "realises")).length;
+  const caseRealises = form.realises;
+  caseRealises.checked = sel.realises === "1";
+  caseRealises.closest("label").hidden = !etat.data.projets.some(nonAutorise);
+  caseRealises.closest("label").title = `Sans les projets encore en études (phase SIA avant ${etat.data.phase_autorisee ?? 41}) : `
+    + `${enEtudes} projet${enEtudes > 1 ? "s" : ""} fiable${enEtudes > 1 ? "s" : ""} de la sélection à écarter. La phase est celle du MDP (souvent celle de l'étude).`;
   const n = fiablesSelection().length, r = reference().length;
   document.getElementById("selection-resume").textContent =
     `${r} projet${r > 1 ? "s" : ""} de référence sur ${n} fiable${n > 1 ? "s" : ""}`;
-  document.getElementById("selection-reinit").hidden = !selectionActive();
+  document.getElementById("selection-reinit").hidden = !selectionActive() && sel.realises !== "1";
 }
 
 /** Sélection logement (ou toutes typologies) : seule à donner un sens aux ratios par logement et au mix. */
@@ -263,15 +291,17 @@ function selectionLogement() {
   return !sel.typologie || norm(sel.typologie).startsWith("logement");
 }
 
-/** KPI de la sélection : ceux propres au logement (SUP par logement…) n'ont pas de sens pour un hôpital. */
+/** KPI de la sélection : ceux propres au logement (SUP par logement…) n'ont pas de sens pour un hôpital ; les doublons
+ *  (SN / SP, vitrée / pleine, façade / SP hors-sol : `affiche` false) restent calculés mais hors des listes (V7). */
 function kpisSelection() {
-  return etat.kpis.filter((k) => k.typologie !== "logement" || selectionLogement());
+  return etat.kpis.filter((k) => k.affiche !== false && (k.typologie !== "logement" || selectionLogement()));
 }
 
 function majSelection() {
   try { localStorage.setItem(CLE_SELECTION, JSON.stringify(sel)); } catch { /* stockage indisponible */ }
   const url = new URL(location.href);
   for (const [cle] of CRITERES) sel[cle] ? url.searchParams.set(cle, sel[cle]) : url.searchParams.delete(cle);
+  sel.realises === "1" ? url.searchParams.set("realises", "1") : url.searchParams.delete("realises");
   try { history.replaceState(null, "", url); } catch { /* adresse non modifiable (aperçu) */ }
   majReference();
 }
@@ -286,6 +316,7 @@ function majReference() {
   dessinerProgramme();
   dessinerBase();
   dessinerTypologies();
+  dessinerFormes();
   dessinerContexte();
   majVue3D();
   majCarte();
@@ -297,6 +328,7 @@ function majComparees() {
   dessinerVolets();
   dessinerRatios();
   dessinerAnatomie();
+  dessinerFormes();
   dessinerContexte();
   majVue3D();
   majCarte();
@@ -304,7 +336,7 @@ function majComparees() {
 
 /** Élargissement qui redonne le plus de projets fiables, en retirant un seul critère (canton d'abord). */
 function suggestionElargir() {
-  for (const cle of ["site", "canton", "intervention", "typologie"]) {
+  for (const cle of ["distribution", "famille", "site", "canton", "intervention", "typologie"]) {
     if (!sel[cle]) continue;
     const n = etat.data.projets.filter((p) => p.fiable && dansSelection(p, cle)).length;
     if (n > fiablesSelection().length) return { cle, n };
@@ -392,7 +424,8 @@ function formesBase() {
   const vues = new Set(etat.data.projets.flatMap((p) => Object.values(p.infos?.formes || {})));
   return [...vues].sort((a, b) => (ordre.indexOf(a) + 1 || 99) - (ordre.indexOf(b) + 1 || 99) || a.localeCompare(b, "fr"));
 }
-/** Filtre de forme (volet et carte, un seul état) : une forme portée par un des bâtiments, l'îlot, ou sans forme. */
+/** Filtre de forme (volet et carte, un seul état) : une forme portée par un des bâtiments, plusieurs bâtiments, ou sans
+ *  forme. */
 function formeCorrespond(p, f = etat.forme) {
   const formes = Object.values(p.infos?.formes || {});
   if (!f) return true;
@@ -405,7 +438,7 @@ function optionsForme() {
   const base = projetsSelection(), n = (f) => base.filter((p) => formeCorrespond(p, f)).length;
   return [el("option", { value: "", text: `Toutes les formes (${base.length})` }),
     ...formesBase().map((f) => el("option", { value: f, text: `${f} (${n(f)})` })),
-    el("option", { value: FORME_ILOT, text: `Îlot de bâtiments (${n(FORME_ILOT)})` }),
+    el("option", { value: FORME_ILOT, text: `Plusieurs bâtiments (${n(FORME_ILOT)})` }),
     el("option", { value: FORME_AUCUNE, text: `Forme non renseignée (${n(FORME_AUCUNE)})` })];
 }
 function choisirForme(f) {
@@ -456,9 +489,14 @@ function dessinerVolets() {
   const fiables = fiablesSelection();
   const ordreFormes = formesBase();
   const cleTri = { id: (p) => p.id, nom: (p) => p.nom, sp: (p) => -(p.totaux?.SP_HS ?? -1),
-                   // forme : dans l'ordre de la liste, les îlots ensuite, les projets sans forme à la fin
+                   // forme : dans l'ordre de la liste, les projets à plusieurs bâtiments ensuite, sans forme à la fin
                    forme: (p) => { const f = Object.values(p.infos?.formes || {});
-                                   return f.length === 1 ? ordreFormes.indexOf(f[0]) : f.length > 1 ? 900 : 999; } }[etat.triReference];
+                                   return f.length === 1 ? ordreFormes.indexOf(f[0]) : f.length > 1 ? 900 : 999; },
+                   // densité (V7, tranches a+t) : la plus dense d'abord, les projets sans densité à la fin
+                   densite: (p) => -(p.identite?.log_ha ?? -1),
+                   famille: (p) => { const fam = Object.keys(etat.data.formes_at || {}), f = p.identite?.famille;
+                                     return f ? (fam.indexOf(f) + 1 || 90) * 100 + (etat.data.formes_at[f] || []).indexOf(p.identite.forme_at.split(" · ")[1]) : 9999; },
+                 }[etat.triReference] || ((p) => p.id);
   const triees = [...fiables].sort((a, b) => {
     const x = cleTri(a), y = cleTri(b);
     return typeof x === "number" ? x - y : String(x).localeCompare(String(y), "fr", { numeric: true });
@@ -474,8 +512,10 @@ function dessinerVolets() {
     cb.addEventListener("change", () => { cb.checked ? etat.exclus.delete(p.id) : etat.exclus.add(p.id); majReference(); });
     const c = etat.comparees.find((x) => x.id === p.id);
     const sp = p.totaux?.SP_HS;
+    const tr = p.identite?.tranche;
     return el("li", { class: cb.checked ? "" : "decoche" },
-      el("label", { title: [nomProjet(p), p.infos?.commune, p.infos?.categorie, formeTexte(p)].filter(Boolean).join(" · ") }, cb,
+      el("label", { title: [nomProjet(p), p.infos?.commune, p.infos?.categorie, formeTexte(p), p.identite?.forme_at,
+                            tr && `${F0.format(p.identite.log_ha)} log./ha (${tr})`].filter(Boolean).join(" · ") }, cb,
         el("span", { class: "mono", text: p.id }), el("span", { class: "nom", text: p.nom })),
       c ? pastille(couleurDe(c), "Aussi comparée") : null,
       el("span", { class: "secondaire taille", text: sp ? `${F0.format(sp)} m²` : "" }),
@@ -499,7 +539,8 @@ function dessinerVolets() {
 
 // ------------------------------------------------------------------ Tendances (Évolution 4.10)
 
-const NOMS_CRITERES = { typologie: "la typologie", canton: "le canton", intervention: "le type d'intervention", site: "le type de site" };
+const NOMS_CRITERES = { typologie: "la typologie", canton: "le canton", intervention: "le type d'intervention", site: "le type de site",
+                        famille: "la forme bâtie", distribution: "la distribution" };
 
 function dessinerRatios() {
   const ref = reference(), fiables = fiablesSelection(), tous = projetsSelection();
@@ -1300,6 +1341,7 @@ function recevoirProjetSiaCheck(p) {
 function echelles() {
   const out = {};
   for (const [f, kind] of Object.entries(etat.data.features)) {
+    if (kind === "cat") { out[f] = 1; continue; }
     let v = etat.data.projets.map((p) => p.features?.[f]).filter((x) => x != null && (kind === "lin" || x > 0));
     if (kind === "log") v = v.map(Math.log);
     const lo = Math.min(...v), hi = Math.max(...v);
@@ -1312,6 +1354,7 @@ function distance(fa, fb, e = echelles()) {
   const d = [];
   for (const [f, kind] of Object.entries(etat.data.features)) {
     if (fa?.[f] == null || fb?.[f] == null) continue;
+    if (kind === "cat") { d.push(norm(fa[f]) === norm(fb[f]) ? 0 : 1); continue; }
     const x = kind === "log" ? Math.log(fa[f]) : fa[f], y = kind === "log" ? Math.log(fb[f]) : fb[f];
     d.push(Math.abs(x - y) / e[f]);
   }
@@ -1703,13 +1746,15 @@ function classeurBenchmark() {
   const SURFACES_REF = [["SP", "SP (m²)"], ["SP_HS", "SP hors-sol (m²)"], ["SP_SS", "SP sous-sol (m²)"], ["SUP", "SUP (m²)"]];
   // contexte (V6_PLAN, partie 7) : type de site, desserte et zone, si la base a des fiches SIG (pas en version Light)
   const CTX = avecContexte();
-  const r = feuilleXl("Projets de référence", [8, 30, 40, 23, 26, 8, 18, 26, 8, 12, 12, 12, 12, 11, 9, 12, 11, ...(CTX ? [14, 10, 22] : [])]);
+  const r = feuilleXl("Projets de référence", [8, 30, 40, 23, 26, 8, 18, 26, 8, 12, 12, 12, 12, 11, 9, 12, 11, ...(CTX ? [14, 10, 22] : []), 28, 26, 11]);
   enteteXl(r, "Projets de référence",
     "Les projets dont sont tirées la médiane et la fourchette de chaque ratio : les projets fiables du pré-filtre, cochés à l'écran. "
     + "Les flèches de l'en-tête trient et filtrent la liste.", contexte);
   const rTete = r.ligne([tete("ID"), ...["Nom", "Typologie", "Intervention", "Forme"].map((t) => tete(t, { h: "left" })), tete("Canton"), tete("Commune", { h: "left" }),
     tete("Adresse", { h: "left" }), tete("Phase SIA"), ...SURFACES_REF.map(([, t]) => tete(t)), tete("Logements"), tete("Étages hors-sol"), tete("Terrain (m²)"), tete("Maquette 3D"),
-    ...(CTX ? [tete("Type de site", { h: "left" }), tete("Desserte TP"), tete("Zone à bâtir", { h: "left" })] : [])], 32);
+    ...(CTX ? [tete("Type de site", { h: "left" }), tete("Desserte TP"), tete("Zone à bâtir", { h: "left" })] : []),
+    // carte d'identité (V7) : forme bâtie a+t (confirmée, sinon proposée), distribution, logements à l'hectare
+    tete("Forme bâtie (a+t)", { h: "left" }), tete("Distribution", { h: "left" }), tete("Log./ha")], 32);
   ref.forEach((p, i) => {
     const base = { ...filet, ...(i % 2 ? { fond: XL.bande } : {}) };
     const centre = { ...base, h: "center" }, nombre = { ...base, ...droite, format: "#,##0" };
@@ -1720,14 +1765,16 @@ function classeurBenchmark() {
       { v: p.infos?.phase ?? "", s: centre }, ...SURFACES_REF.map(([c]) => ({ v: p.totaux?.[c], s: nombre })),
       { v: p.infos?.logements || null, s: nombre }, { v: p.totaux?.ETAGES_HS, s: centre }, { v: p.totaux?.TERRAIN ?? null, s: nombre },
       { v: p.maquette ? "oui" : "—", s: { ...centre, couleur: p.maquette ? XL.noir : XL.clair } },
-      ...(CTX ? [texte(valSig(p, "site")), { v: classeDesserte(p) ?? "", s: centre }, texte(zoneCourte(valSig(p, "zone")))] : [])], 7 + 13.5 * lignes);
+      ...(CTX ? [texte(valSig(p, "site")), { v: classeDesserte(p) ?? "", s: centre }, texte(zoneCourte(valSig(p, "zone")))] : []),
+      texte(p.identite?.forme_at && `${p.identite.forme_at}${p.identite.forme_at_origine === "Proposé" ? " (proposée)" : ""}`),
+      texte(p.identite?.distribution), { v: p.identite?.log_ha ?? null, s: nombre }], 7 + 13.5 * lignes);
   });
   const rFin = r.f.lignes.length - 1;
   const colonneRef = (lire) => ref.map(lire).filter((v) => v != null && Number.isFinite(v)).sort((a, b) => a - b);
   const mesures = [...SURFACES_REF.map(([c]) => colonneRef((p) => p.totaux?.[c])), colonneRef((p) => p.infos?.logements || null), colonneRef((p) => p.totaux?.ETAGES_HS),
     colonneRef((p) => p.totaux?.TERRAIN ?? null)];
   const pied = (titre, calcul, s) => r.ligne([{ s }, { v: titre, s: { ...s, gras: true } }, ...Array.from({ length: 7 }, () => ({ s })),
-    ...mesures.map((v, i) => ({ v: v.length ? calcul(v, i) : null, s: { ...s, gras: true, format: "#,##0", ...(i === 5 ? { h: "center" } : droite) } })), { s }, ...(CTX ? [{ s }, { s }, { s }] : [])], 20);
+    ...mesures.map((v, i) => ({ v: v.length ? calcul(v, i) : null, s: { ...s, gras: true, format: "#,##0", ...(i === 5 ? { h: "center" } : droite) } })), { s }, ...(CTX ? [{ s }, { s }, { s }] : []), { s }, { s }, { s }], 20);
   if (ref.length) {
     pied(`Total des ${pl(ref.length, "projet")}`, (v, i) => (i === 5 ? null : v.reduce((a, b) => a + b, 0)), { v: "center", couleur: XL.bleu, fond: XL.section, bordure: { haut: XL.bleu } });
     pied("Médiane", (v) => quantile(v, 0.5), { v: "center", couleur: XL.bleu, fond: XL.mediane });
@@ -1738,6 +1785,8 @@ function classeurBenchmark() {
      RT.g("Total et médiane : "), RT.t("sur les projets listés, sans tenir compte d'un filtre posé dans Excel.")],
     [RT.g("Terrain : "), RT.t("surface de la parcelle, saisie dans le MDP ou, à défaut, lue au cadastre à l'adresse du projet. Elle donne l'indice d'utilisation (SP hors-sol / terrain) de l'onglet des ratios."),
      ...(CTX ? [RT.g(" Type de site, desserte, zone : "), RT.t("contexte lu sur geo.admin.ch à l'intégration du projet (densité d'habitants et d'emplois dans 300 m, classe de desserte TP de l'ARE de A à D, zone à bâtir).")] : [])],
+    [RT.g("Forme bâtie (a+t) : "), RT.t("classement des formes bâties de Density (a+t), confirmé dans la carte d'identité, sinon proposé par SIA Check. "),
+     RT.g("Log./ha : "), RT.t("logements par hectare de terrain (tranches a+t : moins de 50, 50 à 100, 100 à 200, 200 à 300, plus de 300).")],
     ...pastilles]);
   Object.assign(r.f, { figer: { lignes: rTete + 1, colonnes: 2 }, impression: impression([rTete, rTete]), ...(ref.length ? { filtre: [rTete, 0, rFin, r.nc - 1] } : {}) });
 
@@ -1859,6 +1908,182 @@ function exporterExcel() {
   a.click();     // dans SIA Check, l'application demande où enregistrer (MainWindow.Dashboard.cs, DownloadStarting)
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+
+// ------------------------------------------------------------------ Formes (V7 : Spacematrix et planche des implantations)
+// La carte d'identité résumée par le moteur (p.identite : forme bâtie a+t, GSI, FSI, logements à l'hectare, plan
+// d'implantation) ; docs/CARTE_IDENTITE.md, parties 2 (Density, a+t) et 3.
+
+/** Index de la tranche de densité a+t (0 : moins de 50 log./ha … 4 : plus de 300), -1 sans densité. */
+const indexTranche = (p) => (etat.data.tranches || []).indexOf(p.identite?.tranche);
+const avecFormes = () => etat.data.projets.some((p) => p.identite?.gsi != null || p.identite?.implantation || p.identite?.forme_at);
+const CLE_TRI_PLANCHE = STOCKAGE + "benchmark.triPlanche";
+
+function initFormes() {
+  document.getElementById("tab-formes").hidden = !avecFormes();
+  const tri = document.getElementById("fo-tri");
+  try { tri.value = localStorage.getItem(CLE_TRI_PLANCHE) || "terrain"; } catch { /* stockage indisponible */ }
+  if (!tri.value) tri.value = "terrain";
+  tri.addEventListener("change", () => {
+    try { localStorage.setItem(CLE_TRI_PLANCHE, tri.value); } catch { /* idem */ }
+    dessinerPlanche();
+  });
+}
+
+function dessinerFormes() {
+  if (!avecFormes()) return;
+  dessinerSpacematrix();
+  dessinerPlanche();
+}
+
+/** Légende des tranches de densité a+t (la couleur des points et des emprises). */
+function legendeTranches() {
+  return el("div", { class: "fo-legende" }, el("span", { class: "secondaire", text: "Logements à l'hectare :" }),
+    ...(etat.data.tranches || []).map((t, i) => el("span", { class: "fo-cle" },
+      el("i", { class: `fo-pastille tranche-${i}`, "aria-hidden": "true" }), t)),
+    el("span", { class: "fo-cle" }, el("i", { class: "fo-pastille tranche-aucune", "aria-hidden": "true" }), "sans logements ou sans terrain"));
+}
+
+/** Spacematrix (Berghauser Pont et Haupt) : GSI × FSI, droites de L constant, courbes d'OSR constant. */
+function dessinerSpacematrix() {
+  const tous = projetsSelection().filter((p) => p.identite?.gsi != null && p.identite?.fsi != null);
+  const ref = new Set(reference().map((p) => p.id));
+  const cmp = new Map(comparees().map((c) => [c.id, c]));
+  const boite = document.getElementById("fo-spacematrix");
+  const avecGsi = projetsSelection().filter((p) => p.identite?.fsi != null).length;
+  document.getElementById("fo-sm-compte").textContent =
+    `${tous.length} projet${tous.length > 1 ? "s" : ""} sur ${projetsSelection().length} (emprise de la maquette 3D et terrain connus)`;
+  if (!tous.length) {
+    boite.replaceChildren(el("p", { class: "secondaire", text: avecGsi
+      ? "Les projets de la sélection ont un terrain, mais pas de maquette 3D dans la base : leur emprise au sol, donc leur GSI, n'est pas connue. "
+        + "Ouvrir le projet dans SIA Check publie sa maquette à la prochaine lecture de la base."
+      : "Aucun projet de la sélection n'a à la fois une emprise (maquette 3D dans la base) et une surface de terrain." }));
+    document.getElementById("fo-sm-legende").replaceChildren();
+    return;
+  }
+  const W = 760, H = 460, G = 56, B = 44, Hm = 16, D = 70;     // marges : gauche, bas, haut, droite (libellés de L)
+  const gMax = Math.min(1, Math.max(0.5, Math.ceil(Math.max(...tous.map((p) => p.identite.gsi)) * 12) / 10));
+  const fMax = Math.max(2, Math.ceil(Math.max(...tous.map((p) => p.identite.fsi)) * 1.2 * 2) / 2);
+  const x = (g) => G + (g / gMax) * (W - G - D), y = (f) => H - B - (f / fMax) * (H - B - Hm);
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Spacematrix : GSI en abscisse, FSI en ordonnée" });
+  const clip = svg("clipPath", { id: "fo-zone" });
+  clip.append(svg("rect", { x: G, y: Hm, width: W - G - D, height: H - B - Hm }));
+  s.append(svg("defs", {}), clip);
+  // graduations
+  const pasG = gMax > 0.6 ? 0.2 : 0.1, pasF = fMax > 6 ? 1 : 0.5;
+  for (let g = 0; g <= gMax + 1e-9; g += pasG) {
+    s.append(svg("line", { class: "axe", x1: x(g), x2: x(g), y1: Hm, y2: H - B }));
+    s.append(svg("text", { class: "graduation", x: x(g), y: H - B + 16, "text-anchor": "middle" }, F1.format(g)));
+  }
+  for (let f = 0; f <= fMax + 1e-9; f += pasF) {
+    s.append(svg("line", { class: "axe", x1: G, x2: W - D, y1: y(f), y2: y(f) }));
+    s.append(svg("text", { class: "graduation", x: G - 8, y: y(f) + 4, "text-anchor": "end" }, F1.format(f)));
+  }
+  s.append(svg("text", { class: "fo-axe-titre", x: (G + W - D) / 2, y: H - 6, "text-anchor": "middle" }, "GSI : emprise au sol / terrain"));
+  s.append(svg("text", { class: "fo-axe-titre", x: 14, y: (Hm + H - B) / 2, "text-anchor": "middle",
+                         transform: `rotate(-90 14 ${(Hm + H - B) / 2})` }, "FSI : SP hors-sol / terrain"));
+  // L constant : FSI = L × GSI (droites depuis l'origine), libellé au bord du graphique
+  const traces = svg("g", { "clip-path": "url(#fo-zone)" });
+  for (const L of [1, 2, 3, 4, 6, 8, 12, 16, 24]) {
+    const g1 = Math.min(gMax, fMax / L);
+    if (g1 <= 0.02) continue;
+    traces.append(svg("line", { class: "fo-l", x1: x(0), y1: y(0), x2: x(g1), y2: y(L * g1) }));
+    s.append(svg("text", { class: "fo-l-texte", x: g1 >= gMax ? W - D + 4 : x(g1), y: g1 >= gMax ? y(L * g1) + 4 : Hm - 3,
+                           "text-anchor": g1 >= gMax ? "start" : "middle" }, `L ${L}`));
+  }
+  // OSR constant : FSI = (1 − GSI) / OSR
+  for (const osr of [0.1, 0.2, 0.35, 0.5, 1, 2]) {
+    const pts = [];
+    for (let i = 1; i <= 60; i++) { const g = (gMax * i) / 60; pts.push(`${x(g).toFixed(1)},${y((1 - g) / osr).toFixed(1)}`); }
+    traces.append(svg("polyline", { class: "fo-osr", points: pts.join(" ") }));
+    const gEtiq = Math.max(1 - osr * fMax * 0.92, gMax * 0.04);
+    if (gEtiq < gMax * 0.95)
+      traces.append(svg("text", { class: "fo-osr-texte", x: x(gEtiq) + 4, y: y((1 - gEtiq) / osr) - 4 }, `OSR ${F2.format(osr).replace(/,?0+$/, "")}`));
+  }
+  s.append(traces);
+  // projets : référence en couleur de tranche, les autres en creux ; maquettes comparées cerclées de leur couleur
+  const ordre = [...tous].sort((a, b) => ref.has(a.id) - ref.has(b.id));
+  for (const p of ordre) {
+    const i = p.identite, t = indexTranche(p), dansRef = ref.has(p.id), c = cmp.get(p.id);
+    const g = svg("g", { class: "fo-point" + (dansRef ? "" : " hors-ref") });
+    if (c) g.append(svg("circle", { cx: x(i.gsi), cy: y(i.fsi), r: 11, fill: "none", stroke: c.couleur, "stroke-width": 2.5 }));
+    g.append(svg("circle", { class: dansRef ? `tranche-${t >= 0 ? t : "aucune"}` : "fo-creux", cx: x(i.gsi), cy: y(i.fsi), r: 6.5 }));
+    g.append(svg("text", { class: "fo-id", x: x(i.gsi) + 10, y: y(i.fsi) - 8 }, p.id));
+    titre(g, [nomProjet(p), `GSI ${F2.format(i.gsi)} · FSI ${F2.format(i.fsi)}`, i.l != null && `L ${F1.format(i.l)} niveaux`,
+              i.osr != null && `OSR ${F2.format(i.osr)}`, i.log_ha != null && `${F0.format(i.log_ha)} log./ha (${i.tranche})`,
+              i.forme_at && `${i.forme_at}${i.forme_at_origine === "Proposé" ? " (proposée)" : ""}`,
+              !dansRef && (p.fiable ? "décoché de la référence" : "écarté des références")].filter(Boolean).join("\n"));
+    s.append(g);
+  }
+  boite.replaceChildren(s);
+  document.getElementById("fo-sm-legende").replaceChildren(legendeTranches());
+}
+
+/** Échelle de la planche : 1:5000 à 96 ppp (1 m = 0,756 px) tant que le plus grand projet tient dans une case, sinon
+ *  plus petite, la même pour tous. */
+const PLANCHE_CASE = 210, PLANCHE_PX_M_5000 = 96 / 0.0254 / 5000;
+
+function etendue(implantation) {
+  const pts = [...(implantation.parcelle || []), ...(implantation.emprise || [])].flatMap((poly) => poly[0] || []);
+  if (!pts.length) return 0;
+  const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+  return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 2 * Math.max(...xs.map(Math.abs), ...ys.map(Math.abs)));
+}
+
+/** Chemin SVG des polygones [polygone][anneau][point], y vers le haut (nord), centré dans la case. */
+function cheminPlan(polys, k, c) {
+  return polys.map((poly) => poly.map((a) => "M" + a.map(([px, py]) => `${(c + px * k).toFixed(1)},${(c - py * k).toFixed(1)}`).join("L") + "Z").join("")).join("");
+}
+
+function dessinerPlanche() {
+  const ref = new Set(reference().map((p) => p.id));
+  const sel_ = projetsSelection();
+  const avec = sel_.filter((p) => p.identite?.implantation);
+  const sans = sel_.length - avec.length;
+  const fam = Object.keys(etat.data.formes_at || {});
+  const cle = { terrain: (p) => -(p.identite?.terrain ?? -1), densite: (p) => -(p.identite?.log_ha ?? -1),
+                famille: (p) => (fam.indexOf(p.identite?.famille) + 1 || 99), id: (p) => Number(p.id) || 0 }[document.getElementById("fo-tri").value]
+    || ((p) => -(p.identite?.terrain ?? -1));
+  avec.sort((a, b) => cle(a) - cle(b) || String(a.id).localeCompare(String(b.id), "fr", { numeric: true }));
+  document.getElementById("fo-pl-compte").textContent = `${avec.length} projet${avec.length > 1 ? "s" : ""}`
+    + (sans ? ` · ${sans} sans parcelle ni maquette 3D` : "");
+  const planche = document.getElementById("fo-planche");
+  if (!avec.length) {
+    planche.replaceChildren(el("p", { class: "secondaire", text: "Aucun projet de la sélection n'a de parcelle (fiche SIG) ni de maquette 3D dans la base." }));
+    document.getElementById("fo-pl-note").textContent = "";
+    return;
+  }
+  const max = Math.max(...avec.map((p) => etendue(p.identite.implantation)), 1);
+  const k = Math.min(PLANCHE_PX_M_5000, (PLANCHE_CASE - 16) / max);
+  const echelle = Math.round(96 / 0.0254 / k / 500) * 500;
+  const barre = [10, 20, 25, 50, 100, 200].find((m) => m * k >= 40) || 200;
+  document.getElementById("fo-pl-note").textContent =
+    `Même échelle pour tous les projets : 1:${F0.format(echelle)} à l'écran (96 ppp), nord en haut pour la parcelle. `
+    + "Trait fin : la parcelle (mensuration officielle) ; aplat : l'emprise hors-sol de la maquette 3D, dans la couleur de sa tranche de densité. "
+    + "La maquette n'étant pas géoréférencée, son emprise est posée au point de l'adresse (sinon au centre de la parcelle), dans son orientation propre : "
+    + "la position et l'orientation sont indicatives, les surfaces exactes.";
+  const c = PLANCHE_CASE / 2;
+  planche.replaceChildren(...avec.map((p) => {
+    const i = p.identite, im = i.implantation, t = indexTranche(p), dansRef = ref.has(p.id);
+    const s = svg("svg", { viewBox: `0 0 ${PLANCHE_CASE} ${PLANCHE_CASE}`, role: "img", "aria-label": `Implantation de ${nomProjet(p)}` });
+    if (im.parcelle) s.append(svg("path", { class: "fo-parcelle", d: cheminPlan(im.parcelle, k, c), "fill-rule": "evenodd" }));
+    if (im.emprise) s.append(svg("path", { class: `fo-emprise tranche-${t >= 0 ? t : "aucune"}`, d: cheminPlan(im.emprise, k, c), "fill-rule": "evenodd" }));
+    // barre d'échelle et nord
+    s.append(svg("line", { class: "fo-barre", x1: 8, x2: 8 + barre * k, y1: PLANCHE_CASE - 10, y2: PLANCHE_CASE - 10 }));
+    s.append(svg("text", { class: "graduation", x: 8, y: PLANCHE_CASE - 14 }, `${barre} m`));
+    s.append(svg("text", { class: "graduation", x: PLANCHE_CASE - 10, y: 16, "text-anchor": "middle" }, "N"));
+    s.append(svg("path", { class: "fo-nord", d: `M${PLANCHE_CASE - 10},20l-4,9h8z` }));
+    const lignes = [
+      i.terrain != null && `Terrain ${F0.format(i.terrain)} m²`,
+      i.log_ha != null && `${F0.format(i.log_ha)} log./ha · ${i.tranche}`,
+      i.gsi != null && `GSI ${F2.format(i.gsi)} · FSI ${F2.format(i.fsi)}`,
+      i.forme_at && `${i.forme_at.split(" · ").pop()}${i.forme_at_origine === "Proposé" ? " (proposée)" : ""}`,
+      i.log_ha_plan != null && `Opération : ${F0.format(i.log_ha_plan)} log./ha`,
+    ].filter(Boolean);
+    return el("figure", { class: "fo-case" + (dansRef ? "" : " hors-ref"),
+                          title: dansRef ? "" : p.fiable ? "Décoché de la référence" : "Écarté des références" }, s,
+      el("figcaption", {}, el("strong", { text: nomProjet(p) }), ...lignes.map((l) => el("span", { class: "secondaire", text: l }))));
+  }));
 }
 
 // ------------------------------------------------------------------ Contexte (V6_PLAN, partie 5)
@@ -2223,7 +2448,7 @@ function dessinerFiches() {
 
 // ------------------------------------------------------------------ onglets et démarrage
 
-const VUES = ["ratios", "programmer", "base", "typologies", "contexte"];
+const VUES = ["ratios", "programmer", "base", "typologies", "formes", "contexte"];
 
 function montrerVue(nom) {
   for (const v of VUES) {
@@ -2241,7 +2466,7 @@ function brancherOnglets() {
     tab.addEventListener("keydown", (e) => {
       const pas = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
       if (!pas) return;
-      const vues = VUES.filter((x) => !document.getElementById(`tab-${x}`).hidden);     // Contexte : version Admin seulement
+      const vues = VUES.filter((x) => !document.getElementById(`tab-${x}`).hidden);     // Contexte, Formes : selon la base
       const suivant = vues[(vues.indexOf(v) + pas + vues.length) % vues.length];
       montrerVue(suivant);
       document.getElementById(`tab-${suivant}`).focus();
@@ -2275,8 +2500,10 @@ function demarrer(data) {
   const ecart = verifierDistances();
   if (ecart > 0.002) console.warn(`Distances de la page et du moteur différentes (écart max ${ecart}) : formules à réaligner.`);
   initContexte();
+  initFormes();
   dessinerBase();
   dessinerTypologies();
+  dessinerFormes();
   dessinerContexte();
   // un projet demandé (SIA Check, lien) est ajouté aux maquettes comparées
   const demande = PARAMS.get("projet");

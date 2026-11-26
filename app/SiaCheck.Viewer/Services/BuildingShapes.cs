@@ -15,7 +15,7 @@ public static class BuildingShapes
         ["Carré", "Rectangle compact", "Barre", "En L", "En T", "En U", "Cour fermée / îlot", "À redans / en Z",
          "En peigne / en H", "Rond / ovale", "Courbe / arc", "Plusieurs plots", "Irrégulière"];
 
-    public const string Manual = "saisie", Ai = "IA", Ilot = "Îlot de bâtiments";
+    public const string Manual = "saisie", Ai = "IA", Ilot = "Plusieurs bâtiments";
 
     /// <summary>La forme de la liste qui correspond (casse, espaces et accents tolérés), ou null.</summary>
     public static string? Normalize(string? shape, IReadOnlyList<string>? list = null) =>
@@ -47,7 +47,7 @@ public static class BuildingShapes
         };
     }
 
-    /// <summary>« Rectangle compact », ou « Îlot de bâtiments : Carré, Rectangle compact ».</summary>
+    /// <summary>« Rectangle compact », ou « Plusieurs bâtiments : Carré, Rectangle compact ».</summary>
     public static string Label(IReadOnlyDictionary<string, string> shapes)
     {
         if (shapes.Count == 0) return "";

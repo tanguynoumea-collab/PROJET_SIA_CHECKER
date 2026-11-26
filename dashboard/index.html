@@ -52,6 +52,8 @@
     <button role="tab" id="tab-programmer" aria-controls="vue-programmer" aria-selected="false" tabindex="-1">Programmer</button>
     <button role="tab" id="tab-base" aria-controls="vue-base" aria-selected="false" tabindex="-1">Base</button>
     <button role="tab" id="tab-typologies" aria-controls="vue-typologies" aria-selected="false" tabindex="-1">Typologies</button>
+    <!-- Formes (V7) : Spacematrix et planche des implantations, si la base a des cartes d'identité renseignées -->
+    <button role="tab" id="tab-formes" aria-controls="vue-formes" aria-selected="false" tabindex="-1" hidden>Formes</button>
     <!-- Données SIG des projets (V6_PLAN, partie 5) : seulement si la base en contient (version Admin) -->
     <button role="tab" id="tab-contexte" aria-controls="vue-contexte" aria-selected="false" tabindex="-1" hidden>Contexte</button>
   </nav>
@@ -61,6 +63,10 @@
     <label>Canton <select name="canton"></select></label>
     <label>Intervention <select name="intervention"></select></label>
     <label title="Densité alentour : habitants + emplois à l'hectare dans 300 m. Urbain dense dès 150, urbain dès 60, périurbain dès 20, rural en dessous." hidden>Type de site <select name="site"></select></label>
+    <!-- Carte d'identité (V7) : forme bâtie a+t (confirmée, sinon proposée) et type de distribution -->
+    <label title="Classement des formes bâties de Density (a+t) : confirmé dans la carte d'identité, sinon proposé par SIA Check" hidden>Forme bâtie <select name="famille"></select></label>
+    <label title="Type de distribution saisi dans la carte d'identité" hidden>Distribution <select name="distribution"></select></label>
+    <label class="case" hidden><input type="checkbox" name="realises"> Réalisés et autorisés</label>
     <span id="selection-resume" class="secondaire"></span>
     <button type="button" id="selection-reinit" class="icone-btn" data-icone="reinit" title="Réinitialiser le pré-filtre" aria-label="Réinitialiser le pré-filtre" hidden></button>
   </form>
@@ -94,6 +100,7 @@
             <div class="volet-actions">
               <label class="tri" title="Trier les projets de référence"><span data-icone="tri" class="icone-seule" aria-hidden="true"></span><select id="references-tri" aria-label="Trier les projets de référence">
                 <option value="id">ID</option><option value="nom">Nom</option><option value="sp">SP hors-sol</option><option value="forme">Forme</option>
+                <option value="famille">Forme bâtie (a+t)</option><option value="densite">Densité (log./ha)</option>
               </select></label>
               <label class="tri filtre-forme" title="Montrer les projets d'une forme ; le bouton à droite coche ou décoche alors ces projets seulement"><span data-icone="forme" class="icone-seule" aria-hidden="true"></span><select id="references-forme" aria-label="Filtrer les projets par forme des bâtiments"></select></label>
               <button type="button" id="references-bascule" class="icone-btn" data-icone="tout" title="Tout décocher" aria-label="Décocher tous les projets de référence"></button>
@@ -298,6 +305,27 @@
       <h2 id="titre-typologies"></h2>
       <div id="boites"></div>
       <p class="secondaire">Boîte : quartiles ; trait : médiane ; moustaches : minimum et maximum. Grisé : moins de 3 projets.</p>
+    </section>
+
+    <section id="vue-formes" role="tabpanel" aria-labelledby="tab-formes" hidden>
+      <!-- Formes (V7, docs/CARTE_IDENTITE.md partie 2) : la densité et la forme des projets du pré-filtre -->
+      <div class="fo-bloc">
+        <div class="fo-entete"><h2>Spacematrix : densité et forme</h2><span id="fo-sm-compte" class="secondaire"></span></div>
+        <p class="secondaire">En abscisse le GSI (emprise au sol / terrain), en ordonnée le FSI (SP hors-sol / terrain). Droites : hauteur
+          moyenne L constante (FSI / GSI, en niveaux) ; courbes : espace libre OSR constant ((1 − GSI) / FSI, m² non bâtis par m² de plancher).
+          Couleur : tranche de densité de Density (a+t). En creux : projets du pré-filtre décochés ou écartés.</p>
+        <div id="fo-spacematrix" class="fo-graphe"></div>
+        <div id="fo-sm-legende"></div>
+      </div>
+      <div class="fo-bloc">
+        <div class="fo-entete"><h2>Planche des implantations</h2><span id="fo-pl-compte" class="secondaire"></span>
+          <label class="tri fo-tri">Ranger par <select id="fo-tri">
+            <option value="terrain">surface du terrain</option><option value="densite">densité</option>
+            <option value="famille">forme bâtie</option><option value="id">ID</option>
+          </select></label></div>
+        <p id="fo-pl-note" class="secondaire"></p>
+        <div id="fo-planche" class="fo-planche"></div>
+      </div>
     </section>
 
     <section id="vue-contexte" role="tabpanel" aria-labelledby="tab-contexte" hidden>

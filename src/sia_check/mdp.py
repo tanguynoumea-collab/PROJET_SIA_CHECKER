@@ -247,6 +247,12 @@ AJOUTS_INFOS = {"Adresse": "Identification du projet", "Forme": "Identification 
                 "Forme (origine)": "Identification du projet", "Groupe d'utilisateurs": "Identification du projet",
                 # V6, partie 7 : surface du terrain, quand la parcelle du cadastre ne convient pas (plusieurs parcelles…)
                 "Surface du terrain (m²)": "Identification du projet"}
+# Carte d'identité (docs/CARTE_IDENTITE.md) : données saisies dans « Compléter la carte », une ligne chacune, ajoutées à
+# la fin d'InfosProjet à la première écriture
+from .carte import SAISIES as _SAISIES_CARTE  # noqa: E402
+
+IDENTITE = IDENTITE + tuple(desc for desc, _, _ in _SAISIES_CARTE.values())
+AJOUTS_INFOS = {**AJOUTS_INFOS, **{desc: "Carte d'identité" for desc, _, _ in _SAISIES_CARTE.values()}}
 # Colonnes de la feuille « Listes formulaire » qui alimentent les listes déroulantes de la fiche
 LISTES = {"Categorie d'Ouvrage": "Categorie d'Ouvrage", "Canton": "Cantons", "Type d'intervention": "Type Intervention",
           "Phase du projet": "Phase du projet"}

@@ -23,6 +23,8 @@ public sealed class BenchmarkProject
     /// <summary>Admis dans les références (SP et SN cohérentes).</summary>
     [JsonPropertyName("fiable")] public bool Reliable { get; set; }
     [JsonPropertyName("controles")] public List<BenchmarkCheck> Checks { get; set; } = [];
+    /// <summary>Carte d'identité (docs/CARTE_IDENTITE.md) ; null dans un benchmark.json d'avant la carte.</summary>
+    [JsonPropertyName("carte")] public IdentityCard? Card { get; set; }
 
     public string? Info(string key) =>
         Infos.TryGetValue(key, out var v) && v.ValueKind is JsonValueKind.String or JsonValueKind.Number ? v.ToString() : null;

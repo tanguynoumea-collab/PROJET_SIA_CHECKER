@@ -111,6 +111,14 @@
                                             <Button.ContextMenu>
                                                 <!-- Le menu est hors de l'arbre visuel : les commandes passent par le Tag de la ligne -->
                                                 <ContextMenu>
+                                                    <!-- Carte d'identité du projet, lue dans la base du benchmark (docs/CARTE_IDENTITE.md) -->
+                                                    <MenuItem Header="Carte d'identité"
+                                                              Command="{Binding PlacementTarget.Tag.OpenIdentityCardCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding}"
+                                                              ToolTip="Toutes les données du projet dans la base : contraintes, réponse, performance, et ce qui reste à collecter">
+                                                        <MenuItem.Icon><ui:SymbolIcon Symbol="ContactCard20" /></MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <Separator />
                                                     <!-- Un projet traité nourrit la base du benchmark -->
                                                     <MenuItem Header="Ajouter à la base"
                                                               Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibility}}"
@@ -370,7 +378,19 @@
                                     <!-- Clic : page du MDP (identité à remplir en priorité, ce qui manque, recharger) -->
                                     <Button Style="{StaticResource RowButton}" Padding="{StaticResource RowPadding}"
                                             Command="{Binding DataContext.OpenBaseDetailCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}" AutomationProperties.Name="{Binding Name}">
+                                            CommandParameter="{Binding}" AutomationProperties.Name="{Binding Name}"
+                                            Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
+                                        <!-- Clic droit : carte d'identité du projet (docs/CARTE_IDENTITE.md) ; menu hors de l'arbre, commande par le Tag -->
+                                        <Button.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Carte d'identité"
+                                                          Command="{Binding PlacementTarget.Tag.OpenIdentityCardCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding}"
+                                                          ToolTip="Toutes les données du projet dans la base : contraintes, réponse, performance, et ce qui reste à collecter">
+                                                    <MenuItem.Icon><ui:SymbolIcon Symbol="ContactCard20" /></MenuItem.Icon>
+                                                </MenuItem>
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="48" />

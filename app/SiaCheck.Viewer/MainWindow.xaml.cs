@@ -410,7 +410,7 @@ public partial class MainWindow : FluentWindow, IShell
             note.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "BrushTextSecondary");
             void ShowNote() => note.Text = _formeOrigine == BuildingShapes.Ai && Read().Forme.Length > 0
                 ? "Proposée par l'IA : corrigez-la si besoin."
-                : buildings.Count > 1 ? "Plusieurs bâtiments : le projet est un îlot de bâtiments de ces formes." : "";
+                : buildings.Count > 1 ? "Plusieurs bâtiments, de ces formes ; la forme d'ensemble (classement a+t) se saisit dans la carte d'identité." : "";
             foreach (var (_, box) in _formes)
                 box.SelectionChanged += (_, _) =>
                 {
@@ -471,6 +471,9 @@ public partial class MainWindow : FluentWindow, IShell
     }
 
     public void OpenFile(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+
+    public void ShowIdentityCard(string title, string subtitle, IdentityCard card, IdentityCardActions actions) =>
+        new IdentityCardWindow(title, subtitle, card, this, actions).Show();
 
     public void Frame(Rect3D? bounds)
     {

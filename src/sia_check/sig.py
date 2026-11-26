@@ -105,17 +105,28 @@ def parcelle(e: float, n: float) -> dict | None:
     """La parcelle sous le point (mensuration officielle, publiée par les cantons sur geo.admin.ch) : sa surface, son
     numéro et son EGRID. Un droit de superficie (DDP) se superpose au bien-fonds qui le contient : le plus grand des
     immeubles trouvés est le bien-fonds."""
-    trouves = [(surface(r.get("geometry")), r.get("properties") or r.get("attributes") or {})
+    trouves = [(surface(r.get("geometry")), r.get("properties") or r.get("attributes") or {}, r.get("geometry"))
                for r in _identify(COUCHE_PARCELLES, e, n, 0, geometrie=True, geojson=True)]
     trouves = [t for t in trouves if t[0] > 0]
     if not trouves:
         return None
-    s, a = max(trouves, key=lambda t: t[0])
+    s, a, g = max(trouves, key=lambda t: t[0])
     v = _valeur(round(s), "m²", source="Mensuration officielle (cantons)", couche=COUCHE_PARCELLES)
+    # V7 : le polygone (LV95, au décimètre), pour la planche des implantations et la forme de la parcelle
+    if geo := geometrie_parcelle(g):
+        v["geometrie"] = geo
     v.update({k: a.get(c) for k, c in (("numero", "number"), ("egrid", "egris_egrid"), ("canton", "ak")) if a.get(c)})
     if len(trouves) > 1:
         v["superposes"] = len(trouves) - 1     # DDP ou autre immeuble au même point
     return v
+
+
+def geometrie_parcelle(g: dict | None) -> list[list[list[list[float]]]] | None:
+    """Polygones d'une géométrie GeoJSON, [polygone][anneau][point] en LV95 arrondi au décimètre ; None sinon."""
+    g = g or {}
+    polys = [g.get("coordinates")] if g.get("type") == "Polygon" else g.get("coordinates") if g.get("type") == "MultiPolygon" else []
+    out = [[[[round(x, 1), round(y, 1)] for x, y, *_ in anneau] for anneau in poly] for poly in polys or [] if poly]
+    return out or None
 
 
 def _valeur(v, unite=None, annee=None, source=None, couche=None) -> dict:
@@ -250,9 +261,9 @@ def a_jour(fiche: dict | None, position) -> bool:
     return math.hypot(fiche["position"][0] - position[0], fiche["position"][1] - position[1]) <= DEPLACEMENT
 
 
-def ecrire(dossier: Path, id_projet: str, position, precision: str | None, valeurs: dict) -> Path:
+def ecrire(dossier: Path, id_projet: str, position, precision: str | None, valeurs: dict, date: str | None = None) -> Path:
     path = Path(dossier) / nom_fichier(id_projet)
-    fiche = {"format": FORMAT, "version": VERSION, "id": str(id_projet), "date": dt.date.today().isoformat(),
+    fiche = {"format": FORMAT, "version": VERSION, "id": str(id_projet), "date": date or dt.date.today().isoformat(),
              "position": [round(position[0]), round(position[1])], "precision": precision, "valeurs": valeurs}
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(fiche, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -265,7 +276,23 @@ def synchroniser(dossier: Path, projets: list[tuple[str, list | None, str | None
     échec réseau reporte toutes les suivantes (inutile d'attendre chaque délai)."""
     collectees = reportees = 0
     for id_projet, position, precision in projets:
-        if not position or a_jour(lire(dossier, id_projet), position):
+        if not position:
+            continue
+        if a_jour(fiche := lire(dossier, id_projet), position):
+            # fiche d'avant la V7 : seule la parcelle est reprise, pour son polygone ([] : pas de polygone, ne pas
+            # redemander à chaque lecture) ; la fiche garde sa date
+            ancienne = fiche["valeurs"].get("parcelle") or {}
+            if not reportees and ancienne and "geometrie" not in ancienne:
+                try:
+                    p = parcelle(*fiche["position"]) or ancienne
+                    ecrire(dossier, id_projet, fiche["position"], fiche.get("precision"),
+                           {**fiche["valeurs"], "parcelle": {**p, "geometrie": p.get("geometrie") or []}}, date=fiche.get("date"))
+                    collectees += 1
+                except Hors as ex:
+                    log.warning("SIG reportée : %s", ex)
+                    reportees += 1
+                except OSError as ex:
+                    log.warning("SIG de %s non écrite : %s", id_projet, ex)
             continue
         if reportees:
             reportees += 1

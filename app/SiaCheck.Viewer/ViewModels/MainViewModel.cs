@@ -118,6 +118,107 @@ public sealed partial class MainViewModel : ObservableObject
         await OpenAsync(sheet.Folder);
     }
 
+    /// <summary>
+    /// Carte d'identité d'un projet de la liste de l'accueil ou de la liste de la base (clic droit), lue dans la base du
+    /// benchmark ; un projet de l'accueil y est retrouvé par son ID
+    /// (docs/CARTE_IDENTITE.md) : le projet doit y être (Ajouter à la base), et la base avoir été relue depuis la carte.
+    /// </summary>
+    [RelayCommand]
+    private void OpenIdentityCard(object? item)
+    {
+        if (item is BenchmarkItem fromBase)
+        {
+            ShowCard(fromBase.Project, fromBase.Project.Name);
+            return;
+        }
+        if (item is not RecentItem recent) return;
+        var id = recent.Identity?.Id?.Trim();
+        if (string.IsNullOrEmpty(id))
+        {
+            _shell.Notify($"« {recent.DisplayName} » n'a pas d'ID projet : complète sa fiche projet, puis ajoute-le à la base.", isError: true);
+            return;
+        }
+        if (_benchmarkData is null)
+        {
+            _shell.Notify("La base du benchmark n'est pas encore lue : choisis son dossier dans la partie Benchmark de l'accueil.", isError: true);
+            return;
+        }
+        var project = _benchmarkData.Projects.FirstOrDefault(p => string.Equals(p.Id.Trim(), id, StringComparison.OrdinalIgnoreCase));
+        if (project is null)
+        {
+            _shell.Notify($"Le projet {id} n'est pas dans la base : clic droit, Ajouter à la base (projet traité), pour voir sa carte d'identité.", isError: true);
+            return;
+        }
+        ShowCard(project, recent.DisplayName);
+    }
+
+    /// <summary>Ouvre la carte d'un projet de la base, ou dit pourquoi elle manque (base lue avant la carte).</summary>
+    private void ShowCard(BenchmarkProject project, string fallbackName)
+    {
+        if (project.Card is null)
+        {
+            _shell.Notify("La base n'a pas encore été relue avec la carte d'identité : clique sur Relire la base (partie Benchmark de l'accueil), puis réessaie.", isError: true);
+            return;
+        }
+        var subtitle = string.Join(" · ", new[] { $"ID {project.Id}", project.Info("commune"), project.Info("canton"), project.Info("categorie") }
+                                            .Where(s => !string.IsNullOrWhiteSpace(s)));
+        _shell.ShowIdentityCard(project.Name.Length > 0 ? project.Name : fallbackName, subtitle, project.Card, CardActions(project));
+    }
+
+    /// <summary>
+    /// Ce que la carte d'un projet de la base peut faire (« Compléter la carte ») : écrire les saisies dans la feuille
+    /// InfosProjet de son MDP, comme la fiche identité (--mdp-identite), puis relire la base ; ouvrir la fiche identité.
+    /// Sans moteur ni dossier de la base, rien n'est proposé.
+    /// </summary>
+    private IdentityCardActions CardActions(BenchmarkProject project)
+    {
+        if (_engine is null || !HasBenchmarkFolder) return new IdentityCardActions();
+        var id = project.Id;
+        var file = project.File;
+        IdentityCard? Current() => _benchmarkData?.Projects.FirstOrDefault(p => p.Id == id)?.Card;
+        return new IdentityCardActions
+        {
+            SaveAsync = async changes =>
+            {
+                if (_engine is null || IsBenchmarkLoading) return null;
+                var json = Path.Combine(Path.GetDirectoryName(_paths.BenchmarkFile)!, "carte-saisies.json");
+                EngineRun r;
+                IsBenchmarkLoading = true;
+                BenchmarkActivity = $"Écriture de la carte d'identité dans {file}…";
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(json)!);
+                    File.WriteAllText(json, System.Text.Json.JsonSerializer.Serialize(changes));
+                    r = await _engine.WriteMdpIdentityAsync(Path.Combine(BenchmarkFolder, file), json, CancellationToken.None);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or InvalidOperationException)
+                {
+                    _shell.Notify(ex.Message, isError: true);
+                    return null;
+                }
+                finally
+                {
+                    IsBenchmarkLoading = false;
+                    BenchmarkActivity = null;
+                }
+                if (!r.Succeeded)
+                {
+                    _shell.Notify(r.ErrorMessage ?? "Carte d'identité non écrite dans le MDP.", isError: true);
+                    return null;
+                }
+                await RefreshBenchmarkAsync();
+                return Current();
+            },
+            EditIdentityAsync = async () =>
+            {
+                var item = BenchmarkProjects.FirstOrDefault(i => i.Id == id);
+                if (item is null) return null;
+                await EditBaseIdentityAsync(item);
+                return Current();
+            },
+        };
+    }
+
     /// <summary>Fiche d'un projet de la liste (clic droit) ou, sans paramètre, du projet ouvert (clic sur son nom).</summary>
     [RelayCommand]
     private Task EditProjectSheetAsync(RecentItem? recent) =>

@@ -263,6 +263,13 @@ internal sealed class FakeShell : IShell
         return Task.FromResult(answer);
     }
     public void OpenFile(string path) { }
+    public (string Title, string Subtitle, IdentityCard Card)? CardShown { get; private set; }
+    public IdentityCardActions? CardActions { get; private set; }
+    public void ShowIdentityCard(string title, string subtitle, IdentityCard card, IdentityCardActions actions)
+    {
+        CardShown = (title, subtitle, card);
+        CardActions = actions;
+    }
     public void Frame(Rect3D? bounds) { }
     public void ApplyTheme(string theme) { }
     public Color GhostColor => Colors.Gray;
@@ -468,5 +475,212 @@ public class EngineStampTests
         File.WriteAllText(installed, "");
         File.SetLastWriteTime(installed, new DateTime(2026, 10, 2));
         Assert.Equal(new DateTime(2026, 10, 2), AnalysisService.ModifiedOf(installed));
+    }
+}
+
+/// <summary>Carte d'identité (docs/CARTE_IDENTITE.md) : clic droit sur un projet de l'accueil, lue dans benchmark.json.</summary>
+public class IdentityCardTests
+{
+    private const string Benchmark = """
+        { "genere": "2026-11-20T10:00:00", "projets": [
+          { "id": "1778", "nom": "L'Orée", "infos": { "commune": "Lausanne", "canton": "VD" },
+            "carte": { "version": 1, "sources": { "MAQ": "Maquette (calcul SIA Check)" }, "remplis": 1, "total": 2,
+                       "maquette": true, "sig": false, "annexe": [],
+                       "blocs": [ { "nom": "Implantation et forme", "role": "Réponse", "champs": [
+                         { "cle": "emprise", "donnee": "Emprise au sol", "valeur": "7 044 m²", "details": [["A01", "921 m²"]],
+                           "source": "MAQ", "statut": "existe" },
+                         { "cle": "implantation", "donnee": "Type d'implantation", "valeur": null, "details": [],
+                           "source": "FICHE", "statut": "ajouter" },
+                         { "cle": "phase", "donnee": "Phase du projet", "valeur": 5, "details": [],
+                           "source": "FICHE", "statut": "modifier" },
+                         { "cle": "architecte", "donnee": "Architecte (bureau)", "valeur": null, "details": [],
+                           "source": "FICHE", "statut": "ajouter",
+                           "remplissage": { "mode": "vous", "texte": "À renseigner",
+                                            "saisie": { "description": "Architecte", "type": "texte", "options": [] } } } ] } ] } },
+          { "id": "1724", "nom": "Ancien", "infos": {} } ] }
+        """;
+
+    private static (MainViewModel Vm, FakeShell Shell) Setup(TempDir tmp)
+    {
+        var paths = new AppPaths(tmp.Path, tmp.Path);
+        Directory.CreateDirectory(Path.GetDirectoryName(paths.BenchmarkFile)!);
+        File.WriteAllText(paths.BenchmarkFile, Benchmark);
+        var shell = new FakeShell();
+        return (new MainViewModel(shell, paths, new AppSettings(), enginePath: null), shell);
+    }
+
+    private static RecentItem Recent(string id) =>
+        new(new RecentProject { Path = "x", Name = "dossier" }, ProjectStatus.Done, new MdpProject { Id = id, Name = "Projet" });
+
+    [Fact]
+    public void Opens_the_card_of_a_project_of_the_base()
+    {
+        using var tmp = new TempDir();
+        var (vm, shell) = Setup(tmp);
+        vm.OpenIdentityCardCommand.Execute(Recent("1778"));
+        Assert.NotNull(shell.CardShown);
+        Assert.Equal("L'Orée", shell.CardShown!.Value.Title);
+        Assert.Contains("Lausanne", shell.CardShown.Value.Subtitle);
+        var fields = shell.CardShown.Value.Card.Blocks.Single().Fields;
+        Assert.True(fields[0].IsFilled);
+        Assert.False(fields[1].IsFilled);
+        Assert.Equal("5", fields[2].Value);     // un nombre ne rend pas benchmark.json illisible
+        Assert.Equal("vous", fields[3].Filling?.Mode);
+        Assert.Equal("Architecte", fields[3].Filling?.Input?.Description);
+        // sans moteur, la carte ne propose pas d'enregistrer
+        Assert.Null(shell.CardActions?.SaveAsync);
+    }
+
+    [Fact]
+    public void Opens_the_card_from_the_list_of_the_base()
+    {
+        using var tmp = new TempDir();
+        var (vm, shell) = Setup(tmp);
+        var data = BenchmarkBase.Load(new AppPaths(tmp.Path, tmp.Path).BenchmarkFile)!;
+        vm.OpenIdentityCardCommand.Execute(new BenchmarkItem(data.Projects[0]));
+        Assert.Equal("L'Orée", shell.CardShown?.Title);
+    }
+
+    [Fact]
+    public void Explains_when_the_project_or_its_card_is_missing()
+    {
+        using var tmp = new TempDir();
+        var (vm, shell) = Setup(tmp);
+        vm.OpenIdentityCardCommand.Execute(Recent("9999"));
+        vm.OpenIdentityCardCommand.Execute(Recent("1724"));
+        vm.OpenIdentityCardCommand.Execute(Recent(""));
+        Assert.Null(shell.CardShown);
+        Assert.Contains(shell.Notes, n => n.Contains("n'est pas dans la base"));
+        Assert.Contains(shell.Notes, n => n.Contains("Relire la base"));
+        Assert.Contains(shell.Notes, n => n.Contains("pas d'ID projet"));
+    }
+}
+
+public class VolumePictogramTests
+{
+    private static VolumePrism Bar(double x0, double y0, double x1, double y1, double top) => new()
+    {
+        Bottom = 0, Top = top,
+        Rings = [[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]],
+    };
+
+    [Fact]
+    public void Draws_the_visible_sides_then_the_top_of_each_prism()
+    {
+        var faces = SiaCheck.Viewer.Controls.VolumePictogram.Faces([Bar(0, 0, 40, 12, 9)]);
+        Assert.Equal(3, faces.Count);                  // deux côtés vus (normales +x et +y), puis le dessus
+        Assert.Single(faces[^1].Rings);
+    }
+
+    [Fact]
+    public void Turns_the_long_axis_to_the_horizontal_of_the_picture()
+    {
+        var turned = SiaCheck.Viewer.Controls.VolumePictogram.Oriented([Bar(0, 0, 60, 10, 9)]);
+        var ring = turned[0].Rings[0];
+        // l'axe long suit la direction (1, −1) du plan : x et y varient en sens opposés le long de la barre
+        var a = ring[0];
+        var b = ring[1];
+        Assert.True((b[0] - a[0]) * (b[1] - a[1]) < 0);
+    }
+}
+
+public class FootprintPlanTests
+{
+    private static readonly System.Text.Json.JsonSerializerOptions Json = new();
+
+    [Fact]
+    public void Reads_the_origin_of_a_value_and_the_implantation_plan()
+    {
+        var f = System.Text.Json.JsonSerializer.Deserialize<IdentityCardField>("""{ "cle": "emprise", "origine": "Maquette" }""", Json)!;
+        Assert.Equal("Maquette", f.Origin);
+        var h = System.Text.Json.JsonSerializer.Deserialize<IdentityCardHeader>("""
+            { "implantation": { "calee": false, "parcelle_m2": 1000, "emprise_m2": 480,
+                                "parcelle": [[[[-20, -12.5], [20, -12.5], [20, 12.5], [-20, 12.5]]]],
+                                "emprise": [[[[-20, -6], [20, -6], [20, 6], [-20, 6]]]] } }
+            """, Json)!;
+        Assert.Equal(480, h.Implantation!.FootprintArea);
+        Assert.False(h.Implantation.Located);
+        Assert.Single(h.Implantation.Parcel);
+    }
+
+    [Fact]
+    public void Keeps_the_1_to_5000_scale_unless_the_project_does_not_fit()
+    {
+        static IdentityCardImplantation Square(double half) => new() { Parcel = [[[[-half, -half], [half, -half], [half, half], [-half, half]]]] };
+        Assert.Equal(SiaCheck.Viewer.Controls.FootprintPlan.PixelsPerMetre, SiaCheck.Viewer.Controls.FootprintPlan.Fit(Square(50), 300, 170));
+        var k = SiaCheck.Viewer.Controls.FootprintPlan.Fit(Square(400), 300, 170);
+        Assert.True(k < SiaCheck.Viewer.Controls.FootprintPlan.PixelsPerMetre && 400 * k <= 170 / 2.0);
+        Assert.NotNull(SiaCheck.Viewer.Controls.FootprintPlan.Geometry(Square(50).Parcel, k, new System.Windows.Point(150, 85)));
+    }
+}
+
+public class CardPromptTests
+{
+    private static IdentityCard Card()
+    {
+        static IdentityCardField F(string key, string desc, string type, params string[] options) => new()
+        {
+            Key = key, Label = desc, Source = "FICHE", Extraction = "Fiche",
+            Filling = new FieldFilling { Mode = "vous", Input = new FieldInput { Description = desc, Type = type, Options = [.. options] } },
+        };
+        return new IdentityCard
+        {
+            Blocks =
+            [
+                new IdentityCardBlock
+                {
+                    Name = "Identification", Role = "Identification",
+                    Fields =
+                    [
+                        new IdentityCardField { Key = "id", Label = "ID projet", Value = "1778" },
+                        F("architecte", "Architecte", "texte"),
+                        F("commercialisation", "Mode de commercialisation", "liste", "Location", "PPE"),
+                        F("velos", "Places vélo", "nombre"),
+                    ],
+                },
+            ],
+        };
+    }
+
+    [Fact]
+    public void The_prompt_imposes_the_answer_block()
+    {
+        var prompt = CardPrompt.Build("L'Orée", "1778", "Crissier", Card());
+        Assert.Contains("=== SIA CHECK · CARTE D'IDENTITÉ · ID 1778 ===", prompt);
+        Assert.Contains("Mode de commercialisation : une valeur parmi : Location | PPE", prompt);
+        Assert.Contains("Places vélo = ", prompt);
+        Assert.Contains(CardPrompt.End, prompt);
+    }
+
+    [Fact]
+    public void Reads_the_block_pasted_from_the_chat()
+    {
+        const string answer = """
+            Voici le bloc :
+            ```
+            === SIA CHECK · CARTE D'IDENTITÉ · ID 1778 ===
+            Architecte = Atelier X | permis, p. 2
+            Mode de commercialisation = location
+            Places vélo = 1'240 places | descriptif
+            Pleine terre = 300
+            === FIN ===
+            ```
+            """;
+        var r = CardPrompt.Parse(answer, Card());
+        Assert.Null(r.Error);
+        Assert.Equal("1778", r.Id);
+        Assert.Contains(r.Items, i => i.Description == "Architecte" && i.Value == "Atelier X" && i.Source == "permis, p. 2");
+        Assert.Contains(r.Items, i => i.Description == "Mode de commercialisation" && i.Value == "Location" && i.Accepted);
+        Assert.Contains(r.Items, i => i.Description == "Places vélo" && i.Value == "1240");
+        Assert.Contains(r.Items, i => i.Description == "Pleine terre" && !i.Accepted);    // inconnue de la carte
+    }
+
+    [Fact]
+    public void Ignores_unknown_values_and_refuses_values_outside_the_list()
+    {
+        var r = CardPrompt.Parse("=== SIA CHECK · CARTE D'IDENTITÉ · ID 1778 ===\nArchitecte = ?\nMode de commercialisation = Leasing\n=== FIN ===", Card());
+        Assert.DoesNotContain(r.Items, i => i.Description == "Architecte");
+        Assert.Contains(r.Items, i => i.Description == "Mode de commercialisation" && !i.Accepted);
+        Assert.NotNull(CardPrompt.Parse("rien", Card()).Error);
     }
 }

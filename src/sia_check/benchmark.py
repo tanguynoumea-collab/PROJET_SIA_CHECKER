@@ -42,6 +42,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import localites, mdp
+from .carte import SAISIES as SAISIES_CARTE
 from .formes import FORMES, decoder, libelle
 from .ratios import is_stair
 
@@ -63,14 +64,18 @@ class Kpi:
     sens: int = 0          # +1 plus haut = favorable, −1 plus bas = favorable, 0 neutre
     objet: str = ""        # ce que mesure le numérateur, pour traduire un écart en m² (« de SUP hors-sol »)
     typologie: str = ""    # « logement » : sans objet pour une autre typologie (le dashboard le masque)
+    # False : calculé (Programmer, carte) mais hors des KPI affichés, doublon d'un autre (CARTE_IDENTITE.md, partie 4)
+    affiche: bool = True
+    vente: bool = False    # sans objet pour un projet en location (mode de commercialisation saisi dans la carte)
 
 
 KPIS = [
     Kpi("SUP/SP_HS", "Rendement", "SUP hors-sol / SP hors-sol", ("SUP_HS",), ("SP_HS",),
         note="Le m² qui rapporte par m² construit au-dessus du sol.", sens=1, objet="de SUP hors-sol"),
     Kpi("SVN/SP_HS", "USPI 2014", "SVN / SP hors-sol", ("SVN",), ("SP_HS",), note="Rendement commercial (USPI).",
-        sens=1, objet="de surface de vente nette"),
-    Kpi("SN/SP", "Rendement", "SN / SP", ("SN",), ("SP",), sens=1, objet="de surface nette"),
+        sens=1, objet="de surface de vente nette", vente=True),
+    # complément de SC / SP (SC = SP − SN) : SC / SP, plus parlant, reste affiché
+    Kpi("SN/SP", "Rendement", "SN / SP", ("SN",), ("SP",), sens=1, objet="de surface nette", affiche=False),
     Kpi("SC/SP", "Pertes", "Construction : SC / SP", ("SC",), ("SP",), note="SC = SP − SN.",
         sens=-1, objet="de construction"),
     Kpi("SD/SP_HS", "Pertes", "Circulations : SD hors-sol / SP hors-sol", ("SD_HS",), ("SP_HS",),
@@ -82,18 +87,23 @@ KPIS = [
         note="m² de sous-sol construits par m² utile principal.", sens=-1, objet="de sous-sol"),
     # Enveloppe : le vitrage est neutre (lumière et vente contre coût), le benchmark situe sans juger
     Kpi("VITRE/PLEINE", "Enveloppe", "Vitrée / pleine", ("VITRE",), ("PLEINE",),
-        note="Surface vitrée / surface pleine de façade (pleine = façade brute − vitrée)."),
+        note="Surface vitrée / surface pleine de façade (pleine = façade brute − vitrée).", affiche=False),
     Kpi("VITRE/FACADE", "Enveloppe", "Part vitrée : vitrée / façade", ("VITRE",), ("FACADE",)),
     # Coefficient de forme (équipe DEV, 27.10.2026) : SP hors-sol / surface d'enveloppe (façades hors-sol + toitures).
     # Plus il est haut, plus le bâtiment est compact : moins d'enveloppe, donc de coût et de pertes thermiques, par m².
     Kpi("FORME", "Enveloppe", "Coefficient de forme : SP hors-sol / enveloppe", ("SP_HS",), ("FACADE", "TOITURE"), unite="",
         note="Enveloppe = façades hors-sol + toitures. Un bâtiment compact (rectangle) l'emporte sur une forme découpée.",
         sens=1, objet="de SP hors-sol"),
-    Kpi("FACADE/SP_HS", "Enveloppe", "Façade / SP hors-sol", ("FACADE",), ("SP_HS",), unite="", sens=-1, objet="de façade"),
+    # recoupe le coefficient de forme (qui compte aussi les toitures) ; le Programmer s'en sert pour estimer la façade
+    Kpi("FACADE/SP_HS", "Enveloppe", "Façade / SP hors-sol", ("FACADE",), ("SP_HS",), unite="", sens=-1, objet="de façade",
+        affiche=False),
     Kpi("VB/SP", "Enveloppe", "Hauteur brute moyenne : VB / SP", ("VB",), ("SP",), unite="m"),
     # V6_PLAN, partie 7 : TERRAIN = surface de la parcelle (saisie du MDP, sinon cadastre de la fiche SIG)
     Kpi("SP_HS/TERRAIN", "Terrain", "Indice d'utilisation : SP hors-sol / terrain", ("SP_HS",), ("TERRAIN",), unite="",
         note="m² de plancher hors-sol par m² de parcelle. Proche de l'IUS réglementaire, sans ses déductions."),
+    # V7 : emprise de la maquette 3D de la base (carte.mesures), GSI du Spacematrix
+    Kpi("EMPRISE/TERRAIN", "Terrain", "Emprise au sol : emprise / terrain (GSI)", ("EMPRISE",), ("TERRAIN",),
+        note="Part de la parcelle couverte par les bâtiments (emprise de la maquette 3D de la base)."),
     Kpi("SUP/LOG", "Programme", "SUP par logement", ("SUP",), ("LOG",), unite="m²", typologie="logement"),
     Kpi("SP_HS/LOG", "Programme", "SP hors-sol par logement", ("SP_HS",), ("LOG",), unite="m²", typologie="logement"),
     # Cages d'escalier (V3.1) : étages de logements desservis, sommés (moyenne des étages pondérée par leurs cages)
@@ -106,8 +116,15 @@ KPIS = [
 KPI_BY_ID = {k.id: k for k in KPIS}
 
 # Caractéristiques de proximité (§4.4) : échelle logarithmique pour les tailles.
-FEATURES = {"SP_HS": "log", "LOG": "log", "ETAGES_HS": "lin", "PART_SS": "lin", "PART_GRANDS": "lin"}
+# V7 : la forme et le contexte comptent aussi (CARTE_IDENTITE.md) : GSI de la maquette, famille de forme bâtie a+t et type
+# de site, ces deux derniers par catégorie (« cat » : 0 si identiques, 1 sinon).
+FEATURES = {"SP_HS": "log", "LOG": "log", "ETAGES_HS": "lin", "PART_SS": "lin", "PART_GRANDS": "lin", "GSI": "lin",
+            "FAMILLE_AT": "cat", "SITE": "cat"}
 FILTRES = ("categorie", "intervention")
+# Phases SIA 112 du gabarit : 21 définition, 31-33 avant-projet, projet, demande d'autorisation ; dès 41 (appel d'offres)
+# le projet est autorisé, puis réalisé (51-53). Les projets non autorisés sortent des références par défaut.
+PHASE_AUTORISEE = 41
+VENTE = ("ppe", "mixte")       # mode de commercialisation où la SVN a un sens (début du libellé, sans accents)
 # Hors de cette fourchette, SP et SN ne décrivent pas le même périmètre (nettes tronquées, brutes partielles) :
 # le projet reste affiché mais n'entre pas dans les références.
 SC_PLAUSIBLE = (0.08, 0.30)
@@ -155,13 +172,26 @@ class Projet:
         return None if any(v is None for v in vals) else sum(vals)
 
     def ratio(self, kpi: Kpi) -> tuple[float, float] | None:
-        """(numérateur, dénominateur), None si un terme manque ou si le dénominateur est nul."""
+        """(numérateur, dénominateur), None si un terme manque, si le dénominateur est nul, ou pour un KPI de vente d'un
+        projet en location."""
+        if kpi.vente and en_location(self.infos):
+            return None
         num, den = self.terme(kpi.num), self.terme(kpi.den)
         return None if num is None or not den else (num, den)
 
-    def features(self) -> dict[str, float]:
+    @property
+    def realise(self) -> bool | None:
+        """Autorisé ou réalisé (phase SIA 41 et plus) ; None sans phase lisible (il reste dans les références)."""
+        return realise(self.infos.get("phase"))
+
+    def features(self) -> dict[str, float | str]:
         t = self.totaux
-        f = {k: t[k] for k in ("SP_HS", "LOG", "ETAGES_HS") if t.get(k)}
+        f: dict[str, float | str] = {k: t[k] for k in ("SP_HS", "LOG", "ETAGES_HS") if t.get(k)}
+        if t.get("EMPRISE") and t.get("TERRAIN"):
+            f["GSI"] = t["EMPRISE"] / t["TERRAIN"]
+        for k, info in (("FAMILLE_AT", "famille_at"), ("SITE", "site")):
+            if self.infos.get(info):
+                f[k] = self.infos[info]
         if t.get("SP_SS") is not None and t.get("SP_HS"):
             f["PART_SS"] = t["SP_SS"] / t["SP_HS"]
         ch = [lg["chambres"] for lg in self.logements if lg["chambres"] is not None]
@@ -220,6 +250,20 @@ def zone(etage, decoupage=None) -> str | None:
     if re.fullmatch(r"n\d+", e) or e.startswith(("att", "toi", "rdc", "comble")):
         return "HS"
     return None
+
+
+def realise(phase) -> bool | None:
+    """Phase SIA 41 et plus : autorisé ou réalisé ; None sans phase lisible."""
+    try:
+        return int(float(str(phase).strip().replace(",", "."))) >= PHASE_AUTORISEE
+    except (TypeError, ValueError):
+        return None
+
+
+def en_location(infos: dict) -> bool:
+    """Mode de commercialisation saisi et sans vente (location, utilité publique) : les KPI de vente sont sans objet."""
+    mode = ((infos or {}).get("saisies") or {}).get("commercialisation")
+    return bool(mode) and not _key(mode).startswith(VENTE)
 
 
 def _id(v, fichier: str) -> str:
@@ -290,6 +334,9 @@ def _infos(df: pd.DataFrame) -> dict:
         "groupe": get("groupe d'utilisateurs"),
         # V6_PLAN, partie 7 : saisie qui prime sur la parcelle du cadastre (projet sur plusieurs parcelles…)
         "terrain": _num(get("surface du terrain")),
+        # carte d'identité : saisies de « Compléter la carte », par clé de champ (description exacte)
+        "saisies": {cle: v for cle, (desc, _, _) in SAISIES_CARTE.items()
+                    if not _empty(v := raw.get(_key(desc)))} or None,
     }
 
 
@@ -340,6 +387,17 @@ def _nettes(df: pd.DataFrame, t: dict) -> pd.DataFrame:
             autres = sup[~sup[c_aff].map(_key).str.startswith("logement")]._m2.sum()
             t["PART_AUTRES_SUP"] = float(autres / sup._m2.sum()) if sup._m2.sum() else None
     return df
+
+
+def _affectations(nettes: pd.DataFrame) -> dict[str, float]:
+    """SUP par affectation (m², colonne « Affectation » des nettes), de la plus grande à la plus petite ; {} sans colonne.
+    Carte d'identité, bloc Programme (docs/CARTE_IDENTITE.md)."""
+    c_aff = _col(nettes, "affectation") if not nettes.empty else None
+    if not c_aff:
+        return {}
+    sup = nettes[(nettes._c == "SUP") & nettes[c_aff].notna() & (nettes._m2 > 0)]
+    par = sup.groupby(sup[c_aff].astype(str).str.strip())._m2.sum()
+    return {str(k): round(float(v), 1) for k, v in par.sort_values(ascending=False).items() if str(k)}
 
 
 def _cages(df: pd.DataFrame, t: dict) -> list[dict]:
@@ -516,6 +574,7 @@ def lire(path: Path) -> Projet:
         _uspi(_sheet(x, "SurfacesUSPI"), t)
         _enveloppe(_sheet(x, "SurfacesEnveloppe"), t)
         logements = _logements(_sheet(x, "ListeLogements"), nettes)
+        infos["affectations"] = _affectations(nettes) or None
     if t.get("SP") is not None and t.get("SN") is not None and t["SP"] >= t["SN"]:
         t["SC"] = t["SP"] - t["SN"]
     if logements or infos.get("logements"):
@@ -566,6 +625,9 @@ def _echelles(projets: list[Projet]) -> dict[str, float]:
     """Étendue de chaque caractéristique sur la base, pour normaliser les écarts."""
     out = {}
     for f, kind in FEATURES.items():
+        if kind == "cat":
+            out[f] = 1.0
+            continue
         v = [x[f] for p in projets if (x := p.features()).get(f) is not None and (kind == "lin" or x[f] > 0)]
         v = [math.log(x) for x in v] if kind == "log" else v
         out[f] = (max(v) - min(v)) if len(v) > 1 and max(v) > min(v) else 1.0
@@ -578,18 +640,24 @@ def distance(a: Projet, b: Projet, echelles: dict[str, float]) -> float | None:
     d = []
     for f, kind in FEATURES.items():
         if f in fa and f in fb:
+            if kind == "cat":
+                d.append(0.0 if _key(fa[f]) == _key(fb[f]) else 1.0)
+                continue
             x, y = (math.log(fa[f]), math.log(fb[f])) if kind == "log" else (fa[f], fb[f])
             d.append(abs(x - y) / echelles[f])
     return sum(d) / len(d) if len(d) >= 2 else None
 
 
-def similaires(ref: Projet, projets: list[Projet], filtres=FILTRES, k: int = 5) -> list[tuple[Projet, float]]:
+def similaires(ref: Projet, projets: list[Projet], filtres=FILTRES, k: int = 5,
+               realises: bool = False) -> list[tuple[Projet, float]]:
     """Les k projets fiables les plus proches de `ref` (lui exclu). Un filtre écarte une valeur différente de celle de
-    `ref` ; une valeur inconnue ne l'écarte pas (base encore incomplète)."""
+    `ref` ; une valeur inconnue ne l'écarte pas (base encore incomplète). `realises` : les projets dont la phase dit
+    qu'ils ne sont pas encore autorisés sont écartés (filtre « réalisés et autorisés », V7). Pas par défaut : la phase
+    des MDP de la base est souvent celle de l'étude (31), pas l'état actuel du projet."""
     echelles = _echelles(projets)
     out = []
     for p in projets:
-        if p.id == ref.id or not p.fiable:
+        if p.id == ref.id or not p.fiable or (realises and p.realise is False):
             continue
         if any(ref.infos.get(f) and p.infos.get(f) and _key(ref.infos[f]) != _key(p.infos[f]) for f in filtres):
             continue
@@ -673,21 +741,49 @@ def construire(projets: list[Projet], erreurs: list[str] | None = None, k: int =
     """Le contenu de benchmark.json, lu par le dashboard. `dossier` : celui de la base, où chercher les maquettes 3D et
     les fiches SIG ; `registre` : registre des adresses (sia_check.adresses.Registre), pour placer les projets à leur
     adresse ; `avec_sig` : False pour une version d'un groupe d'utilisateurs sans données SIG (V6, version Light)."""
-    from . import sig
+    from . import carte, sig
+    sigs = {p.id: sig.valeurs_benchmark(dossier, p.id) if dossier and avec_sig else None for p in projets}
+    mesures = {}
     for p in projets:
         terrain(p, dossier if avec_sig else None)
+        mesures[p.id] = carte.mesures(dossier, p.id)
+        forme_et_contexte(p, mesures[p.id], sigs[p.id])
+    projets_json = []
+    for p in projets:
+        pj = {**_projet_json(p, projets, k, registre), "maquette": maquette(dossier, p.id) if dossier else None,
+              # contexte SIG du projet (fiche SIG-<id>.json de la base, type de site compris), None sans fiche
+              "sig": sigs[p.id]}
+        # V7 : la carte résumée (forme bâtie, densité, Spacematrix, implantation) pour le dashboard, toutes versions
+        pj["identite"] = carte.resume(pj, sigs[p.id], mesures[p.id])
+        # la carte complète sert la visionneuse, qui lit la version complète : pas dans celle d'un groupe
+        if dossier is not None and avec_sig:
+            pj["carte"] = carte.carte(pj, sigs[p.id], mesures[p.id])
+        projets_json.append(pj)
     return {
         "version": VERSION, "genere": dt.datetime.now().isoformat(timespec="seconds"),
         "kpis": [dataclasses.asdict(k_) for k_ in KPIS], "features": FEATURES, "filtres": list(FILTRES),
-        "projets": [{**_projet_json(p, projets, k, registre), "maquette": maquette(dossier, p.id) if dossier else None,
-                     # contexte SIG du projet (fiche SIG-<id>.json de la base, type de site compris), None sans fiche
-                     "sig": sig.valeurs_benchmark(dossier, p.id) if dossier and avec_sig else None}
-                    for p in projets],
+        "projets": projets_json,
         "base": {kpi.id: combiner(projets, kpi) for kpi in KPIS},
         "typologies": typologies(projets), "erreurs": erreurs or [],
         # listes déroulantes de la fiche « Identité du projet », formes des bâtiments comprises (partie 5)
         "listes": {**mdp.listes(), "Forme": list(FORMES)},
+        # V7 : formes bâties a+t et types de distribution (filtres du dashboard), phase dès laquelle un projet est autorisé
+        "formes_at": {f: list(t) for f, t in carte.FORMALISATIONS.items()},
+        "distributions": list(carte.LISTE_DISTRIBUTION), "phase_autorisee": PHASE_AUTORISEE,
+        "tranches": [nom for _, nom in carte.TRANCHES],
     }
+
+
+def forme_et_contexte(p: Projet, mes: dict | None, sig_valeurs: dict | None) -> None:
+    """Ce que la similarité retient de la forme et du contexte (V7) : emprise de la maquette (EMPRISE, pour le GSI),
+    famille de forme bâtie a+t (confirmée, sinon proposée) et type de site de la fiche SIG."""
+    from . import carte
+    p.totaux.pop("EMPRISE", None)
+    if (mes or {}).get("emprise_m2"):
+        p.totaux["EMPRISE"] = float(mes["emprise_m2"])
+    fa = carte.forme_at(p.infos, p.totaux, mes)
+    p.infos["famille_at"] = carte.famille_de(fa[0]) if fa else None
+    p.infos["site"] = ((sig_valeurs or {}).get("site") or {}).get("valeur")
 
 
 def terrain(p: Projet, dossier: Path | None) -> None:

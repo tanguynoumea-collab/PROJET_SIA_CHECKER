@@ -181,6 +181,47 @@ td .signe { display: inline-block; width: 12px; margin-left: 4px; font-size: 10p
 #boites svg { width: 100%; display: block; }
 .ligne-typo text { fill: var(--texte); font-size: 12px; }
 .ligne-typo text.secondaire { fill: var(--texte-2); }
+/* Formes (V7) : Spacematrix et planche des implantations. Une seule couleur de donnée (l'accent), en tranches de
+   densité de plus en plus pleines (a+t : moins de 50 à plus de 300 log./ha). */
+.fo-bloc { background: var(--surface); border-radius: 6px; padding: 12px 16px 16px; margin-bottom: 16px; max-width: 1180px; }
+.fo-entete { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.fo-entete h2 { margin: 4px 0; }
+.fo-tri { margin-left: auto; font-size: 12px; color: var(--texte-2); }
+.fo-graphe svg { width: 100%; max-width: 900px; display: block; }
+.fo-axe-titre { fill: var(--texte-2); font-size: 12px; }
+.fo-l { stroke: var(--texte-2); stroke-width: 1; stroke-dasharray: 4 4; opacity: .55; }
+.fo-l-texte, .fo-osr-texte { fill: var(--texte-2); font-size: 10.5px; }
+.fo-osr { fill: none; stroke: var(--texte-2); stroke-width: 1; opacity: .4; }
+.fo-point circle { stroke: var(--surface); stroke-width: 1.5; }
+.fo-point .fo-creux { fill: var(--surface); stroke: var(--texte-2); stroke-width: 1.5; }
+.fo-id { fill: var(--texte); font: 11px var(--mono); }
+.fo-point.hors-ref .fo-id { fill: var(--texte-2); }
+.tranche-0 { fill: var(--accent); fill-opacity: .22; stroke: var(--accent); }
+.tranche-1 { fill: var(--accent); fill-opacity: .42; stroke: var(--accent); }
+.tranche-2 { fill: var(--accent); fill-opacity: .62; stroke: var(--accent); }
+.tranche-3 { fill: var(--accent); fill-opacity: .82; stroke: var(--accent); }
+.tranche-4 { fill: var(--accent); fill-opacity: 1; stroke: var(--accent); }
+.tranche-aucune { fill: var(--texte-2); fill-opacity: .55; stroke: var(--texte-2); }
+.fo-legende { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12px; margin-top: 8px; }
+.fo-cle { display: inline-flex; align-items: center; gap: 5px; }
+.fo-pastille { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 1px solid var(--accent); }
+.fo-pastille.tranche-0 { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.fo-pastille.tranche-1 { background: color-mix(in srgb, var(--accent) 42%, transparent); }
+.fo-pastille.tranche-2 { background: color-mix(in srgb, var(--accent) 62%, transparent); }
+.fo-pastille.tranche-3 { background: color-mix(in srgb, var(--accent) 82%, transparent); }
+.fo-pastille.tranche-4 { background: var(--accent); }
+.fo-pastille.tranche-aucune { background: color-mix(in srgb, var(--texte-2) 55%, transparent); border-color: var(--texte-2); }
+.fo-planche { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.fo-case { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.fo-case svg { width: 210px; height: 210px; background: var(--fond); border-radius: 4px; }
+.fo-case figcaption { display: flex; flex-direction: column; font-size: 12px; gap: 1px; }
+.fo-case.hors-ref { opacity: .5; }
+.fo-parcelle { fill: none; stroke: var(--texte-2); stroke-width: 1; }
+.fo-emprise { stroke-width: .8; }
+.fo-barre { stroke: var(--texte); stroke-width: 2; }
+.fo-nord { fill: var(--texte-2); }
+.selection .case { display: inline-flex; align-items: center; gap: 4px; }
+
 /* Mon projet : panneau de saisie au-dessus des règles */
 .colonne { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .saisie { background: var(--surface); border-radius: 6px; padding: 4px 16px 12px; }
